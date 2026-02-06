@@ -1,4 +1,9 @@
-# Optuna hyperparameter search space
+# Optuna hyperparameter search spaces
+# Each param: type (int/float/categorical), low, high, step?, log?, choices?
+# Adding a new parameter to YAML requires NO code change
+
+target_col: consumption
+
 catboost:
   n_trials: 50
   search_space:
@@ -27,9 +32,21 @@ catboost:
       type: float
       low: 0.6
       high: 1.0
+    loss_function:
+      type: categorical
+      choices: ["RMSE", "MAE"]
+
+prophet:
+  n_trials: 30
+  search_space: {}
+
+tft:
+  n_trials: 20
+  search_space: {}
 
 cross_validation:
   n_splits: 12
-  val_period_days: 30
-  test_period_days: 30
+  val_months: 1
+  test_months: 1
+  gap_hours: 0
   shuffle: false

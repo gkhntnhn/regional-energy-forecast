@@ -12,10 +12,13 @@ from energy_forecast.config import Settings, get_default_config, load_config
 from energy_forecast.config.settings import (
     CityConfig,
     ConsumptionLagConfig,
+    CrossValidationConfig,
     EpiasExpandingConfig,
     EpiasLagConfig,
     ExpandingConfig,
+    ModelSearchConfig,
     RegionConfig,
+    SearchParamConfig,
     _load_yaml,
 )
 
@@ -242,3 +245,89 @@ class TestErrorHandling:
         valid_yaml.write_text("key: value\n", encoding="utf-8")
         result: dict[str, Any] = _load_yaml(valid_yaml)
         assert result == {"key": "value"}
+
+
+# ---------------------------------------------------------------------------
+# Dynamic search space config
+# ---------------------------------------------------------------------------
+
+
+class TestSearchParamConfig:
+    """Tests for SearchParamConfig validation."""
+
+    def test_int_valid(self) -> None:
+        cfg = SearchParamConfig(type="int", low=1, high=10)
+        assert cfg.type == "int"
+        assert cfg.low == 1
+        assert cfg.high == 10
+
+    def test_float_log_valid(self) -> None:
+        cfg = SearchParamConfig(type="float", low=0.01, high=0.1, log=True)
+        assert cfg.log is True
+
+    def test_float_step_valid(self) -> None:
+        cfg = SearchParamConfig(type="float", low=0.0, high=1.0, step=0.1)
+        assert cfg.step == 0.1
+
+    def test_categorical_valid(self) -> None:
+        cfg = SearchParamConfig(type="categorical", choices=["RMSE", "MAE"])
+        assert cfg.choices == ["RMSE", "MAE"]
+
+    def test_int_missing_low_raises(self) -> None:
+        with pytest.raises(ValidationError, match="requires low and high"):
+            SearchParamConfig(type="int", high=10)
+
+    def test_int_missing_high_raises(self) -> None:
+        with pytest.raises(ValidationError, match="requires low and high"):
+            SearchParamConfig(type="int", low=1)
+
+    def test_low_greater_than_high_raises(self) -> None:
+        with pytest.raises(ValidationError, match=r"low.*high"):
+            SearchParamConfig(type="float", low=10.0, high=1.0)
+
+    def test_log_with_step_raises(self) -> None:
+        with pytest.raises(ValidationError, match="mutually exclusive"):
+            SearchParamConfig(type="float", low=0.01, high=1.0, log=True, step=0.1)
+
+    def test_categorical_no_choices_raises(self) -> None:
+        with pytest.raises(ValidationError, match="non-empty choices"):
+            SearchParamConfig(type="categorical")
+
+    def test_categorical_empty_choices_raises(self) -> None:
+        with pytest.raises(ValidationError, match="non-empty choices"):
+            SearchParamConfig(type="categorical", choices=[])
+
+
+class TestModelSearchConfig:
+    """Tests for ModelSearchConfig."""
+
+    def test_empty_search_space(self) -> None:
+        cfg = ModelSearchConfig()
+        assert cfg.n_trials == 50
+        assert cfg.search_space == {}
+
+    def test_with_search_space(self) -> None:
+        cfg = ModelSearchConfig(
+            n_trials=10,
+            search_space={
+                "depth": SearchParamConfig(type="int", low=4, high=7),
+            },
+        )
+        assert cfg.n_trials == 10
+        assert "depth" in cfg.search_space
+
+
+class TestCrossValidationConfig:
+    """Tests for calendar-month CrossValidationConfig."""
+
+    def test_defaults(self) -> None:
+        cfg = CrossValidationConfig()
+        assert cfg.n_splits == 12
+        assert cfg.val_months == 1
+        assert cfg.test_months == 1
+        assert cfg.gap_hours == 0
+        assert cfg.shuffle is False
+
+    def test_shuffle_always_false(self) -> None:
+        cfg = CrossValidationConfig(shuffle=False)
+        assert cfg.shuffle is False
