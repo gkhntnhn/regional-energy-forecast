@@ -73,7 +73,7 @@ make serve            # FastAPI başlat (uvicorn)
 ## Milestone Durumu
 - [x] M0: Proje iskeleti
 - [x] M1: Config sistemi
-- [ ] M2: Data pipeline (ingestion + EPIAS/OpenMeteo clients)
+- [x] M2: Data pipeline (ingestion + EPIAS/OpenMeteo clients)
 - [ ] M3: Feature engineering (5 modül + pipeline orkestratör)
 - [ ] M4: Leakage audit
 - [ ] M5: CatBoost training (TSCV + Optuna + MLflow)
