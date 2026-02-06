@@ -1,0 +1,26 @@
+# Weather feature configuration
+# NOTE: Weather forecast is NOT leakage — available from OpenMeteo at prediction time
+thresholds:
+  hdd_base: 18.0    # Heating Degree Days base temperature
+  cdd_base: 24.0    # Cooling Degree Days base temperature
+  extreme_cold: 0.0
+  extreme_hot: 35.0
+  high_wind: 50.0   # km/h
+
+comfort_index:
+  method: "apparent_temperature"
+
+rolling:
+  windows:
+    - 6
+    - 12
+    - 24
+  functions:
+    - mean
+    - min
+    - max
+
+severity:
+  enabled: true
+  wind_threshold: 50.0
+  precip_threshold: 10.0

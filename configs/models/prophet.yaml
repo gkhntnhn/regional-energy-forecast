@@ -1,0 +1,27 @@
+# Prophet model configuration
+seasonality:
+  mode: "multiplicative"
+  daily:
+    fourier_order: 12
+  weekly:
+    fourier_order: 6
+  yearly:
+    fourier_order: 10
+
+holidays:
+  country: "TR"
+  include_ramadan: true
+
+regressors:
+  - name: "temperature"
+    mode: "additive"
+  - name: "humidity"
+    mode: "additive"
+
+changepoint:
+  prior_scale: 0.05
+  n_changepoints: 25
+
+uncertainty:
+  interval_width: 0.95
+  mcmc_samples: 0

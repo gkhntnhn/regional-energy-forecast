@@ -1,0 +1,49 @@
+# Consumption feature configuration
+# CRITICAL: min_lag=48 for all lag features (leakage prevention)
+lags:
+  min_lag: 48
+  values:
+    - 48   # 2 days
+    - 72   # 3 days
+    - 96   # 4 days
+    - 168  # 1 week
+    - 336  # 2 weeks
+    - 720  # ~1 month
+
+rolling:
+  # shift(1) THEN rolling() — leakage prevention
+  windows:
+    - 24   # 1 day
+    - 48   # 2 days
+    - 168  # 1 week
+    - 336  # 2 weeks
+    - 720  # ~1 month
+  functions:
+    - mean
+    - std
+    - min
+    - max
+
+ewma:
+  spans:
+    - 24
+    - 48
+    - 168
+
+expanding:
+  min_periods: 48
+  functions:
+    - mean
+    - std
+
+momentum:
+  periods:
+    - 24
+    - 168
+
+quantile:
+  quantiles:
+    - 0.25
+    - 0.50
+    - 0.75
+  window: 168

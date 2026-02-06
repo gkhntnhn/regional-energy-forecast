@@ -1,0 +1,30 @@
+# Solar feature configuration
+# NOTE: Solar features are NOT leakage — deterministic astronomical calculation
+location:
+  latitude: 40.183   # Bursa (primary)
+  longitude: 29.050
+  altitude: 100
+  timezone: "Europe/Istanbul"
+
+panel:
+  tilt: 35
+  azimuth: 180  # south-facing
+
+features:
+  - solar_elevation
+  - solar_azimuth
+  - ghi
+  - dni
+  - dhi
+  - poa_global
+  - clearness_index
+  - cloud_proxy
+  - is_daylight
+  - daylight_hours
+
+lead:
+  enabled: true
+  hours:
+    - 1
+    - 2
+    - 3

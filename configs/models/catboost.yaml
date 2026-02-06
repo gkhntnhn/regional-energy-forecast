@@ -1,0 +1,25 @@
+# CatBoost model configuration
+training:
+  task_type: "CPU"
+  iterations: 2000
+  learning_rate: 0.05
+  depth: 6
+  loss_function: "RMSE"
+  eval_metric: "MAPE"
+  early_stopping_rounds: 200
+  has_time: true
+  random_seed: 42
+  verbose: 100
+
+categorical_features:
+  - hour
+  - day_of_week
+  - month
+  - is_holiday
+  - is_weekend
+  - is_ramadan
+  - weather_code
+  - season
+
+nan_handling:
+  categorical: "missing"

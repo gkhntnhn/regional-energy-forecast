@@ -1,0 +1,21 @@
+# Data loading configuration
+excel:
+  columns:
+    date: "date"
+    time: "time"
+    consumption: "consumption"
+  date_format: "%Y-%m-%d"
+  time_range: [0, 23]
+  unit: "MWh"
+
+validation:
+  min_consumption: 0.0
+  max_consumption: 10000.0
+  max_missing_ratio: 0.05
+  expected_frequency: "1h"
+
+paths:
+  raw: "data/raw"
+  processed: "data/processed"
+  static: "data/static"
+  holidays: "data/static/turkish_holidays.parquet"

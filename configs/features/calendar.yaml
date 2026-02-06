@@ -1,0 +1,32 @@
+# Calendar feature configuration
+datetime:
+  extract:
+    - hour
+    - day_of_week
+    - day_of_month
+    - day_of_year
+    - week_of_year
+    - month
+    - quarter
+    - year
+
+cyclical:
+  hour:
+    period: 24
+  day_of_week:
+    period: 7
+  month:
+    period: 12
+  day_of_year:
+    period: 365
+
+holidays:
+  path: "data/static/turkish_holidays.parquet"
+  include_ramadan: true
+  bridge_days: true
+
+business_hours:
+  start: 8
+  end: 18
+  peak_start: 17
+  peak_end: 22

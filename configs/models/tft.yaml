@@ -1,0 +1,27 @@
+# Temporal Fusion Transformer configuration
+architecture:
+  hidden_size: 64
+  attention_head_size: 4
+  lstm_layers: 2
+  dropout: 0.1
+
+training:
+  encoder_length: 168  # 7 days
+  prediction_length: 48
+  batch_size: 64
+  max_epochs: 100
+  learning_rate: 0.001
+  early_stop_patience: 10
+  gradient_clip_val: 0.1
+  random_seed: 42
+
+quantiles:
+  - 0.02
+  - 0.10
+  - 0.25
+  - 0.50
+  - 0.75
+  - 0.90
+  - 0.98
+
+loss: "quantile"

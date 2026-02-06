@@ -1,1 +1,63 @@
+# Claude
 .claude/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Environment
+.env
+
+# Data files (large)
+data/raw/*.xlsx
+data/raw/*.csv
+data/processed/*.parquet
+data/external/epias/*.parquet
+data/external/weather_cache.db
+
+# Model artifacts
+models/*.cbm
+models/*.pkl
+models/*.ckpt
+models/*.pt
+
+# MLflow
+mlruns/
+mlartifacts/
+
+# Reports
+reports/*.html
+reports/*.xlsx
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Type checking / Linting
+.mypy_cache/
+.ruff_cache/
+
+# Notebooks
+notebooks/.ipynb_checkpoints/

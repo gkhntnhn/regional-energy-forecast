@@ -1,0 +1,36 @@
+# General project settings
+project:
+  name: "energy-forecast"
+  version: "0.1.0"
+  timezone: "Europe/Istanbul"
+
+logging:
+  level: "INFO"
+  format: "<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level}</level> | <cyan>{name}</cyan> - <level>{message}</level>"
+  rotation: "10 MB"
+  retention: "30 days"
+
+region:
+  name: "Uludag"
+  cities:
+    - name: "Bursa"
+      weight: 0.60
+      latitude: 40.183
+      longitude: 29.050
+    - name: "Balikesir"
+      weight: 0.24
+      latitude: 39.653
+      longitude: 27.886
+    - name: "Yalova"
+      weight: 0.10
+      latitude: 40.655
+      longitude: 29.272
+    - name: "Canakkale"
+      weight: 0.06
+      latitude: 40.146
+      longitude: 26.402
+
+forecast:
+  horizon_hours: 48
+  frequency: "1h"
+  min_lag: 48

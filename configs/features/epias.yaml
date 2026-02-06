@@ -1,0 +1,36 @@
+# EPIAS feature configuration
+# CRITICAL: min_lag=48, raw values are DROPPED after feature creation
+source:
+  cache_dir: "data/external/epias"
+  file_pattern: "{year}.parquet"
+
+variables:
+  - FDPP
+  - Real_Time_Consumption
+  - DAM_Purchase
+  - Bilateral_Agreement_Purchase
+  - Load_Forecast
+
+lags:
+  min_lag: 48
+  values:
+    - 48
+    - 72
+    - 168
+
+rolling:
+  # shift(1) THEN rolling()
+  windows:
+    - 24
+    - 48
+    - 168
+  functions:
+    - mean
+    - std
+
+expanding:
+  min_periods: 48
+  functions:
+    - mean
+
+drop_raw: true

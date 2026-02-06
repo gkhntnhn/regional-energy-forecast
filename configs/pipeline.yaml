@@ -1,0 +1,13 @@
+# Feature pipeline configuration
+pipeline:
+  modules:
+    - calendar
+    - consumption
+    - weather
+    - solar
+    - epias
+
+  merge_strategy: "left"
+  drop_raw_epias: true
+  validate_output: true
+  check_duplicate_columns: true
