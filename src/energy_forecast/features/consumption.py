@@ -5,30 +5,138 @@ from __future__ import annotations
 from typing import Any
 
 import pandas as pd
+from feature_engine.timeseries.forecasting import (
+    ExpandingWindowFeatures,
+    LagFeatures,
+    WindowFeatures,
+)
 
 from energy_forecast.features.base import BaseFeatureEngineer
+from energy_forecast.features.custom import (
+    EwmaFeatures,
+    MomentumFeatures,
+    QuantileFeatures,
+)
 
 
 class ConsumptionFeatureEngineer(BaseFeatureEngineer):
-    """Generates lag, rolling, EWMA, momentum, and volatility features.
+    """Generates lag, rolling, EWMA, momentum, and quantile features.
 
     CRITICAL: All lags use min_lag=48 to prevent data leakage.
-    Rolling windows apply shift(1) BEFORE rolling().
+    WindowFeatures ``periods=48`` ensures shift-after-roll safety.
 
     Args:
-        config: Consumption feature configuration.
+        config: Consumption feature configuration dict.
     """
-
-    def __init__(self, config: dict[str, Any]) -> None:
-        super().__init__(config)
 
     def transform(self, X: pd.DataFrame) -> pd.DataFrame:
         """Generate consumption features.
 
         Args:
-            X: DataFrame with 'consumption' column.
+            X: DataFrame with ``consumption`` column and DatetimeIndex.
 
         Returns:
             DataFrame with consumption features added.
         """
-        raise NotImplementedError
+        df = X.copy()
+        min_lag: int = self.config["lags"]["min_lag"]
+
+        df = self._add_lags(df)
+        df = self._add_rolling(df, min_lag)
+        df = self._add_expanding(df, min_lag)
+        df = self._add_ewma(df, min_lag)
+        df = self._add_momentum(df, min_lag)
+        df = self._add_quantile(df, min_lag)
+        return df
+
+    # ------------------------------------------------------------------
+    # feature-engine: lags
+    # ------------------------------------------------------------------
+
+    def _add_lags(self, df: pd.DataFrame) -> pd.DataFrame:
+        lag_values: list[int] = self.config["lags"]["values"]
+        lag_tf = LagFeatures(
+            variables=["consumption"],
+            periods=lag_values,
+            sort_index=True,
+            missing_values="ignore",
+            drop_original=False,
+            drop_na=False,
+        )
+        result: pd.DataFrame = lag_tf.fit_transform(df)
+        return result
+
+    # ------------------------------------------------------------------
+    # feature-engine: rolling windows
+    # ------------------------------------------------------------------
+
+    def _add_rolling(self, df: pd.DataFrame, min_lag: int) -> pd.DataFrame:
+        windows: list[int] = self.config["rolling"]["windows"]
+        functions: list[str] = self.config["rolling"]["functions"]
+        for w in windows:
+            win_tf = WindowFeatures(
+                variables=["consumption"],
+                window=w,
+                functions=functions,
+                periods=min_lag,
+                sort_index=True,
+                missing_values="ignore",
+                drop_original=False,
+                drop_na=False,
+            )
+            df = win_tf.fit_transform(df)
+        return df
+
+    # ------------------------------------------------------------------
+    # feature-engine: expanding
+    # ------------------------------------------------------------------
+
+    def _add_expanding(self, df: pd.DataFrame, min_lag: int) -> pd.DataFrame:
+        exp_cfg: dict[str, Any] = self.config["expanding"]
+        exp_tf = ExpandingWindowFeatures(
+            variables=["consumption"],
+            min_periods=exp_cfg["min_periods"],
+            functions=exp_cfg["functions"],
+            periods=min_lag,
+            sort_index=True,
+            missing_values="ignore",
+            drop_original=False,
+            drop_na=False,
+        )
+        result: pd.DataFrame = exp_tf.fit_transform(df)
+        return result
+
+    # ------------------------------------------------------------------
+    # Custom: EWMA, momentum, quantile
+    # ------------------------------------------------------------------
+
+    def _add_ewma(self, df: pd.DataFrame, min_lag: int) -> pd.DataFrame:
+        spans: list[int] = self.config["ewma"]["spans"]
+        ewma_tf = EwmaFeatures(
+            variables=["consumption"],
+            spans=spans,
+            periods=min_lag,
+        )
+        result: pd.DataFrame = ewma_tf.fit_transform(df)
+        return result
+
+    def _add_momentum(self, df: pd.DataFrame, min_lag: int) -> pd.DataFrame:
+        periods: list[int] = self.config["momentum"]["periods"]
+        mom_tf = MomentumFeatures(
+            variables=["consumption"],
+            min_lag=min_lag,
+            momentum_periods=periods,
+        )
+        result: pd.DataFrame = mom_tf.fit_transform(df)
+        return result
+
+    def _add_quantile(self, df: pd.DataFrame, min_lag: int) -> pd.DataFrame:
+        q_cfg: dict[str, Any] = self.config["quantile"]
+        q_tf = QuantileFeatures(
+            variables=["consumption"],
+            quantiles=q_cfg["quantiles"],
+            window=q_cfg["window"],
+            periods=min_lag,
+        )
+        result: pd.DataFrame = q_tf.fit_transform(df)
+        return result

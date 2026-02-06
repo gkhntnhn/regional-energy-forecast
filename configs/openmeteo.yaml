@@ -1,9 +1,17 @@
-# OpenMeteo API configuration
+# OpenMeteo API configuration (official SDK)
 api:
   base_url_historical: "https://archive-api.open-meteo.com/v1/archive"
+  base_url_historical_forecast: "https://historical-forecast-api.open-meteo.com/v1/forecast"
   base_url_forecast: "https://api.open-meteo.com/v1/forecast"
   timeout: 30
   retry_attempts: 3
+  backoff_factor: 0.2
+
+geocoding:
+  enabled: false
+  api_url: "https://geocoding-api.open-meteo.com/v1/search"
+  language: "tr"
+  count: 1
 
 variables:
   - temperature_2m
