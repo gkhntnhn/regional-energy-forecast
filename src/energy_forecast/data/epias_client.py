@@ -2,29 +2,376 @@
 
 from __future__ import annotations
 
+import time
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any, ClassVar
+
+import httpx
 import pandas as pd
+from loguru import logger
+from tenacity import (
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
+
+from energy_forecast.data.exceptions import EpiasApiError, EpiasAuthError
+
+# ---------------------------------------------------------------------------
+# EPIAS variable definitions
+# ---------------------------------------------------------------------------
+
+_VARIABLE_MAP: dict[str, dict[str, str]] = {
+    "FDPP": {
+        "endpoint": "/generation/data/dpp",
+        "response_key": "toplam",
+    },
+    "Real_Time_Consumption": {
+        "endpoint": "/consumption/data/realtime-consumption",
+        "response_key": "consumption",
+    },
+    "DAM_Purchase": {
+        "endpoint": "/markets/dam/data/clearing-quantity",
+        "response_key": "matchedBids",
+    },
+    "Bilateral_Agreement_Purchase": {
+        "endpoint": "/markets/bilateral-contracts/data/bilateral-contracts-bid-quantity",
+        "response_key": "quantity",
+    },
+    "Load_Forecast": {
+        "endpoint": "/consumption/data/load-estimation-plan",
+        "response_key": "lep",
+    },
+}
 
 
 class EpiasClient:
     """Fetches market data from EPIAS REST API with caching.
 
+    Uses year-based parquet caching to avoid re-fetching historical data.
+    Implements rate limiting and retry with exponential backoff.
+
     Args:
         username: EPIAS account username.
         password: EPIAS account password.
+        cache_dir: Directory for parquet cache files.
+        rate_limit_seconds: Minimum delay between API requests.
+        variables: List of EPIAS variables to fetch. Defaults to all 5.
     """
 
-    def __init__(self, username: str, password: str) -> None:
+    AUTH_URL: ClassVar[str] = "https://giris.epias.com.tr/cas/v1/tickets"
+    BASE_URL: ClassVar[str] = "https://seffaflik.epias.com.tr/electricity-service/v1"
+
+    def __init__(
+        self,
+        username: str,
+        password: str,
+        cache_dir: Path = Path("data/external/epias"),
+        rate_limit_seconds: float = 10.0,
+        variables: list[str] | None = None,
+    ) -> None:
         self.username = username
         self.password = password
+        self.cache_dir = Path(cache_dir)
+        self.rate_limit_seconds = rate_limit_seconds
+        self.variables = variables or list(_VARIABLE_MAP.keys())
+        self._token: str | None = None
+        self._token_time: float = 0.0
+        self._token_ttl: float = 3600.0
+        self._last_request_time: float = 0.0
+        self._client = httpx.Client(timeout=60.0)
+
+    def close(self) -> None:
+        """Close the HTTP client."""
+        self._client.close()
+
+    def __enter__(self) -> EpiasClient:
+        return self
+
+    def __exit__(self, *args: object) -> None:
+        self.close()
+
+    # ------------------------------------------------------------------
+    # Authentication
+    # ------------------------------------------------------------------
+
+    def authenticate(self) -> str:
+        """Get TGT token from EPIAS CAS.
+
+        Returns cached token if still valid (< 1 hour old).
+
+        Returns:
+            TGT token string.
+
+        Raises:
+            EpiasAuthError: If authentication fails.
+        """
+        now = time.monotonic()
+        if self._token and (now - self._token_time) < self._token_ttl:
+            return self._token
+
+        logger.debug("Authenticating with EPIAS CAS")
+        try:
+            response = self._client.post(
+                self.AUTH_URL,
+                data={"username": self.username, "password": self.password},
+            )
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            msg = f"EPIAS authentication failed: {exc.response.status_code}"
+            raise EpiasAuthError(msg) from exc
+        except httpx.HTTPError as exc:
+            msg = f"EPIAS authentication request failed: {exc}"
+            raise EpiasAuthError(msg) from exc
+
+        self._token = response.text.strip()
+        self._token_time = now
+        logger.debug("EPIAS authentication successful")
+        return self._token
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
 
     def fetch(self, start_date: str, end_date: str) -> pd.DataFrame:
-        """Fetch EPIAS data for date range.
+        """Fetch all EPIAS variables for date range.
+
+        Uses year-based caching: loads from parquet if available,
+        otherwise fetches from API and caches.
 
         Args:
             start_date: Start date (YYYY-MM-DD).
             end_date: End date (YYYY-MM-DD).
 
         Returns:
-            DataFrame with EPIAS market variables.
+            DataFrame with DatetimeIndex and EPIAS variable columns.
         """
-        raise NotImplementedError
+        start_dt = pd.Timestamp(start_date)
+        end_dt = pd.Timestamp(end_date)
+        start_year = start_dt.year
+        end_year = end_dt.year
+
+        dfs: list[pd.DataFrame] = []
+        for year in range(start_year, end_year + 1):
+            cached = self.load_cache(year)
+            if cached is not None:
+                logger.debug("Loaded EPIAS cache for year {}", year)
+                dfs.append(cached)
+            else:
+                logger.info("Fetching EPIAS data for year {} from API", year)
+                year_df = self.fetch_year(year)
+                dfs.append(year_df)
+
+        if not dfs:
+            msg = f"No EPIAS data available for {start_date} to {end_date}"
+            raise EpiasApiError(msg)
+
+        combined = pd.concat(dfs)
+        combined = combined.sort_index()
+        combined = combined[~combined.index.duplicated(keep="first")]
+
+        # Ensure DatetimeIndex and normalize to tz-naive
+        if not isinstance(combined.index, pd.DatetimeIndex):
+            combined.index = pd.to_datetime(combined.index)
+        if combined.index.tz is not None:
+            combined.index = combined.index.tz_localize(None)
+
+        # Filter to requested range
+        mask = (combined.index >= start_dt) & (combined.index <= end_dt + pd.Timedelta(hours=23))
+        return combined.loc[mask]
+
+    def fetch_year(self, year: int) -> pd.DataFrame:
+        """Fetch all variables for a full year from API and cache result.
+
+        Args:
+            year: Year to fetch (e.g. 2024).
+
+        Returns:
+            DataFrame with DatetimeIndex and EPIAS variable columns.
+        """
+        start = f"{year}-01-01"
+        end = f"{year}-12-31"
+
+        var_dfs: dict[str, pd.DataFrame] = {}
+        for var_name in self.variables:
+            if var_name not in _VARIABLE_MAP:
+                logger.warning("Unknown EPIAS variable: {}", var_name)
+                continue
+            var_info = _VARIABLE_MAP[var_name]
+            try:
+                var_df = self._fetch_variable(
+                    endpoint=var_info["endpoint"],
+                    response_key=var_info["response_key"],
+                    column_name=var_name,
+                    start_date=start,
+                    end_date=end,
+                )
+                var_dfs[var_name] = var_df
+            except EpiasApiError:
+                logger.warning("Failed to fetch EPIAS variable: {}", var_name)
+
+        if not var_dfs:
+            msg = f"Failed to fetch any EPIAS variables for year {year}"
+            raise EpiasApiError(msg)
+
+        # Filter out empty DataFrames (no rows parsed from response)
+        non_empty = {k: v for k, v in var_dfs.items() if len(v) > 0}
+        if not non_empty:
+            msg = f"All EPIAS variables returned empty data for year {year}"
+            raise EpiasApiError(msg)
+
+        # Inner merge all variables on datetime index
+        frames = list(non_empty.values())
+        result = frames[0]
+        for var_df in frames[1:]:
+            result = result.join(var_df, how="inner")
+        self.save_cache(year, result)
+        return result
+
+    # ------------------------------------------------------------------
+    # Cache
+    # ------------------------------------------------------------------
+
+    def load_cache(self, year: int) -> pd.DataFrame | None:
+        """Load cached parquet for a year.
+
+        Returns:
+            DataFrame if cache exists, None otherwise.
+        """
+        path = self.cache_dir / f"{year}.parquet"
+        if not path.exists():
+            return None
+        df = pd.read_parquet(path)
+        if "datetime" in df.columns:
+            df["datetime"] = pd.to_datetime(df["datetime"])
+            df = df.set_index("datetime")
+        if not isinstance(df.index, pd.DatetimeIndex):
+            df.index = pd.to_datetime(df.index)
+        df.index.name = "datetime"
+        return df
+
+    def save_cache(self, year: int, df: pd.DataFrame) -> None:
+        """Save year data as parquet file.
+
+        Args:
+            year: Year being cached.
+            df: DataFrame to save.
+        """
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        path = self.cache_dir / f"{year}.parquet"
+        save_df = df.copy()
+        save_df.index.name = "datetime"
+        save_df = save_df.reset_index()
+        save_df.to_parquet(path, engine="pyarrow", compression="snappy")
+        logger.info("Cached EPIAS data for year {} → {}", year, path)
+
+    # ------------------------------------------------------------------
+    # Internal
+    # ------------------------------------------------------------------
+
+    def _wait_rate_limit(self) -> None:
+        """Enforce rate limiting between API requests."""
+        now = time.monotonic()
+        elapsed = now - self._last_request_time
+        if elapsed < self.rate_limit_seconds:
+            sleep_time = self.rate_limit_seconds - elapsed
+            logger.debug("Rate limit: sleeping {:.1f}s", sleep_time)
+            time.sleep(sleep_time)
+        self._last_request_time = time.monotonic()
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=4, max=60),
+        retry=retry_if_exception_type(EpiasApiError),
+        reraise=True,
+    )
+    def _fetch_variable(
+        self,
+        endpoint: str,
+        response_key: str,
+        column_name: str,
+        start_date: str,
+        end_date: str,
+    ) -> pd.DataFrame:
+        """Fetch a single EPIAS variable with retry and rate limiting.
+
+        Args:
+            endpoint: API endpoint path.
+            response_key: Key in response items containing the value.
+            column_name: Output column name.
+            start_date: Start date (YYYY-MM-DD).
+            end_date: End date (YYYY-MM-DD).
+
+        Returns:
+            DataFrame with DatetimeIndex and single value column.
+        """
+        token = self.authenticate()
+        self._wait_rate_limit()
+
+        url = f"{self.BASE_URL}{endpoint}"
+        start_ts = _to_epias_timestamp(start_date)
+        end_ts = _to_epias_timestamp(end_date, end_of_day=True)
+
+        body: dict[str, Any] = {
+            "startDate": start_ts,
+            "endDate": end_ts,
+        }
+        headers = {"TGT": token, "Content-Type": "application/json"}
+
+        logger.debug("Fetching EPIAS {} from {} to {}", column_name, start_date, end_date)
+
+        try:
+            response = self._client.post(url, json=body, headers=headers)
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            msg = f"EPIAS API error for {column_name}: {exc.response.status_code}"
+            raise EpiasApiError(msg) from exc
+        except httpx.HTTPError as exc:
+            msg = f"EPIAS request failed for {column_name}: {exc}"
+            raise EpiasApiError(msg) from exc
+
+        data = response.json()
+        items = data.get("body", {}).get("content", data.get("items", []))
+        if not items:
+            items = data if isinstance(data, list) else []
+
+        if not items:
+            logger.warning("No data returned for EPIAS {}", column_name)
+            return pd.DataFrame(columns=[column_name])
+
+        rows: list[dict[str, Any]] = []
+        for item in items:
+            date_val = item.get("date") or item.get("period") or item.get("time")
+            value = item.get(response_key)
+            if date_val is not None and value is not None:
+                rows.append({"datetime": date_val, column_name: float(value)})
+
+        if not rows:
+            return pd.DataFrame(columns=[column_name])
+
+        df = pd.DataFrame(rows)
+        df["datetime"] = pd.to_datetime(df["datetime"], utc=True)
+        df["datetime"] = df["datetime"].dt.tz_localize(None)
+        df = df.set_index("datetime").sort_index()
+        df = df[~df.index.duplicated(keep="first")]
+        return df
+
+
+def _to_epias_timestamp(date_str: str, *, end_of_day: bool = False) -> str:
+    """Convert YYYY-MM-DD to EPIAS API timestamp format.
+
+    Args:
+        date_str: Date string in YYYY-MM-DD format.
+        end_of_day: If True, set time to 23:00.
+
+    Returns:
+        ISO-8601 timestamp string with +03:00 timezone.
+    """
+    dt = datetime.strptime(date_str, "%Y-%m-%d").replace(
+        tzinfo=UTC,
+    )
+    if end_of_day:
+        dt = dt.replace(hour=23, minute=0, second=0)
+    return dt.strftime("%Y-%m-%dT%H:%M:%S+03:00")
