@@ -71,8 +71,8 @@ make serve            # FastAPI başlat (uvicorn)
 @docs/plans/ — Milestone planları
 
 ## Milestone Durumu
-- [ ] M0: Proje iskeleti
-- [ ] M1: Config sistemi
+- [x] M0: Proje iskeleti
+- [x] M1: Config sistemi
 - [ ] M2: Data pipeline (ingestion + EPIAS/OpenMeteo clients)
 - [ ] M3: Feature engineering (5 modül + pipeline orkestratör)
 - [ ] M4: Leakage audit
