@@ -664,60 +664,79 @@ class TFTConfig(BaseModel, frozen=True):
 # -- Hyperparameters --
 
 
-class SearchRangeConfig(BaseModel, frozen=True):
-    """Optuna search range for a single parameter."""
+class SearchParamConfig(BaseModel, frozen=True):
+    """Single Optuna search parameter definition.
 
-    type: Literal["int", "float"]
-    low: float
-    high: float
+    Dynamically loaded from YAML — adding a new parameter to YAML
+    requires NO code change.
+
+    type=int:         trial.suggest_int(name, low, high, step?, log?)
+    type=float:       trial.suggest_float(name, low, high, step?, log?)
+    type=categorical: trial.suggest_categorical(name, choices)
+    """
+
+    type: Literal["int", "float", "categorical"]
+    low: float | None = None
+    high: float | None = None
+    step: float | None = None
     log: bool = False
+    choices: list[Any] | None = None
+
+    @model_validator(mode="after")
+    def _validate_range_or_choices(self) -> Self:
+        if self.type in ("int", "float"):
+            if self.low is None or self.high is None:
+                msg = f"type={self.type} requires low and high"
+                raise ValueError(msg)
+            if self.low > self.high:
+                msg = f"low ({self.low}) > high ({self.high})"
+                raise ValueError(msg)
+            if self.log and self.step is not None:
+                msg = "log=true and step are mutually exclusive"
+                raise ValueError(msg)
+        elif self.type == "categorical":
+            if not self.choices:
+                msg = "type=categorical requires non-empty choices"
+                raise ValueError(msg)
+        return self
 
 
-class CatBoostSearchSpace(BaseModel, frozen=True):
-    """CatBoost hyperparameter search space."""
+class ModelSearchConfig(BaseModel, frozen=True):
+    """Per-model Optuna search space and trial count.
 
-    iterations: SearchRangeConfig = Field(
-        default_factory=lambda: SearchRangeConfig(type="int", low=1000, high=3000),
-    )
-    learning_rate: SearchRangeConfig = Field(
-        default_factory=lambda: SearchRangeConfig(
-            type="float",
-            low=0.01,
-            high=0.1,
-            log=True,
-        ),
-    )
-    depth: SearchRangeConfig = Field(
-        default_factory=lambda: SearchRangeConfig(type="int", low=4, high=7),
-    )
-    l2_leaf_reg: SearchRangeConfig = Field(
-        default_factory=lambda: SearchRangeConfig(type="float", low=1.0, high=10.0),
-    )
-    min_child_samples: SearchRangeConfig = Field(
-        default_factory=lambda: SearchRangeConfig(type="int", low=5, high=100),
-    )
-    subsample: SearchRangeConfig = Field(
-        default_factory=lambda: SearchRangeConfig(type="float", low=0.6, high=1.0),
-    )
+    ``search_space`` is a dynamic dict — any parameter can be added
+    via YAML without code changes.
+    """
+
+    n_trials: int = Field(default=50, ge=1)
+    search_space: dict[str, SearchParamConfig] = Field(default_factory=dict)
 
 
 class CrossValidationConfig(BaseModel, frozen=True):
-    """Time series cross-validation settings."""
+    """Calendar-month aligned TSCV settings.
+
+    ``val_months`` and ``test_months`` are counted as calendar months,
+    NOT fixed day counts.  Each split aligns to month boundaries
+    (e.g. Oct→train end, Nov→val, Dec→test).
+    """
 
     n_splits: int = Field(default=12, ge=2)
-    val_period_days: int = Field(default=30, ge=1)
-    test_period_days: int = Field(default=30, ge=1)
+    val_months: int = Field(default=1, ge=1)
+    test_months: int = Field(default=1, ge=1)
+    gap_hours: int = Field(default=0, ge=0)
     shuffle: bool = False
 
 
 class HyperparameterConfig(BaseModel, frozen=True):
-    """Hyperparameter tuning configuration."""
+    """Hyperparameter tuning configuration for all models."""
 
-    catboost: CatBoostSearchSpace = Field(default_factory=CatBoostSearchSpace)
-    n_trials: int = Field(default=50, ge=1)
+    catboost: ModelSearchConfig = Field(default_factory=ModelSearchConfig)
+    prophet: ModelSearchConfig = Field(default_factory=ModelSearchConfig)
+    tft: ModelSearchConfig = Field(default_factory=ModelSearchConfig)
     cross_validation: CrossValidationConfig = Field(
         default_factory=CrossValidationConfig,
     )
+    target_col: str = "consumption"
 
 
 # ---------------------------------------------------------------------------
@@ -839,9 +858,26 @@ def _build_settings_dict(config_dir: Path) -> dict[str, Any]:
         "prophet": prophet_data,
         "tft": tft_data,
         "hyperparameters": {
-            "catboost": hyperparams_data.get("catboost", {}).get("search_space", {}),
-            "n_trials": hyperparams_data.get("catboost", {}).get("n_trials", 50),
+            "catboost": {
+                "n_trials": hyperparams_data.get("catboost", {}).get("n_trials", 50),
+                "search_space": hyperparams_data.get("catboost", {}).get(
+                    "search_space", {}
+                ),
+            },
+            "prophet": {
+                "n_trials": hyperparams_data.get("prophet", {}).get("n_trials", 30),
+                "search_space": hyperparams_data.get("prophet", {}).get(
+                    "search_space", {}
+                ),
+            },
+            "tft": {
+                "n_trials": hyperparams_data.get("tft", {}).get("n_trials", 20),
+                "search_space": hyperparams_data.get("tft", {}).get(
+                    "search_space", {}
+                ),
+            },
             "cross_validation": hyperparams_data.get("cross_validation", {}),
+            "target_col": hyperparams_data.get("target_col", "consumption"),
         },
     }
 
