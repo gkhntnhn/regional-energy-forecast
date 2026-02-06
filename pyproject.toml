@@ -31,6 +31,7 @@ dependencies = [
     "pyarrow>=15.0",
     "python-dotenv>=1.0",
     "python-multipart>=0.0.7",
+    "holidays>=0.40",
 ]
 
 [project.optional-dependencies]
@@ -73,6 +74,8 @@ select = [
 ]
 ignore = [
     "N803",  # sklearn convention: X for feature matrices
+    "RUF001",  # Turkish characters in EPIAS/holiday strings are intentional
+    "RUF002",  # Turkish characters in docstrings are intentional
 ]
 
 [tool.ruff.lint.isort]
@@ -92,6 +95,7 @@ module = [
     "pytorch_forecasting.*",
     "pytorch_lightning.*",
     "pvlib.*",
+    "sklearn.*",
     "mlflow.*",
     "optuna.*",
     "pandera.*",
