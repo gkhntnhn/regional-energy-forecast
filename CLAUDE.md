@@ -75,7 +75,7 @@ make serve            # FastAPI başlat (uvicorn)
 - [x] M1: Config sistemi
 - [x] M2: Data pipeline (ingestion + EPIAS/OpenMeteo clients)
 - [x] M3: Feature engineering (5 modül + pipeline orkestratör)
-- [ ] M4: Leakage audit
+- [x] M4: Leakage audit
 - [ ] M5: CatBoost training (TSCV + Optuna + MLflow)
 - [ ] M6: Prophet training
 - [ ] M7: 2-model ensemble (Faz 1 tamamlanır)
