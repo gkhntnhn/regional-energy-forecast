@@ -34,7 +34,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--model",
-        choices=["catboost"],
+        choices=["catboost", "prophet"],
         required=True,
         help="Model to train.",
     )
@@ -112,6 +112,35 @@ def run_catboost(
     logger.info("Training time: {:.1f}s", result.training_time_seconds)
 
 
+def run_prophet(
+    settings: Settings,
+    data: pd.DataFrame,
+    *,
+    no_mlflow: bool = False,
+) -> None:
+    """Run Prophet training pipeline.
+
+    Args:
+        settings: Full application settings.
+        data: Feature-engineered DataFrame.
+        no_mlflow: If True, disable MLflow tracking.
+    """
+    from energy_forecast.training.prophet_trainer import ProphetTrainer
+
+    tracker = ExperimentTracker(
+        experiment_name="energy-forecast-prophet",
+        tracking_uri=settings.env.mlflow_tracking_uri,
+        enabled=not no_mlflow,
+    )
+    trainer = ProphetTrainer(settings, tracker)
+    result = trainer.run(data)
+
+    logger.info("Best val MAPE: {:.2f}%", result.training_result.avg_val_mape)
+    logger.info("Best test MAPE: {:.2f}%", result.training_result.avg_test_mape)
+    logger.info("Best params: {}", result.best_params)
+    logger.info("Training time: {:.1f}s", result.training_time_seconds)
+
+
 def main(argv: list[str] | None = None) -> None:
     """Main entry point.
 
@@ -133,6 +162,7 @@ def main(argv: list[str] | None = None) -> None:
 
     model_runners: dict[str, Any] = {
         "catboost": lambda: run_catboost(settings, data, no_mlflow=args.no_mlflow),
+        "prophet": lambda: run_prophet(settings, data, no_mlflow=args.no_mlflow),
     }
 
     runner = model_runners.get(args.model)
