@@ -77,7 +77,7 @@ make serve            # FastAPI başlat (uvicorn)
 - [x] M3: Feature engineering (5 modül + pipeline orkestratör)
 - [x] M4: Leakage audit
 - [x] M5: CatBoost training (TSCV + Optuna + MLflow)
-- [ ] M6: Prophet training
+- [x] M6: Prophet training (TSCV + Optuna + MLflow)
 - [ ] M7: 2-model ensemble (Faz 1 tamamlanır)
 - [ ] M8: TFT training
 - [ ] M9: 3-model ensemble (Faz 2 tamamlanır)
