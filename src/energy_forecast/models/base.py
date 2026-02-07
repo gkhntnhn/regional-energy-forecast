@@ -8,6 +8,9 @@ from typing import Any
 
 import pandas as pd
 
+# Default target column name - can be overridden via config
+DEFAULT_TARGET_COL = "consumption"
+
 
 class BaseForecaster(ABC):
     """Abstract base for all forecasting models.
@@ -20,14 +23,29 @@ class BaseForecaster(ABC):
 
     def __init__(self, config: dict[str, Any]) -> None:
         self.config = config
+        self._target_col: str = config.get("target_col", DEFAULT_TARGET_COL)
+
+    @property
+    def target_col(self) -> str:
+        """Target column name for training and prediction."""
+        return self._target_col
 
     @abstractmethod
-    def train(self, train_df: pd.DataFrame, val_df: pd.DataFrame | None = None) -> None:
+    def train(
+        self,
+        train_df: pd.DataFrame,
+        val_df: pd.DataFrame | None = None,
+        **kwargs: Any,
+    ) -> dict[str, float] | None:
         """Train the model.
 
         Args:
             train_df: Training data with features and target.
             val_df: Optional validation data for early stopping.
+            **kwargs: Additional model-specific arguments.
+
+        Returns:
+            Optional dict of training metrics (e.g., loss, MAPE).
         """
         ...
 

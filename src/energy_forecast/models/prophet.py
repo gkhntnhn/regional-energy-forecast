@@ -5,12 +5,15 @@ from __future__ import annotations
 import json
 import pickle
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import pandas as pd
 from loguru import logger
 
 from energy_forecast.models.base import BaseForecaster
+
+if TYPE_CHECKING:
+    from prophet import Prophet
 
 
 class ProphetForecaster(BaseForecaster):
@@ -25,21 +28,31 @@ class ProphetForecaster(BaseForecaster):
 
     def __init__(self, config: dict[str, Any]) -> None:
         super().__init__(config)
-        self._model: Any = None  # Prophet instance
+        self._model: Prophet | None = None
         self._regressor_names: list[str] = []
 
-    def train(self, train_df: pd.DataFrame, val_df: pd.DataFrame | None = None) -> None:
+    def train(
+        self,
+        train_df: pd.DataFrame,
+        val_df: pd.DataFrame | None = None,
+        **kwargs: Any,
+    ) -> None:
         """Simple training (without Trainer). For test convenience.
 
         Args:
             train_df: Training DataFrame with DatetimeIndex.
             val_df: Validation DataFrame (unused for Prophet).
+            **kwargs: Additional arguments (unused, for base class compatibility).
+
+        Returns:
+            None (metrics not tracked in simple training).
         """
-        from prophet import Prophet
+        from prophet import Prophet as ProphetModel
 
         prophet_df = self._to_prophet_format(train_df, include_target=True)
-        self._model = Prophet()
+        self._model = ProphetModel()
         self._model.fit(prophet_df)
+        return None
 
     def _to_prophet_format(
         self,
@@ -58,9 +71,8 @@ class ProphetForecaster(BaseForecaster):
         prophet_df = pd.DataFrame()
         prophet_df["ds"] = df.index
 
-        target_col = self.config.get("target_col", "consumption")
-        if include_target and target_col in df.columns:
-            prophet_df["y"] = df[target_col].values
+        if include_target and self._target_col in df.columns:
+            prophet_df["y"] = df[self._target_col].values
 
         for col in self._regressor_names:
             if col in df.columns:
@@ -138,8 +150,12 @@ class ProphetForecaster(BaseForecaster):
             msg = f"Model not found: {model_path}"
             raise FileNotFoundError(msg)
 
-        with open(model_path, "rb") as f:
-            self._model = pickle.load(f)
+        try:
+            with open(model_path, "rb") as f:
+                self._model = pickle.load(f)
+        except (pickle.UnpicklingError, EOFError, AttributeError) as e:
+            msg = f"Failed to load Prophet model (corrupted file?): {e}"
+            raise RuntimeError(msg) from e
 
         # Load metadata
         metadata_path = path / "metadata.json"
@@ -151,7 +167,7 @@ class ProphetForecaster(BaseForecaster):
 
         logger.info("Prophet model loaded from {}", path)
 
-    def set_model(self, model: Any, regressor_names: list[str] | None = None) -> None:
+    def set_model(self, model: Prophet, regressor_names: list[str] | None = None) -> None:
         """Set pre-trained Prophet model (from ProphetTrainer).
 
         Args:

@@ -569,31 +569,33 @@ class EnsembleTrainer:
             comparison_df: Comparison DataFrame.
             training_result: Ensemble training result.
         """
-        print("\n" + "=" * 75)
-        print("                    ENSEMBLE TRAINING REPORT")
-        print("=" * 75)
-        print()
-        print(
-            f"{'Model':<12} {'Val MAPE':<12} {'Test MAPE':<12} "
-            f"{'Weight':<10} {'Improvement':<12}"
+        logger.info("")
+        logger.info("=" * 75)
+        logger.info("                    ENSEMBLE TRAINING REPORT")
+        logger.info("=" * 75)
+        logger.info("")
+        logger.info(
+            "{:<12} {:<12} {:<12} {:<10} {:<12}",
+            "Model", "Val MAPE", "Test MAPE", "Weight", "Improvement"
         )
-        print("-" * 58)
+        logger.info("-" * 58)
 
         for _, row in comparison_df.iterrows():
             improvement = row.get("Improvement", "")
-            print(
-                f"{row['Model']:<12} {row['Val MAPE (%)']:>8.2f}%    "
-                f"{row['Test MAPE (%)']:>8.2f}%    {row['Weight']:>6.3f}    "
-                f"{improvement:<12}"
+            logger.info(
+                "{:<12} {:>8.2f}%    {:>8.2f}%    {:>6.3f}    {:<12}",
+                row['Model'], row['Val MAPE (%)'], row['Test MAPE (%)'],
+                row['Weight'], improvement
             )
 
-        print("-" * 58)
+        logger.info("-" * 58)
         weights_str = ", ".join(
             f"{m}={w:.3f}" for m, w in training_result.optimized_weights.items()
         )
-        print(f"Optimized Weights: {weights_str}")
-        print(f"Active Models: {', '.join(self._active_models)}")
-        print("=" * 75 + "\n")
+        logger.info("Optimized Weights: {}", weights_str)
+        logger.info("Active Models: {}", ", ".join(self._active_models))
+        logger.info("=" * 75)
+        logger.info("")
 
 
 def save_ensemble_weights(weights: dict[str, float], path: Path) -> None:

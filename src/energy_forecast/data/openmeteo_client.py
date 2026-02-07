@@ -31,9 +31,15 @@ class OpenMeteoClient:
         region: Region configuration with city weights.
     """
 
-    def __init__(self, config: OpenMeteoConfig, region: RegionConfig) -> None:
+    def __init__(
+        self,
+        config: OpenMeteoConfig,
+        region: RegionConfig,
+        timezone: str = "Europe/Istanbul",
+    ) -> None:
         self.config = config
         self.region = region
+        self.timezone = timezone
 
         cache_path = Path(config.cache.path)
         cache_path.parent.mkdir(parents=True, exist_ok=True)
@@ -238,7 +244,7 @@ class OpenMeteoClient:
             "latitude": latitude,
             "longitude": longitude,
             "hourly": self.config.variables,
-            "timezone": "Europe/Istanbul",
+            "timezone": self.timezone,
         }
         if start_date and end_date:
             params["start_date"] = start_date

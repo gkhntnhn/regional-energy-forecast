@@ -19,9 +19,24 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 def _load_yaml(path: Path) -> dict[str, Any]:
-    """Read a YAML file and return its contents as a dict."""
-    with open(path, encoding="utf-8") as f:
-        data = yaml.safe_load(f)
+    """Read a YAML file and return its contents as a dict.
+
+    Raises:
+        FileNotFoundError: If the YAML file does not exist.
+        yaml.YAMLError: If the YAML file contains invalid syntax.
+        TypeError: If the YAML content is not a dictionary.
+    """
+    if not path.exists():
+        msg = f"Config file not found: {path}"
+        raise FileNotFoundError(msg)
+
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = yaml.safe_load(f)
+    except yaml.YAMLError as e:
+        msg = f"Invalid YAML syntax in {path}: {e}"
+        raise yaml.YAMLError(msg) from e
+
     if not isinstance(data, dict):
         msg = f"Expected dict from {path}, got {type(data).__name__}"
         raise TypeError(msg)
@@ -83,6 +98,28 @@ class ForecastConfig(BaseModel, frozen=True):
     horizon_hours: int = Field(default=48, ge=1)
     frequency: str = "1h"
     min_lag: int = Field(default=48, ge=1)
+
+
+class PathsConfig(BaseModel, frozen=True):
+    """Default file paths for training and models."""
+
+    features_data: str = "data/processed/features.parquet"
+    models_dir: str = "models"
+    ensemble_weights: str = "models/ensemble_weights.json"
+
+
+class EpiasApiConfig(BaseModel, frozen=True):
+    """EPIAS Transparency Platform API client configuration."""
+
+    auth_url: str = "https://giris.epias.com.tr/cas/v1/tickets"
+    base_url: str = "https://seffaflik.epias.com.tr/electricity-service/v1"
+    cache_dir: str = "data/external/epias"
+    rate_limit_seconds: float = Field(default=10.0, ge=0.0)
+    token_ttl_seconds: float = Field(default=3600.0, ge=0.0)
+    timeout_seconds: float = Field(default=60.0, ge=1.0)
+    retry_attempts: int = Field(default=3, ge=1)
+    retry_min_wait: int = Field(default=4, ge=1)
+    retry_max_wait: int = Field(default=60, ge=1)
 
 
 # ---------------------------------------------------------------------------
@@ -602,11 +639,20 @@ class ProphetUncertaintyConfig(BaseModel, frozen=True):
     mcmc_samples: int = Field(default=0, ge=0)
 
 
+class ProphetOptimizationConfig(BaseModel, frozen=True):
+    """Prophet optimization settings."""
+
+    random_seed: int = Field(default=42, ge=0)
+
+
 class ProphetConfig(BaseModel, frozen=True):
     """Prophet model configuration."""
 
     seasonality: ProphetSeasonalityConfig = Field(
         default_factory=ProphetSeasonalityConfig,
+    )
+    optimization: ProphetOptimizationConfig = Field(
+        default_factory=ProphetOptimizationConfig,
     )
     holidays: ProphetHolidaysConfig = Field(default_factory=ProphetHolidaysConfig)
     regressors: list[ProphetRegressorConfig] = Field(
@@ -674,6 +720,13 @@ class TFTCovariatesConfig(BaseModel, frozen=True):
     )
 
 
+class TFTOptimizationConfig(BaseModel, frozen=True):
+    """TFT optimization settings."""
+
+    fast_epochs: int = Field(default=10, ge=1)
+    val_size_hours: int = Field(default=720, ge=24)  # ~1 month (24 * 30)
+
+
 class TFTConfig(BaseModel, frozen=True):
     """TFT model configuration."""
 
@@ -682,6 +735,9 @@ class TFTConfig(BaseModel, frozen=True):
     )
     training: TFTTrainingConfig = Field(default_factory=TFTTrainingConfig)
     covariates: TFTCovariatesConfig = Field(default_factory=TFTCovariatesConfig)
+    optimization: TFTOptimizationConfig = Field(
+        default_factory=TFTOptimizationConfig,
+    )
     quantiles: list[float] = Field(
         default_factory=lambda: [0.02, 0.10, 0.25, 0.50, 0.75, 0.90, 0.98],
     )
@@ -904,6 +960,8 @@ class Settings(BaseModel, frozen=True):
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     region: RegionConfig
     forecast: ForecastConfig = Field(default_factory=ForecastConfig)
+    paths: PathsConfig = Field(default_factory=PathsConfig)
+    epias_api: EpiasApiConfig = Field(default_factory=EpiasApiConfig)
     pipeline: PipelineConfig = Field(default_factory=PipelineConfig)
     data_loader: DataLoaderConfig = Field(default_factory=DataLoaderConfig)
     openmeteo: OpenMeteoConfig = Field(default_factory=OpenMeteoConfig)
@@ -962,6 +1020,8 @@ def _build_settings_dict(config_dir: Path) -> dict[str, Any]:
         "logging": settings_data.get("logging", {}),
         "region": settings_data.get("region", {}),
         "forecast": settings_data.get("forecast", {}),
+        "paths": settings_data.get("paths", {}),
+        "epias_api": settings_data.get("epias_api", {}),
         "pipeline": pipeline_data.get("pipeline", {}),
         "data_loader": {
             "excel": data_loader_data.get("excel", {}),

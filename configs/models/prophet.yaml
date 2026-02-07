@@ -25,3 +25,6 @@ changepoint:
 uncertainty:
   interval_width: 0.95
   mcmc_samples: 0
+
+optimization:
+  random_seed: 42  # Optuna TPESampler seed

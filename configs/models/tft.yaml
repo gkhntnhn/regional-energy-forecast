@@ -18,6 +18,10 @@ training:
   accelerator: "cpu"  # "cpu", "gpu", or "auto"
   num_workers: 0
 
+optimization:
+  fast_epochs: 10  # Reduced epochs for Optuna trials
+  val_size_hours: 720  # ~1 month (24 * 30) for final model validation
+
 # Features that are known in the future (deterministic or forecast available)
 covariates:
   time_varying_known:

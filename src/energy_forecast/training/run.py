@@ -41,8 +41,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--data",
         type=Path,
-        default=Path("data/processed/features.parquet"),
-        help="Path to feature-engineered parquet file.",
+        default=None,
+        help="Path to feature-engineered parquet file. Defaults to config path.",
     )
     parser.add_argument(
         "--n-trials",
@@ -207,7 +207,7 @@ def run_ensemble(
     result = trainer.run(data)
 
     # Save weights
-    weights_path = Path("models/ensemble_weights.json")
+    weights_path = Path(settings.paths.ensemble_weights)
     save_ensemble_weights(result.training_result.optimized_weights, weights_path)
 
     logger.info("Ensemble val MAPE: {:.2f}%", result.training_result.avg_val_mape)
@@ -238,7 +238,9 @@ def main(argv: list[str] | None = None) -> None:
         object.__setattr__(tft_config, "n_trials", args.n_trials)
         logger.info("Overriding n_trials to {}", args.n_trials)
 
-    data = load_data(args.data)
+    # Use CLI data path or config default
+    data_path = args.data or Path(settings.paths.features_data)
+    data = load_data(data_path)
 
     # Parse --models override for ensemble
     active_models_override: list[str] | None = None

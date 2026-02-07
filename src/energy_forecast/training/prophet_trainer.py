@@ -16,7 +16,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -30,9 +30,6 @@ from energy_forecast.training.experiment import ExperimentTracker
 from energy_forecast.training.metrics import MetricsResult, compute_all
 from energy_forecast.training.search import suggest_params
 from energy_forecast.training.splitter import SplitInfo, TimeSeriesSplitter
-
-if TYPE_CHECKING:
-    pass
 
 # ---------------------------------------------------------------------------
 # Result dataclasses
@@ -333,7 +330,7 @@ class ProphetTrainer:
         """
         study = create_study(
             direction="minimize",
-            sampler=TPESampler(seed=42),
+            sampler=TPESampler(seed=self._prophet_config.optimization.random_seed),
         )
 
         objective = self._create_objective(df)

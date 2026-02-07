@@ -262,7 +262,6 @@ class TFTTrainer:
     def _create_objective(
         self,
         df: pd.DataFrame,
-        fast_epochs: int = 10,
     ) -> Callable[[Trial], float]:
         """Create Optuna objective using dynamic YAML search space.
 
@@ -270,11 +269,11 @@ class TFTTrainer:
 
         Args:
             df: Training data.
-            fast_epochs: Reduced epochs for optimization trials.
 
         Returns:
             Objective function for Optuna.
         """
+        fast_epochs = self._tft_config.optimization.fast_epochs
         search_space = self._search_config.search_space
 
         # Get first split for fast optimization
@@ -357,8 +356,8 @@ class TFTTrainer:
         Returns:
             Trained TFTForecaster.
         """
-        # Use last month as validation
-        val_size = 24 * 30  # ~1 month
+        # Use configured validation size
+        val_size = self._tft_config.optimization.val_size_hours
         if len(df) > val_size * 2:
             train_df = df.iloc[:-val_size]
             val_df = df.iloc[-val_size:]

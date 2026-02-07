@@ -42,7 +42,10 @@ class SolarFeatureEngineer(BaseFeatureEngineer):
 
         # pvlib requires tz-aware index
         idx = cast(pd.DatetimeIndex, df.index)
-        times = idx.tz_localize(loc_cfg["timezone"])
+        if idx.tz is None:
+            times = idx.tz_localize(loc_cfg["timezone"])
+        else:
+            times = idx.tz_convert(loc_cfg["timezone"])
 
         # 1. Solar position
         solar_pos = location.get_solarposition(times)

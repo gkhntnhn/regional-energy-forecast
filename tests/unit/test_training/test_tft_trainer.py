@@ -204,7 +204,8 @@ class TestTFTOptunaObjective:
         from energy_forecast.training.tft_trainer import TFTTrainer
 
         trainer = TFTTrainer(mock_settings)
-        objective = trainer._create_objective(sample_df, fast_epochs=1)
+        # fast_epochs is now read from config (tft.optimization.fast_epochs)
+        objective = trainer._create_objective(sample_df)
 
         assert callable(objective)
 

@@ -43,7 +43,12 @@ class CatBoostForecaster(BaseForecaster):
         self._model = model
         logger.info("CatBoost model attached to forecaster")
 
-    def train(self, train_df: pd.DataFrame, val_df: pd.DataFrame | None = None) -> None:
+    def train(
+        self,
+        train_df: pd.DataFrame,
+        val_df: pd.DataFrame | None = None,
+        **kwargs: Any,
+    ) -> None:
         """Train CatBoost model (simple, without Optuna).
 
         For full pipeline with Optuna + TSCV, use ``CatBoostTrainer.run()``.
@@ -51,21 +56,25 @@ class CatBoostForecaster(BaseForecaster):
         Args:
             train_df: Training data with features and target.
             val_df: Optional validation data for early stopping.
+            **kwargs: Additional arguments (unused, for base class compatibility).
+
+        Returns:
+            None (metrics not tracked in simple training).
         """
-        target_col = self.config.get("target_col", "consumption")
-        y_train = train_df[target_col]
-        x_train = train_df.drop(columns=[target_col])
+        y_train = train_df[self._target_col]
+        x_train = train_df.drop(columns=[self._target_col])
 
         self._model = CatBoostRegressor(**self.config.get("params", {}))
 
         if val_df is not None:
-            y_val = val_df[target_col]
-            x_val = val_df.drop(columns=[target_col])
+            y_val = val_df[self._target_col]
+            x_val = val_df.drop(columns=[self._target_col])
             self._model.fit(x_train, y_train, eval_set=(x_val, y_val), verbose=0)
         else:
             self._model.fit(x_train, y_train, verbose=0)
 
         logger.info("CatBoost simple training complete")
+        return None
 
     def predict(self, x: pd.DataFrame) -> pd.DataFrame:
         """Generate predictions using trained CatBoost model.

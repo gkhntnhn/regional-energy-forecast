@@ -9,6 +9,7 @@ from unittest.mock import MagicMock, patch
 import pandas as pd
 import pytest
 
+from energy_forecast.config.settings import EpiasApiConfig
 from energy_forecast.data.epias_client import EpiasClient, _to_epias_timestamp
 from energy_forecast.data.exceptions import EpiasApiError, EpiasAuthError
 
@@ -16,11 +17,14 @@ from energy_forecast.data.exceptions import EpiasApiError, EpiasAuthError
 @pytest.fixture()
 def client(tmp_path: Path) -> EpiasClient:
     """Create an EpiasClient with test config."""
+    config = EpiasApiConfig(
+        cache_dir=str(tmp_path / "epias_cache"),
+        rate_limit_seconds=0.0,  # no delay in tests
+    )
     return EpiasClient(
         username="test_user",
         password="test_pass",
-        cache_dir=tmp_path / "epias_cache",
-        rate_limit_seconds=0.0,  # no delay in tests
+        config=config,
     )
 
 

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
@@ -21,6 +21,9 @@ from pytorch_forecasting.metrics import QuantileLoss
 
 from energy_forecast.config.settings import TFTConfig
 from energy_forecast.models.base import BaseForecaster
+
+if TYPE_CHECKING:
+    import pytorch_lightning as pl
 
 # Constants for TimeSeriesDataSet
 GROUP_ID = "series_0"
@@ -50,6 +53,7 @@ class TFTForecaster(BaseForecaster):
         self._dataset_params: dict[str, Any] = {}
         self._quantiles: list[float] = list(config.quantiles)
         self._all_quantile_predictions: NDArray[np.floating[Any]] | None = None
+        self._loaded_state_dict: dict[str, Any] | None = None
 
     @property
     def is_fitted(self) -> bool:
@@ -192,7 +196,7 @@ class TFTForecaster(BaseForecaster):
 
         return model
 
-    def _create_trainer(self, max_epochs: int | None = None) -> Any:
+    def _create_trainer(self, max_epochs: int | None = None) -> pl.Trainer:
         """Create PyTorch Lightning trainer.
 
         Args:
@@ -201,12 +205,12 @@ class TFTForecaster(BaseForecaster):
         Returns:
             Configured pytorch_lightning.Trainer.
         """
-        import pytorch_lightning as pl
-        from pytorch_lightning.callbacks import EarlyStopping, LearningRateMonitor
+        import pytorch_lightning as pl_lib
+        from pytorch_lightning.callbacks import Callback, EarlyStopping, LearningRateMonitor
 
         cfg = self._tft_config.training
 
-        callbacks: list[Any] = [
+        callbacks: list[Callback] = [
             LearningRateMonitor(logging_interval="step"),
         ]
 
@@ -223,7 +227,7 @@ class TFTForecaster(BaseForecaster):
 
         epochs = max_epochs if max_epochs is not None else cfg.max_epochs
 
-        trainer = pl.Trainer(
+        trainer = pl_lib.Trainer(
             max_epochs=epochs,
             accelerator=cfg.accelerator,
             devices=1,
@@ -236,24 +240,27 @@ class TFTForecaster(BaseForecaster):
 
         return trainer
 
-    def train(  # type: ignore[override]
+    def train(
         self,
         train_df: pd.DataFrame,
         val_df: pd.DataFrame | None = None,
-        target_col: str = "consumption",
-        max_epochs: int | None = None,
+        **kwargs: Any,
     ) -> dict[str, float]:
         """Train TFT model.
 
         Args:
             train_df: Training DataFrame with DatetimeIndex.
             val_df: Optional validation DataFrame.
-            target_col: Target column name.
-            max_epochs: Override max epochs (for testing).
+            **kwargs: Additional arguments:
+                - target_col: Target column name (default: from config).
+                - max_epochs: Override max epochs (for testing).
 
         Returns:
             Training metrics dict.
         """
+        target_col = kwargs.get("target_col", self._target_col)
+        max_epochs = kwargs.get("max_epochs")
+
         logger.info(
             "Starting TFT training | samples={} | val={}",
             len(train_df),
@@ -321,7 +328,7 @@ class TFTForecaster(BaseForecaster):
     def predict(
         self,
         X: pd.DataFrame,
-        target_col: str = "consumption",
+        target_col: str | None = None,
     ) -> pd.DataFrame:
         """Generate predictions using median (0.50 quantile).
 
@@ -329,11 +336,13 @@ class TFTForecaster(BaseForecaster):
 
         Args:
             X: Feature DataFrame with DatetimeIndex.
-            target_col: Target column name (needed for dataset format).
+            target_col: Target column name (default: from config).
 
         Returns:
             DataFrame with 'yhat' (median prediction) column.
         """
+        if target_col is None:
+            target_col = self._target_col
         if not self.is_fitted:
             msg = "Model must be trained before prediction"
             raise RuntimeError(msg)

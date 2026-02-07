@@ -5,7 +5,7 @@ from __future__ import annotations
 import time
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import Any
 
 import httpx
 import pandas as pd
@@ -17,6 +17,7 @@ from tenacity import (
     wait_exponential,
 )
 
+from energy_forecast.config.settings import EpiasApiConfig
 from energy_forecast.data.exceptions import EpiasApiError, EpiasAuthError
 
 # ---------------------------------------------------------------------------
@@ -56,32 +57,28 @@ class EpiasClient:
     Args:
         username: EPIAS account username.
         password: EPIAS account password.
-        cache_dir: Directory for parquet cache files.
-        rate_limit_seconds: Minimum delay between API requests.
+        config: EPIAS API configuration (URLs, timeouts, rate limits).
         variables: List of EPIAS variables to fetch. Defaults to all 5.
     """
-
-    AUTH_URL: ClassVar[str] = "https://giris.epias.com.tr/cas/v1/tickets"
-    BASE_URL: ClassVar[str] = "https://seffaflik.epias.com.tr/electricity-service/v1"
 
     def __init__(
         self,
         username: str,
         password: str,
-        cache_dir: Path = Path("data/external/epias"),
-        rate_limit_seconds: float = 10.0,
+        config: EpiasApiConfig | None = None,
         variables: list[str] | None = None,
     ) -> None:
         self.username = username
         self.password = password
-        self.cache_dir = Path(cache_dir)
-        self.rate_limit_seconds = rate_limit_seconds
+        self.config = config or EpiasApiConfig()
+        self.cache_dir = Path(self.config.cache_dir)
+        self.rate_limit_seconds = self.config.rate_limit_seconds
         self.variables = variables or list(_VARIABLE_MAP.keys())
         self._token: str | None = None
         self._token_time: float = 0.0
-        self._token_ttl: float = 3600.0
+        self._token_ttl: float = self.config.token_ttl_seconds
         self._last_request_time: float = 0.0
-        self._client = httpx.Client(timeout=60.0)
+        self._client = httpx.Client(timeout=self.config.timeout_seconds)
 
     def close(self) -> None:
         """Close the HTTP client."""
@@ -115,7 +112,7 @@ class EpiasClient:
         logger.debug("Authenticating with EPIAS CAS")
         try:
             response = self._client.post(
-                self.AUTH_URL,
+                self.config.auth_url,
                 data={"username": self.username, "password": self.password},
             )
             response.raise_for_status()
@@ -310,7 +307,7 @@ class EpiasClient:
         token = self.authenticate()
         self._wait_rate_limit()
 
-        url = f"{self.BASE_URL}{endpoint}"
+        url = f"{self.config.base_url}{endpoint}"
         start_ts = _to_epias_timestamp(start_date)
         end_ts = _to_epias_timestamp(end_date, end_of_day=True)
 

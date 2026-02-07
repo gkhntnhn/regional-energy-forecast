@@ -34,3 +34,19 @@ forecast:
   horizon_hours: 48
   frequency: "1h"
   min_lag: 48
+
+paths:
+  features_data: "data/processed/features.parquet"
+  models_dir: "models"
+  ensemble_weights: "models/ensemble_weights.json"
+
+epias_api:
+  auth_url: "https://giris.epias.com.tr/cas/v1/tickets"
+  base_url: "https://seffaflik.epias.com.tr/electricity-service/v1"
+  cache_dir: "data/external/epias"
+  rate_limit_seconds: 10.0
+  token_ttl_seconds: 3600.0
+  timeout_seconds: 60.0
+  retry_attempts: 3
+  retry_min_wait: 4
+  retry_max_wait: 60

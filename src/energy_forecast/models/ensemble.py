@@ -3,17 +3,21 @@
 from __future__ import annotations
 
 import json
+import pickle
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
 from catboost import CatBoostRegressor
 from loguru import logger
-from prophet import Prophet
 
+from energy_forecast.config.settings import EnsembleConfig
 from energy_forecast.models.base import BaseForecaster
 from energy_forecast.models.tft import TFTForecaster
+
+if TYPE_CHECKING:
+    from prophet import Prophet
 
 
 class EnsembleForecaster(BaseForecaster):
@@ -24,21 +28,34 @@ class EnsembleForecaster(BaseForecaster):
 
     Args:
         config: Ensemble configuration dictionary containing weights and active models.
+            If not provided, defaults are loaded from EnsembleConfig.
     """
 
-    def __init__(self, config: dict[str, Any]) -> None:
-        super().__init__(config)
-        self._active_models: list[str] = config.get(
-            "active_models", ["catboost", "prophet", "tft"]
-        )
-        self._weights: dict[str, float] = config.get(
-            "weights", {"catboost": 0.45, "prophet": 0.30, "tft": 0.25}
-        )
+    def __init__(self, config: dict[str, Any] | None = None) -> None:
+        # Load defaults from EnsembleConfig if not provided
+        default_cfg = EnsembleConfig()
+        if config is None:
+            config = {}
+
+        # Merge with defaults
+        merged_config = {
+            "active_models": config.get("active_models", list(default_cfg.active_models)),
+            "weights": config.get("weights", {
+                "catboost": default_cfg.weights.catboost,
+                "prophet": default_cfg.weights.prophet,
+                "tft": default_cfg.weights.tft,
+            }),
+            "target_col": config.get("target_col", "consumption"),
+            "prophet_regressors": config.get("prophet_regressors", []),
+        }
+
+        super().__init__(merged_config)
+        self._active_models: list[str] = merged_config["active_models"]
+        self._weights: dict[str, float] = merged_config["weights"]
         self._catboost_model: CatBoostRegressor | None = None
         self._prophet_model: Prophet | None = None
         self._tft_model: TFTForecaster | None = None
-        self._target_col: str = config.get("target_col", "consumption")
-        self._prophet_regressors: list[str] = config.get("prophet_regressors", [])
+        self._prophet_regressors: list[str] = merged_config["prophet_regressors"]
 
     @property
     def weights(self) -> dict[str, float]:
@@ -109,11 +126,21 @@ class EnsembleForecaster(BaseForecaster):
         self._active_models = models
         logger.info("Active models set: {}", self._active_models)
 
-    def train(self, train_df: pd.DataFrame, val_df: pd.DataFrame | None = None) -> None:
+    def train(
+        self,
+        train_df: pd.DataFrame,
+        val_df: pd.DataFrame | None = None,
+        **kwargs: Any,
+    ) -> None:
         """Train is not supported — use EnsembleTrainer instead.
 
         The ensemble training is orchestrated by EnsembleTrainer which
         trains CatBoost, Prophet, and TFT separately, then optimizes weights.
+
+        Args:
+            train_df: Training data (unused).
+            val_df: Validation data (unused).
+            **kwargs: Additional arguments (unused).
 
         Raises:
             NotImplementedError: Always, use EnsembleTrainer.run() instead.
@@ -268,9 +295,10 @@ class EnsembleForecaster(BaseForecaster):
             catboost_path: Path to CatBoost .cbm file.
             prophet_path: Path to Prophet .pkl file.
             tft_path: Path to TFT model directory.
-        """
-        import pickle
 
+        Raises:
+            RuntimeError: If model file is corrupted.
+        """
         # Load CatBoost
         if catboost_path is not None and catboost_path.exists():
             self._catboost_model = CatBoostRegressor()
@@ -279,9 +307,13 @@ class EnsembleForecaster(BaseForecaster):
 
         # Load Prophet
         if prophet_path is not None and prophet_path.exists():
-            with open(prophet_path, "rb") as f:
-                self._prophet_model = pickle.load(f)
-            logger.info("Loaded Prophet model from {}", prophet_path)
+            try:
+                with open(prophet_path, "rb") as f:
+                    self._prophet_model = pickle.load(f)
+                logger.info("Loaded Prophet model from {}", prophet_path)
+            except (pickle.UnpicklingError, EOFError, AttributeError) as e:
+                msg = f"Failed to load Prophet model (corrupted file?): {e}"
+                raise RuntimeError(msg) from e
 
         # Load TFT
         if tft_path is not None and tft_path.exists():
