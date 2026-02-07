@@ -1,0 +1,17 @@
+# Ensemble configuration for CatBoost + Prophet weighted average
+
+# Default weights (used when optimization is disabled)
+weights:
+  catboost: 0.6
+  prophet: 0.4
+
+# Weight optimization settings
+optimization:
+  enabled: true
+  metric: "mape"  # Metric to minimize
+  prophet_weight_min: 0.1
+  prophet_weight_max: 0.9
+
+# Fallback behavior when one model fails
+fallback:
+  enabled: true  # Use single model if other fails

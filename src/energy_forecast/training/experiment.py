@@ -128,3 +128,45 @@ class ExperimentTracker:
             batch[f"split_{split_idx:02d}_{prefix}_mae"] = m.mae
             batch[f"split_{split_idx:02d}_{prefix}_rmse"] = m.rmse
         self._mlflow.log_metrics(batch)
+
+    def log_ensemble_weights(
+        self,
+        weights: dict[str, float],
+    ) -> None:
+        """Log ensemble model weights.
+
+        Args:
+            weights: Dictionary with model names as keys and weights as values.
+        """
+        if not self._enabled:
+            return
+        for model_name, weight in weights.items():
+            self._mlflow.log_metric(f"ensemble_weight_{model_name}", weight)
+
+    def log_comparison_metrics(
+        self,
+        catboost_mape: float,
+        prophet_mape: float,
+        ensemble_mape: float,
+    ) -> None:
+        """Log comparison metrics for CatBoost vs Prophet vs Ensemble.
+
+        Args:
+            catboost_mape: CatBoost validation MAPE.
+            prophet_mape: Prophet validation MAPE.
+            ensemble_mape: Ensemble validation MAPE.
+        """
+        if not self._enabled:
+            return
+        self._mlflow.log_metrics(
+            {
+                "comparison_catboost_mape": catboost_mape,
+                "comparison_prophet_mape": prophet_mape,
+                "comparison_ensemble_mape": ensemble_mape,
+                "ensemble_improvement_pct": (
+                    (min(catboost_mape, prophet_mape) - ensemble_mape)
+                    / min(catboost_mape, prophet_mape)
+                    * 100
+                ),
+            }
+        )

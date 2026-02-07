@@ -34,7 +34,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--model",
-        choices=["catboost", "prophet"],
+        choices=["catboost", "prophet", "ensemble"],
         required=True,
         help="Model to train.",
     )
@@ -141,6 +141,43 @@ def run_prophet(
     logger.info("Training time: {:.1f}s", result.training_time_seconds)
 
 
+def run_ensemble(
+    settings: Settings,
+    data: pd.DataFrame,
+    *,
+    no_mlflow: bool = False,
+) -> None:
+    """Run Ensemble training pipeline (CatBoost + Prophet).
+
+    Args:
+        settings: Full application settings.
+        data: Feature-engineered DataFrame.
+        no_mlflow: If True, disable MLflow tracking.
+    """
+    from energy_forecast.training.ensemble_trainer import (
+        EnsembleTrainer,
+        save_ensemble_weights,
+    )
+
+    tracker = ExperimentTracker(
+        experiment_name="energy-forecast-ensemble",
+        tracking_uri=settings.env.mlflow_tracking_uri,
+        enabled=not no_mlflow,
+    )
+    trainer = EnsembleTrainer(settings, tracker)
+    result = trainer.run(data)
+
+    # Save weights
+    weights_path = Path("models/ensemble_weights.json")
+    save_ensemble_weights(result.training_result.optimized_weights, weights_path)
+
+    logger.info("Ensemble val MAPE: {:.2f}%", result.training_result.avg_val_mape)
+    logger.info("CatBoost val MAPE: {:.2f}%", result.training_result.catboost_avg_val_mape)
+    logger.info("Prophet val MAPE: {:.2f}%", result.training_result.prophet_avg_val_mape)
+    logger.info("Optimized weights: {}", result.training_result.optimized_weights)
+    logger.info("Training time: {:.1f}s", result.training_time_seconds)
+
+
 def main(argv: list[str] | None = None) -> None:
     """Main entry point.
 
@@ -152,10 +189,12 @@ def main(argv: list[str] | None = None) -> None:
     logger.info("Loading config from {}", args.configs)
     settings = load_config(args.configs)
 
-    # Override n_trials if specified
+    # Override n_trials if specified (applies to both models for ensemble)
     if args.n_trials is not None:
-        search_config = settings.hyperparameters.catboost
-        object.__setattr__(search_config, "n_trials", args.n_trials)
+        catboost_config = settings.hyperparameters.catboost
+        prophet_config = settings.hyperparameters.prophet
+        object.__setattr__(catboost_config, "n_trials", args.n_trials)
+        object.__setattr__(prophet_config, "n_trials", args.n_trials)
         logger.info("Overriding n_trials to {}", args.n_trials)
 
     data = load_data(args.data)
@@ -163,6 +202,7 @@ def main(argv: list[str] | None = None) -> None:
     model_runners: dict[str, Any] = {
         "catboost": lambda: run_catboost(settings, data, no_mlflow=args.no_mlflow),
         "prophet": lambda: run_prophet(settings, data, no_mlflow=args.no_mlflow),
+        "ensemble": lambda: run_ensemble(settings, data, no_mlflow=args.no_mlflow),
     }
 
     runner = model_runners.get(args.model)

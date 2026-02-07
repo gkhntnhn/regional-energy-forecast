@@ -108,6 +108,7 @@ module = [
     "requests_cache.*",
     "retry_requests.*",
     "feature_engine.*",
+    "scipy.*",
 ]
 ignore_missing_imports = true
 

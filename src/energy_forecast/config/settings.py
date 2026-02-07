@@ -661,6 +661,49 @@ class TFTConfig(BaseModel, frozen=True):
     loss: str = "quantile"
 
 
+# -- Ensemble --
+
+
+class EnsembleWeightsConfig(BaseModel, frozen=True):
+    """Default weights for ensemble models."""
+
+    catboost: float = Field(default=0.6, ge=0.0, le=1.0)
+    prophet: float = Field(default=0.4, ge=0.0, le=1.0)
+
+    @model_validator(mode="after")
+    def _weights_sum_to_one(self) -> Self:
+        total = self.catboost + self.prophet
+        if abs(total - 1.0) > 1e-6:
+            msg = f"Ensemble weights must sum to 1.0, got {total:.6f}"
+            raise ValueError(msg)
+        return self
+
+
+class EnsembleOptimizationConfig(BaseModel, frozen=True):
+    """Weight optimization settings."""
+
+    enabled: bool = True
+    metric: str = "mape"
+    prophet_weight_min: float = Field(default=0.1, ge=0.0, le=1.0)
+    prophet_weight_max: float = Field(default=0.9, ge=0.0, le=1.0)
+
+
+class EnsembleFallbackConfig(BaseModel, frozen=True):
+    """Fallback behavior when one model fails."""
+
+    enabled: bool = True
+
+
+class EnsembleConfig(BaseModel, frozen=True):
+    """Ensemble model configuration."""
+
+    weights: EnsembleWeightsConfig = Field(default_factory=EnsembleWeightsConfig)
+    optimization: EnsembleOptimizationConfig = Field(
+        default_factory=EnsembleOptimizationConfig,
+    )
+    fallback: EnsembleFallbackConfig = Field(default_factory=EnsembleFallbackConfig)
+
+
 # -- Hyperparameters --
 
 
@@ -788,6 +831,7 @@ class Settings(BaseModel, frozen=True):
     catboost: CatBoostConfig = Field(default_factory=CatBoostConfig)
     prophet: ProphetConfig = Field(default_factory=ProphetConfig)
     tft: TFTConfig = Field(default_factory=TFTConfig)
+    ensemble: EnsembleConfig = Field(default_factory=EnsembleConfig)
     hyperparameters: HyperparameterConfig = Field(
         default_factory=HyperparameterConfig,
     )
@@ -830,6 +874,7 @@ def _build_settings_dict(config_dir: Path) -> dict[str, Any]:
     catboost_data = _load_yaml(models_dir / "catboost.yaml")
     prophet_data = _load_yaml(models_dir / "prophet.yaml")
     tft_data = _load_yaml(models_dir / "tft.yaml")
+    ensemble_data = _load_yaml(models_dir / "ensemble.yaml")
     hyperparams_data = _load_yaml(models_dir / "hyperparameters.yaml")
 
     return {
@@ -857,6 +902,7 @@ def _build_settings_dict(config_dir: Path) -> dict[str, Any]:
         "catboost": catboost_data,
         "prophet": prophet_data,
         "tft": tft_data,
+        "ensemble": ensemble_data,
         "hyperparameters": {
             "catboost": {
                 "n_trials": hyperparams_data.get("catboost", {}).get("n_trials", 50),
