@@ -70,10 +70,30 @@ class ExperimentTracker:
         self._mlflow.log_metrics(metrics, step=step)
 
     def log_model(self, model: Any, artifact_path: str = "model") -> None:
-        """Log a model artifact."""
+        """Log a CatBoost model artifact."""
         if not self._enabled:
             return
         self._mlflow.catboost.log_model(model, artifact_path=artifact_path)
+
+    def log_prophet_model(self, model: Any, artifact_path: str = "model") -> None:
+        """Log a Prophet model artifact using pickle.
+
+        Args:
+            model: Prophet model instance.
+            artifact_path: Path within the run's artifacts.
+        """
+        if not self._enabled:
+            return
+
+        import pickle
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            model_path = Path(tmpdir) / "prophet_model.pkl"
+            with open(model_path, "wb") as f:
+                pickle.dump(model, f)
+            self._mlflow.log_artifact(str(model_path), artifact_path)
 
     def log_feature_importance(
         self,

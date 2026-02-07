@@ -38,7 +38,25 @@ catboost:
 
 prophet:
   n_trials: 30
-  search_space: {}
+  search_space:
+    changepoint_prior_scale:
+      type: float
+      low: 0.001
+      high: 0.5
+      log: true
+    seasonality_prior_scale:
+      type: float
+      low: 0.01
+      high: 50.0
+      log: true
+    holidays_prior_scale:
+      type: float
+      low: 0.01
+      high: 50.0
+      log: true
+    seasonality_mode:
+      type: categorical
+      choices: ["additive", "multiplicative"]
 
 tft:
   n_trials: 20
