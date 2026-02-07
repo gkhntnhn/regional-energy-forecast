@@ -85,7 +85,7 @@ make serve            # FastAPI başlat (uvicorn)
 - [x] M5: CatBoost training (TSCV + Optuna + MLflow)
 - [x] M6: Prophet training (TSCV + Optuna + MLflow)
 - [x] M7: 2-model ensemble (Faz 1 tamamlanır)
-- [ ] M8: TFT training
+- [x] M8: TFT training (TSCV + Optuna + MLflow)
 - [ ] M9: 3-model ensemble (Faz 2 tamamlanır)
 - [ ] M10: API serving (FastAPI + auth)
 - [ ] M11: Docker + CI/CD (AWS deploy)
