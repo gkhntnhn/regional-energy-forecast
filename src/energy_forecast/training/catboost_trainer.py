@@ -131,7 +131,7 @@ class CatBoostTrainer:
         train_pool = Pool(x_train, label=y_train, cat_features=cat_idx)
         val_pool = Pool(x_val, label=y_val, cat_features=cat_idx)
 
-        model = CatBoostRegressor(**params)
+        model = CatBoostRegressor(**params, allow_writing_files=False)
         model.fit(
             train_pool,
             eval_set=val_pool,
@@ -276,7 +276,7 @@ class CatBoostTrainer:
             "random_seed": self._cb_config.training.random_seed,
             "has_time": self._cb_config.training.has_time,
         }
-        model = CatBoostRegressor(**final_params)
+        model = CatBoostRegressor(**final_params, allow_writing_files=False)
         train_pool = Pool(x, label=y, cat_features=cat_idx)
         model.fit(train_pool, verbose=self._cb_config.training.verbose)
 

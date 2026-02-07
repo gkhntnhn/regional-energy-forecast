@@ -42,6 +42,9 @@ models/*.pt
 mlruns/
 mlartifacts/
 
+# CatBoost
+catboost_info/
+
 # Reports
 reports/*.html
 reports/*.xlsx
