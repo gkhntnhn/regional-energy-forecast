@@ -34,7 +34,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--model",
-        choices=["catboost", "prophet", "ensemble"],
+        choices=["catboost", "prophet", "tft", "ensemble"],
         required=True,
         help="Model to train.",
     )
@@ -141,6 +141,35 @@ def run_prophet(
     logger.info("Training time: {:.1f}s", result.training_time_seconds)
 
 
+def run_tft(
+    settings: Settings,
+    data: pd.DataFrame,
+    *,
+    no_mlflow: bool = False,
+) -> None:
+    """Run TFT training pipeline.
+
+    Args:
+        settings: Full application settings.
+        data: Feature-engineered DataFrame.
+        no_mlflow: If True, disable MLflow tracking.
+    """
+    from energy_forecast.training.tft_trainer import TFTTrainer
+
+    tracker = ExperimentTracker(
+        experiment_name="energy-forecast-tft",
+        tracking_uri=settings.env.mlflow_tracking_uri,
+        enabled=not no_mlflow,
+    )
+    trainer = TFTTrainer(settings, tracker)
+    result = trainer.run(data)
+
+    logger.info("Best val MAPE: {:.2f}%", result.training_result.avg_val_mape)
+    logger.info("Best test MAPE: {:.2f}%", result.training_result.avg_test_mape)
+    logger.info("Best params: {}", result.best_params)
+    logger.info("Training time: {:.1f}s", result.training_time_seconds)
+
+
 def run_ensemble(
     settings: Settings,
     data: pd.DataFrame,
@@ -189,12 +218,14 @@ def main(argv: list[str] | None = None) -> None:
     logger.info("Loading config from {}", args.configs)
     settings = load_config(args.configs)
 
-    # Override n_trials if specified (applies to both models for ensemble)
+    # Override n_trials if specified (applies to all models for ensemble)
     if args.n_trials is not None:
         catboost_config = settings.hyperparameters.catboost
         prophet_config = settings.hyperparameters.prophet
+        tft_config = settings.hyperparameters.tft
         object.__setattr__(catboost_config, "n_trials", args.n_trials)
         object.__setattr__(prophet_config, "n_trials", args.n_trials)
+        object.__setattr__(tft_config, "n_trials", args.n_trials)
         logger.info("Overriding n_trials to {}", args.n_trials)
 
     data = load_data(args.data)
@@ -202,6 +233,7 @@ def main(argv: list[str] | None = None) -> None:
     model_runners: dict[str, Any] = {
         "catboost": lambda: run_catboost(settings, data, no_mlflow=args.no_mlflow),
         "prophet": lambda: run_prophet(settings, data, no_mlflow=args.no_mlflow),
+        "tft": lambda: run_tft(settings, data, no_mlflow=args.no_mlflow),
         "ensemble": lambda: run_ensemble(settings, data, no_mlflow=args.no_mlflow),
     }
 

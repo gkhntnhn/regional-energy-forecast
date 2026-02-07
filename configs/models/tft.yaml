@@ -4,6 +4,7 @@ architecture:
   attention_head_size: 4
   lstm_layers: 2
   dropout: 0.1
+  hidden_continuous_size: 16
 
 training:
   encoder_length: 168  # 7 days
@@ -14,6 +15,26 @@ training:
   early_stop_patience: 10
   gradient_clip_val: 0.1
   random_seed: 42
+  accelerator: "cpu"  # "cpu", "gpu", or "auto"
+  num_workers: 0
+
+# Features that are known in the future (deterministic or forecast available)
+covariates:
+  time_varying_known:
+    - hour_sin
+    - hour_cos
+    - day_of_week_sin
+    - day_of_week_cos
+    - month_sin
+    - month_cos
+    - is_holiday
+    - is_weekend
+    - is_ramadan
+    - solar_elevation
+    - solar_azimuth
+    - temperature_2m
+    - relative_humidity_2m
+    - apparent_temperature
 
 quantiles:
   - 0.02

@@ -95,6 +95,26 @@ class ExperimentTracker:
                 pickle.dump(model, f)
             self._mlflow.log_artifact(str(model_path), artifact_path)
 
+    def log_tft_model(self, model: Any, artifact_path: str = "model") -> None:
+        """Log a TFT model artifact using PyTorch checkpoint.
+
+        Saves the TFT model's checkpoint files and metadata to MLflow artifacts.
+
+        Args:
+            model: TFTForecaster instance.
+            artifact_path: Path within the run's artifacts.
+        """
+        if not self._enabled:
+            return
+
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            model_dir = Path(tmpdir)
+            model.save(model_dir)
+            self._mlflow.log_artifacts(str(model_dir), artifact_path)
+
     def log_feature_importance(
         self,
         importance: dict[str, float],

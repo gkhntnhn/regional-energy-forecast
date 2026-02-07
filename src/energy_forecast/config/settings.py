@@ -633,6 +633,7 @@ class TFTArchitectureConfig(BaseModel, frozen=True):
     attention_head_size: int = Field(default=4, ge=1)
     lstm_layers: int = Field(default=2, ge=1)
     dropout: float = Field(default=0.1, ge=0.0, lt=1.0)
+    hidden_continuous_size: int = Field(default=16, ge=1)
 
 
 class TFTTrainingConfig(BaseModel, frozen=True):
@@ -646,6 +647,31 @@ class TFTTrainingConfig(BaseModel, frozen=True):
     early_stop_patience: int = Field(default=10, ge=1)
     gradient_clip_val: float = Field(default=0.1, gt=0.0)
     random_seed: int = 42
+    accelerator: Literal["cpu", "gpu", "auto"] = "cpu"
+    num_workers: int = Field(default=0, ge=0)
+
+
+class TFTCovariatesConfig(BaseModel, frozen=True):
+    """TFT covariate specification for TimeSeriesDataSet."""
+
+    time_varying_known: list[str] = Field(
+        default_factory=lambda: [
+            "hour_sin",
+            "hour_cos",
+            "day_of_week_sin",
+            "day_of_week_cos",
+            "month_sin",
+            "month_cos",
+            "is_holiday",
+            "is_weekend",
+            "is_ramadan",
+            "solar_elevation",
+            "solar_azimuth",
+            "temperature_2m",
+            "relative_humidity_2m",
+            "apparent_temperature",
+        ]
+    )
 
 
 class TFTConfig(BaseModel, frozen=True):
@@ -655,6 +681,7 @@ class TFTConfig(BaseModel, frozen=True):
         default_factory=TFTArchitectureConfig,
     )
     training: TFTTrainingConfig = Field(default_factory=TFTTrainingConfig)
+    covariates: TFTCovariatesConfig = Field(default_factory=TFTCovariatesConfig)
     quantiles: list[float] = Field(
         default_factory=lambda: [0.02, 0.10, 0.25, 0.50, 0.75, 0.90, 0.98],
     )
