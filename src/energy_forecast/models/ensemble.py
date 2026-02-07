@@ -1,4 +1,4 @@
-"""Weighted ensemble of CatBoost and Prophet forecasters."""
+"""Weighted ensemble of CatBoost, Prophet, and TFT forecasters."""
 
 from __future__ import annotations
 
@@ -13,25 +13,30 @@ from loguru import logger
 from prophet import Prophet
 
 from energy_forecast.models.base import BaseForecaster
+from energy_forecast.models.tft import TFTForecaster
 
 
 class EnsembleForecaster(BaseForecaster):
-    """Weighted-average ensemble of CatBoost and Prophet.
+    """Weighted-average ensemble of CatBoost, Prophet, and TFT.
 
     Loads pre-trained models and uses optimized weights from training
-    to produce ensemble predictions.
+    to produce ensemble predictions. Supports dynamic active model selection.
 
     Args:
-        config: Ensemble configuration dictionary containing weights.
+        config: Ensemble configuration dictionary containing weights and active models.
     """
 
     def __init__(self, config: dict[str, Any]) -> None:
         super().__init__(config)
+        self._active_models: list[str] = config.get(
+            "active_models", ["catboost", "prophet", "tft"]
+        )
         self._weights: dict[str, float] = config.get(
-            "weights", {"catboost": 0.6, "prophet": 0.4}
+            "weights", {"catboost": 0.45, "prophet": 0.30, "tft": 0.25}
         )
         self._catboost_model: CatBoostRegressor | None = None
         self._prophet_model: Prophet | None = None
+        self._tft_model: TFTForecaster | None = None
         self._target_col: str = config.get("target_col", "consumption")
         self._prophet_regressors: list[str] = config.get("prophet_regressors", [])
 
@@ -40,42 +45,75 @@ class EnsembleForecaster(BaseForecaster):
         """Get current ensemble weights."""
         return self._weights.copy()
 
+    @property
+    def active_models(self) -> list[str]:
+        """Get current active models."""
+        return self._active_models.copy()
+
     def set_models(
         self,
-        catboost_model: CatBoostRegressor,
-        prophet_model: Prophet,
+        catboost_model: CatBoostRegressor | None = None,
+        prophet_model: Prophet | None = None,
+        tft_model: TFTForecaster | None = None,
     ) -> None:
         """Set pre-trained models for prediction.
 
         Args:
             catboost_model: Trained CatBoost model.
             prophet_model: Trained Prophet model.
+            tft_model: Trained TFT model.
         """
-        self._catboost_model = catboost_model
-        self._prophet_model = prophet_model
-        logger.info("Ensemble models set")
+        if catboost_model is not None:
+            self._catboost_model = catboost_model
+        if prophet_model is not None:
+            self._prophet_model = prophet_model
+        if tft_model is not None:
+            self._tft_model = tft_model
+        logger.info(
+            "Ensemble models set: catboost={}, prophet={}, tft={}",
+            self._catboost_model is not None,
+            self._prophet_model is not None,
+            self._tft_model is not None,
+        )
 
     def set_weights(self, weights: dict[str, float]) -> None:
         """Set ensemble weights.
 
         Args:
-            weights: Dictionary with 'catboost' and 'prophet' weights.
+            weights: Dictionary with model weights.
 
         Raises:
             ValueError: If weights don't sum to 1.0.
         """
-        total = weights.get("catboost", 0) + weights.get("prophet", 0)
+        total = sum(weights.values())
         if abs(total - 1.0) > 1e-6:
             msg = f"Weights must sum to 1.0, got {total}"
             raise ValueError(msg)
         self._weights = weights.copy()
         logger.info("Ensemble weights updated: {}", self._weights)
 
+    def set_active_models(self, models: list[str]) -> None:
+        """Set active models for prediction.
+
+        Args:
+            models: List of model names to use.
+
+        Raises:
+            ValueError: If unknown model name provided.
+        """
+        valid = {"catboost", "prophet", "tft"}
+        for m in models:
+            if m not in valid:
+                msg = f"Unknown model: {m}. Valid: {valid}"
+                raise ValueError(msg)
+        self._active_models = models
+        logger.info("Active models set: {}", self._active_models)
+
     def train(self, train_df: pd.DataFrame, val_df: pd.DataFrame | None = None) -> None:
         """Train is not supported — use EnsembleTrainer instead.
 
         The ensemble training is orchestrated by EnsembleTrainer which
-        trains CatBoost and Prophet separately, then optimizes weights.
+        trains CatBoost, Prophet, and TFT separately, then optimizes weights.
 
         Raises:
             NotImplementedError: Always, use EnsembleTrainer.run() instead.
@@ -90,6 +128,8 @@ class EnsembleForecaster(BaseForecaster):
     def predict(self, X: pd.DataFrame) -> pd.DataFrame:
         """Generate weighted-average ensemble prediction.
 
+        Uses only active models that have been loaded.
+
         Args:
             X: Feature DataFrame with DatetimeIndex.
 
@@ -97,35 +137,55 @@ class EnsembleForecaster(BaseForecaster):
             DataFrame with 'prediction' column and individual model predictions.
 
         Raises:
-            RuntimeError: If models are not loaded.
+            RuntimeError: If no active models are loaded.
         """
-        if self._catboost_model is None or self._prophet_model is None:
-            msg = "Models not loaded. Call set_models() or load() first."
-            raise RuntimeError(msg)
+        predictions: dict[str, np.ndarray[Any, np.dtype[np.floating[Any]]]] = {}
 
         # CatBoost prediction
-        features = X.drop(columns=[self._target_col], errors="ignore")
-        catboost_pred: np.ndarray[Any, np.dtype[np.floating[Any]]] = (
-            self._catboost_model.predict(features)
-        )
+        if "catboost" in self._active_models and self._catboost_model is not None:
+            features = X.drop(columns=[self._target_col], errors="ignore")
+            predictions["catboost"] = np.asarray(
+                self._catboost_model.predict(features), dtype=np.float64
+            )
 
         # Prophet prediction
-        prophet_df = self._to_prophet_format(X)
-        prophet_forecast = self._prophet_model.predict(prophet_df)
-        prophet_pred: np.ndarray[Any, np.dtype[np.floating[Any]]] = np.asarray(
-            prophet_forecast["yhat"].values, dtype=np.float64
-        )
+        if "prophet" in self._active_models and self._prophet_model is not None:
+            prophet_df = self._to_prophet_format(X)
+            prophet_forecast = self._prophet_model.predict(prophet_df)
+            predictions["prophet"] = np.asarray(
+                prophet_forecast["yhat"].values, dtype=np.float64
+            )
+
+        # TFT prediction (uses median quantile)
+        if "tft" in self._active_models and self._tft_model is not None:
+            tft_result = self._tft_model.predict(X, target_col=self._target_col)
+            predictions["tft"] = np.asarray(tft_result["yhat"].values, dtype=np.float64)
+
+        if not predictions:
+            msg = "No active models loaded. Call set_models() first."
+            raise RuntimeError(msg)
+
+        # Normalize weights to active models with predictions
+        active_with_preds = list(predictions.keys())
+        active_weights = {m: self._weights.get(m, 0.0) for m in active_with_preds}
+        weight_sum = sum(active_weights.values())
+        if weight_sum < 1e-6:
+            # Equal weights if all are zero
+            n = len(active_with_preds)
+            normalized_weights = {m: 1.0 / n for m in active_with_preds}
+        else:
+            normalized_weights = {m: w / weight_sum for m, w in active_weights.items()}
 
         # Weighted average
-        cb_weight = self._weights["catboost"]
-        pr_weight = self._weights["prophet"]
-        ensemble_pred = cb_weight * catboost_pred + pr_weight * prophet_pred
+        ensemble_pred = sum(
+            normalized_weights[m] * predictions[m] for m in predictions
+        )
 
         # Build output DataFrame
         result = pd.DataFrame(index=X.index)
         result["prediction"] = ensemble_pred
-        result["catboost_prediction"] = catboost_pred
-        result["prophet_prediction"] = prophet_pred
+        for model_name, pred in predictions.items():
+            result[f"{model_name}_prediction"] = pred
 
         return result
 
@@ -165,6 +225,7 @@ class EnsembleForecaster(BaseForecaster):
             json.dump(
                 {
                     "weights": self._weights,
+                    "active_models": self._active_models,
                     "target_col": self._target_col,
                     "prophet_regressors": self._prophet_regressors,
                 },
@@ -178,7 +239,7 @@ class EnsembleForecaster(BaseForecaster):
         """Load ensemble configuration from disk.
 
         Loads weights and config. Models must be loaded separately
-        using set_models() with CatBoost and Prophet model files.
+        using set_models() with CatBoost, Prophet, and TFT model files.
 
         Args:
             path: Directory containing ensemble config.
@@ -189,6 +250,7 @@ class EnsembleForecaster(BaseForecaster):
             config = json.load(f)
 
         self._weights = config["weights"]
+        self._active_models = config.get("active_models", ["catboost", "prophet", "tft"])
         self._target_col = config.get("target_col", "consumption")
         self._prophet_regressors = config.get("prophet_regressors", [])
 
@@ -196,27 +258,37 @@ class EnsembleForecaster(BaseForecaster):
 
     def load_models(
         self,
-        catboost_path: Path,
-        prophet_path: Path,
+        catboost_path: Path | None = None,
+        prophet_path: Path | None = None,
+        tft_path: Path | None = None,
     ) -> None:
         """Load pre-trained models from disk.
 
         Args:
             catboost_path: Path to CatBoost .cbm file.
             prophet_path: Path to Prophet .pkl file.
+            tft_path: Path to TFT model directory.
         """
         import pickle
 
         # Load CatBoost
-        self._catboost_model = CatBoostRegressor()
-        self._catboost_model.load_model(str(catboost_path))
+        if catboost_path is not None and catboost_path.exists():
+            self._catboost_model = CatBoostRegressor()
+            self._catboost_model.load_model(str(catboost_path))
+            logger.info("Loaded CatBoost model from {}", catboost_path)
 
         # Load Prophet
-        with open(prophet_path, "rb") as f:
-            self._prophet_model = pickle.load(f)
+        if prophet_path is not None and prophet_path.exists():
+            with open(prophet_path, "rb") as f:
+                self._prophet_model = pickle.load(f)
+            logger.info("Loaded Prophet model from {}", prophet_path)
 
-        logger.info(
-            "Loaded models: CatBoost={}, Prophet={}",
-            catboost_path,
-            prophet_path,
-        )
+        # Load TFT
+        if tft_path is not None and tft_path.exists():
+            from energy_forecast.config.settings import TFTConfig
+
+            # Create TFT with default config for loading
+            default_config = TFTConfig()
+            self._tft_model = TFTForecaster(default_config)
+            self._tft_model.load(tft_path)
+            logger.info("Loaded TFT model from {}", tft_path)

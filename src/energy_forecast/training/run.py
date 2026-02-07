@@ -61,6 +61,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=Path("configs"),
         help="Path to configs directory.",
     )
+    parser.add_argument(
+        "--models",
+        type=str,
+        default=None,
+        help="Override active models for ensemble (comma-separated: catboost,prophet,tft).",
+    )
     return parser.parse_args(argv)
 
 
@@ -175,13 +181,15 @@ def run_ensemble(
     data: pd.DataFrame,
     *,
     no_mlflow: bool = False,
+    active_models_override: list[str] | None = None,
 ) -> None:
-    """Run Ensemble training pipeline (CatBoost + Prophet).
+    """Run Ensemble training pipeline (CatBoost + Prophet + TFT).
 
     Args:
         settings: Full application settings.
         data: Feature-engineered DataFrame.
         no_mlflow: If True, disable MLflow tracking.
+        active_models_override: Override active models from config.
     """
     from energy_forecast.training.ensemble_trainer import (
         EnsembleTrainer,
@@ -193,7 +201,9 @@ def run_ensemble(
         tracking_uri=settings.env.mlflow_tracking_uri,
         enabled=not no_mlflow,
     )
-    trainer = EnsembleTrainer(settings, tracker)
+    trainer = EnsembleTrainer(
+        settings, tracker, active_models_override=active_models_override
+    )
     result = trainer.run(data)
 
     # Save weights
@@ -201,8 +211,8 @@ def run_ensemble(
     save_ensemble_weights(result.training_result.optimized_weights, weights_path)
 
     logger.info("Ensemble val MAPE: {:.2f}%", result.training_result.avg_val_mape)
-    logger.info("CatBoost val MAPE: {:.2f}%", result.training_result.catboost_avg_val_mape)
-    logger.info("Prophet val MAPE: {:.2f}%", result.training_result.prophet_avg_val_mape)
+    for model_name, mape in result.training_result.model_avg_val_mapes.items():
+        logger.info("{} val MAPE: {:.2f}%", model_name.capitalize(), mape)
     logger.info("Optimized weights: {}", result.training_result.optimized_weights)
     logger.info("Training time: {:.1f}s", result.training_time_seconds)
 
@@ -230,11 +240,22 @@ def main(argv: list[str] | None = None) -> None:
 
     data = load_data(args.data)
 
+    # Parse --models override for ensemble
+    active_models_override: list[str] | None = None
+    if args.models:
+        active_models_override = [m.strip() for m in args.models.split(",")]
+        logger.info("Active models override: {}", active_models_override)
+
     model_runners: dict[str, Any] = {
         "catboost": lambda: run_catboost(settings, data, no_mlflow=args.no_mlflow),
         "prophet": lambda: run_prophet(settings, data, no_mlflow=args.no_mlflow),
         "tft": lambda: run_tft(settings, data, no_mlflow=args.no_mlflow),
-        "ensemble": lambda: run_ensemble(settings, data, no_mlflow=args.no_mlflow),
+        "ensemble": lambda: run_ensemble(
+            settings,
+            data,
+            no_mlflow=args.no_mlflow,
+            active_models_override=active_models_override,
+        ),
     }
 
     runner = model_runners.get(args.model)

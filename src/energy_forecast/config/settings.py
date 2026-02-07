@@ -692,18 +692,54 @@ class TFTConfig(BaseModel, frozen=True):
 
 
 class EnsembleWeightsConfig(BaseModel, frozen=True):
-    """Default weights for ensemble models."""
+    """Default weights for ensemble models.
 
-    catboost: float = Field(default=0.6, ge=0.0, le=1.0)
-    prophet: float = Field(default=0.4, ge=0.0, le=1.0)
+    Weights are auto-normalized to sum=1 based on active models at runtime.
+    """
+
+    catboost: float = Field(default=0.45, ge=0.0, le=1.0)
+    prophet: float = Field(default=0.30, ge=0.0, le=1.0)
+    tft: float = Field(default=0.25, ge=0.0, le=1.0)
 
     @model_validator(mode="after")
-    def _weights_sum_to_one(self) -> Self:
-        total = self.catboost + self.prophet
-        if abs(total - 1.0) > 1e-6:
-            msg = f"Ensemble weights must sum to 1.0, got {total:.6f}"
+    def _weights_sum_valid(self) -> Self:
+        total = self.catboost + self.prophet + self.tft
+        if total > 1.0 + 1e-6:
+            msg = f"Ensemble weights cannot exceed 1.0, got {total:.6f}"
             raise ValueError(msg)
         return self
+
+    def get_normalized(self, active_models: list[str]) -> dict[str, float]:
+        """Get weights normalized to sum=1 for active models only.
+
+        Args:
+            active_models: List of active model names.
+
+        Returns:
+            Dict mapping model name to normalized weight.
+        """
+        raw_weights = {
+            "catboost": self.catboost,
+            "prophet": self.prophet,
+            "tft": self.tft,
+        }
+        active_weights = {m: raw_weights[m] for m in active_models if m in raw_weights}
+
+        total = sum(active_weights.values())
+        if total < 1e-6:
+            # Equal weights if all are zero
+            n = len(active_weights)
+            return {m: 1.0 / n for m in active_weights}
+
+        return {m: w / total for m, w in active_weights.items()}
+
+
+class EnsembleWeightBoundsConfig(BaseModel, frozen=True):
+    """Per-model weight bounds for optimization."""
+
+    catboost: tuple[float, float] = (0.1, 0.8)
+    prophet: tuple[float, float] = (0.1, 0.6)
+    tft: tuple[float, float] = (0.1, 0.6)
 
 
 class EnsembleOptimizationConfig(BaseModel, frozen=True):
@@ -711,8 +747,9 @@ class EnsembleOptimizationConfig(BaseModel, frozen=True):
 
     enabled: bool = True
     metric: str = "mape"
-    prophet_weight_min: float = Field(default=0.1, ge=0.0, le=1.0)
-    prophet_weight_max: float = Field(default=0.9, ge=0.0, le=1.0)
+    bounds: EnsembleWeightBoundsConfig = Field(
+        default_factory=EnsembleWeightBoundsConfig
+    )
 
 
 class EnsembleFallbackConfig(BaseModel, frozen=True):
@@ -724,11 +761,27 @@ class EnsembleFallbackConfig(BaseModel, frozen=True):
 class EnsembleConfig(BaseModel, frozen=True):
     """Ensemble model configuration."""
 
+    active_models: list[str] = Field(
+        default_factory=lambda: ["catboost", "prophet", "tft"]
+    )
     weights: EnsembleWeightsConfig = Field(default_factory=EnsembleWeightsConfig)
     optimization: EnsembleOptimizationConfig = Field(
         default_factory=EnsembleOptimizationConfig,
     )
     fallback: EnsembleFallbackConfig = Field(default_factory=EnsembleFallbackConfig)
+
+    @field_validator("active_models")
+    @classmethod
+    def _valid_model_names(cls, v: list[str]) -> list[str]:
+        valid = {"catboost", "prophet", "tft"}
+        for m in v:
+            if m not in valid:
+                msg = f"Unknown ensemble model: {m}. Valid: {valid}"
+                raise ValueError(msg)
+        if len(v) < 1:
+            msg = "At least one model required in active_models"
+            raise ValueError(msg)
+        return v
 
 
 # -- Hyperparameters --

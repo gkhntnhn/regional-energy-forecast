@@ -1,17 +1,28 @@
-# Ensemble configuration for CatBoost + Prophet weighted average
+# Ensemble configuration for CatBoost + Prophet + TFT weighted average
+
+# Active models (can be overridden via CLI --models flag)
+active_models:
+  - catboost
+  - prophet
+  - tft
 
 # Default weights (used when optimization is disabled)
+# Weights are auto-normalized to sum=1 based on active models
 weights:
-  catboost: 0.6
-  prophet: 0.4
+  catboost: 0.45
+  prophet: 0.30
+  tft: 0.25
 
 # Weight optimization settings
 optimization:
   enabled: true
   metric: "mape"  # Metric to minimize
-  prophet_weight_min: 0.1
-  prophet_weight_max: 0.9
+  # Per-model weight bounds [min, max]
+  bounds:
+    catboost: [0.1, 0.8]
+    prophet: [0.1, 0.6]
+    tft: [0.1, 0.6]
 
 # Fallback behavior when one model fails
 fallback:
-  enabled: true  # Use single model if other fails
+  enabled: true  # Continue with remaining models if one fails
