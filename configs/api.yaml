@@ -1,0 +1,30 @@
+# API serving configuration
+api:
+  host: "0.0.0.0"
+  port: 8000
+  rate_limit: "10/minute"
+  cors_origins:
+    - "*"
+
+files:
+  upload_dir: "data/uploads"
+  output_dir: "data/outputs"
+  allowed_extensions:
+    - ".xlsx"
+    - ".xls"
+  max_file_size_mb: 50
+  cleanup_after_hours: 24
+
+email:
+  sender_name: "Energy Forecast"
+  subject_template: "Tahmin Sonuçları - {job_id}"
+  body_template: |
+    Merhaba,
+
+    Talep ettiğiniz 48 saatlik elektrik tüketimi tahmini ekte sunulmuştur.
+
+    İş No: {job_id}
+    Oluşturulma: {created_at}
+
+    İyi çalışmalar,
+    Energy Forecast Sistemi

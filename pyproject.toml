@@ -19,7 +19,7 @@ dependencies = [
     "scikit-learn>=1.4",
     "pvlib>=0.11",
     "loguru>=0.7",
-    "pydantic>=2.5",
+    "pydantic[email]>=2.5",
     "pydantic-settings>=2.1",
     "pandera>=0.18",
     "mlflow>=2.10",
@@ -34,6 +34,7 @@ dependencies = [
     "pyarrow>=15.0",
     "python-dotenv>=1.0",
     "python-multipart>=0.0.7",
+    "slowapi>=0.1.9",
     "holidays>=0.40",
     "feature-engine>=1.8",
 ]
@@ -109,6 +110,7 @@ module = [
     "retry_requests.*",
     "feature_engine.*",
     "scipy.*",
+    "slowapi.*",
 ]
 ignore_missing_imports = true
 

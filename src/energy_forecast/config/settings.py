@@ -949,6 +949,50 @@ class EnvConfig(BaseSettings):
 
 
 # ---------------------------------------------------------------------------
+# API Config
+# ---------------------------------------------------------------------------
+
+
+class ApiFilesConfig(BaseModel, frozen=True):
+    """API file handling configuration."""
+
+    upload_dir: str = "data/uploads"
+    output_dir: str = "data/outputs"
+    allowed_extensions: list[str] = Field(default_factory=lambda: [".xlsx", ".xls"])
+    max_file_size_mb: int = Field(default=50, ge=1)
+    cleanup_after_hours: int = Field(default=24, ge=1)
+
+
+class ApiEmailConfig(BaseModel, frozen=True):
+    """API email template configuration."""
+
+    sender_name: str = "Energy Forecast"
+    subject_template: str = "Tahmin Sonuçları - {job_id}"
+    body_template: str = Field(
+        default="""Merhaba,
+
+Talep ettiğiniz 48 saatlik elektrik tüketimi tahmini ekte sunulmuştur.
+
+İş No: {job_id}
+Oluşturulma: {created_at}
+
+İyi çalışmalar,
+Energy Forecast Sistemi"""
+    )
+
+
+class ApiConfig(BaseModel, frozen=True):
+    """API serving configuration."""
+
+    host: str = "0.0.0.0"
+    port: int = Field(default=8000, ge=1, le=65535)
+    rate_limit: str = "10/minute"
+    cors_origins: list[str] = Field(default_factory=lambda: ["*"])
+    files: ApiFilesConfig = Field(default_factory=ApiFilesConfig)
+    email: ApiEmailConfig = Field(default_factory=ApiEmailConfig)
+
+
+# ---------------------------------------------------------------------------
 # Root Settings
 # ---------------------------------------------------------------------------
 
@@ -973,6 +1017,7 @@ class Settings(BaseModel, frozen=True):
     hyperparameters: HyperparameterConfig = Field(
         default_factory=HyperparameterConfig,
     )
+    api: ApiConfig = Field(default_factory=ApiConfig)
     env: EnvConfig = Field(default_factory=EnvConfig)
 
 
@@ -998,6 +1043,13 @@ def _build_settings_dict(config_dir: Path) -> dict[str, Any]:
     pipeline_data = _load_yaml(config_dir / "pipeline.yaml")
     data_loader_data = _load_yaml(config_dir / "data_loader.yaml")
     openmeteo_data = _load_yaml(config_dir / "openmeteo.yaml")
+
+    # API config (optional, use defaults if not found)
+    api_yaml_path = config_dir / "api.yaml"
+    if api_yaml_path.exists():
+        api_data = _load_yaml(api_yaml_path)
+    else:
+        api_data = {}
 
     # Feature configs
     features_dir = config_dir / "features"
@@ -1064,6 +1116,14 @@ def _build_settings_dict(config_dir: Path) -> dict[str, Any]:
             },
             "cross_validation": hyperparams_data.get("cross_validation", {}),
             "target_col": hyperparams_data.get("target_col", "consumption"),
+        },
+        "api": {
+            "host": api_data.get("api", {}).get("host", "0.0.0.0"),
+            "port": api_data.get("api", {}).get("port", 8000),
+            "rate_limit": api_data.get("api", {}).get("rate_limit", "10/minute"),
+            "cors_origins": api_data.get("api", {}).get("cors_origins", ["*"]),
+            "files": api_data.get("files", {}),
+            "email": api_data.get("email", {}),
         },
     }
 
