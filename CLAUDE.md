@@ -8,6 +8,22 @@ Eski proje: C:\Users\pc\Desktop\distributed-energy-forecasting\
 Bu projeyi KOD KOPYALAMADAN referans olarak kullan.
 Mantığı oku, anla, temiz yeniden yaz.
 
+## Hızlı Başlangıç
+
+```bash
+# 1. Ortam kurulumu
+make install
+
+# 2. Dataset hazırla (EPIAS cache'den, ~3 saniye)
+make prepare-data
+
+# 3. Model eğit (smoke test için)
+uv run python -m energy_forecast.training.run --model catboost --config configs/smoke_test.yaml --no-mlflow
+
+# 4. API başlat
+make serve
+```
+
 ## Forecast Akışı
 - Müşteri T-1 günü 23:00'a kadar tüketim verisi verir (Excel)
 - Model 48 saat tahmin üretir: T günü (Gün İçi) + T+1 günü (Gün Öncesi)
@@ -15,17 +31,41 @@ Mantığı oku, anla, temiz yeniden yaz.
 - Aynı gün güncellenmiş hava durumu ile tekrar talep yapılabilir
 
 ## Komutlar
+```bash
+make install              # uv sync
+make test                 # pytest -x --tb=short
+make lint                 # ruff check + mypy --strict
+make format               # ruff format
+make prepare-data         # Dataset hazırla (historical + forecast parquets)
+make serve                # FastAPI başlat (uvicorn)
+
+# Training
+make train-catboost       # CatBoost eğitimi (production)
+make train-prophet        # Prophet eğitimi (production)
+make train-tft            # TFT eğitimi (production)
+make train-ensemble       # Ensemble eğitimi (production)
+
+# Smoke Tests (hızlı validation)
+make smoke-test           # Tüm modeller (CatBoost + Prophet + TFT)
+make smoke-test-fast      # Prophet + CatBoost (TFT skip)
+make smoke-test-minimal   # Sadece CatBoost (~10 saniye)
 ```
-make install          # uv sync
-make test             # pytest -x --tb=short
-make lint             # ruff check + mypy --strict
-make format           # ruff format
-make train-catboost   # CatBoost eğitimi
-make train-prophet    # Prophet eğitimi
-make train-tft        # TFT eğitimi
-make train-ensemble   # Ensemble eğitimi
-make prepare-data     # Feature pipeline çalıştır
-make serve            # FastAPI başlat (uvicorn)
+
+## Training CLI
+```bash
+# Temel kullanım
+uv run python -m energy_forecast.training.run --model catboost
+
+# Smoke test config ile (hızlı)
+uv run python -m energy_forecast.training.run --model catboost --config configs/smoke_test.yaml --no-mlflow
+
+# Önemli flag'ler:
+#   --model {catboost,prophet,tft,ensemble}  # Zorunlu
+#   --config configs/smoke_test.yaml         # Override config (opsiyonel)
+#   --no-mlflow                              # MLflow tracking devre dışı
+#   --n-trials 5                             # Optuna trial sayısı override
+#   --models catboost,prophet                # Ensemble için aktif modeller
+#   --data path/to/features.parquet          # Özel data path
 ```
 
 ## Kod Stili
@@ -45,13 +85,28 @@ make serve            # FastAPI başlat (uvicorn)
 ## Mimari Kurallar
 - Her feature engineer BaseFeatureEngineer'dan türer (sklearn uyumlu)
 - Config değişikliği = configs/*.yaml güncelle, KOD DEĞİŞMESİN
-- Her model BaseForecaster ABC'den türer (train, predict, save, load)
 - Feature pipeline tüm modlarda aynı feature'ları üretir
 - Ham EPIAS değerleri pipeline çıkışında her zaman DROP
 
+## Dataset Hazırlama Kuralı (KRİTİK)
+```
+❌ YANLIŞ: Historical ve forecast ayrı ayrı pipeline'dan geçir
+✅ DOĞRU:  Birleştir → Tek seferde pipeline → Sonra split
+
+Akış:
+1. Excel yükle (consumption, son satır T-1 23:00)
+2. 48 boş satır ekle (T + T+1 günleri, consumption=NaN)
+3. EPIAS + Weather merge et
+4. Feature pipeline TEK SEFERDE çalıştır
+5. Split: df[:-48] → historical, df[-48:] → forecast
+6. Kaydet: features_historical.parquet, features_forecast.parquet
+
+Bu sayede consumption_lag_720 gibi uzun lag'ler forecast'ta doğru hesaplanır.
+```
+
 ## Data Leakage Kuralları (ASLA İHLAL ETME)
 - Consumption/EPIAS lag feature'larda min_lag=48 saat
-- Ham EPIAS değerleri (FDPP, Real_Time_Consumption, DAM_Purchase, Bilateral, Load_Forecast) training'den önce DROP
+- Ham EPIAS değerleri (Real_Time_Consumption, DAM_Purchase, Bilateral, Load_Forecast) training'den önce DROP
 - Rolling/expanding window: .shift(1) SONRA .rolling()
 - Expanding min_periods >= 48
 - TimeSeriesSplit: ASLA random shuffle, has_time=true
@@ -67,9 +122,48 @@ make serve            # FastAPI başlat (uvicorn)
 - Zaman dilimi: Europe/Istanbul (UTC+3)
 - Frekans: Saatlik (24 değer/gün)
 - Hava durumu: 4 şehir ağırlıklı ortalama (Bursa %60, Balıkesir %24, Yalova %10, Çanakkale %6)
-- Tatiller: data/static/turkish_holidays.parquet
-- EPIAS cache: data/external/epias/{year}.parquet
-- CatBoost kategorik kolonlar: configs/models/catboost.yaml
+
+## Dosya Yapısı
+```
+data/
+├── raw/
+│   └── Consumption_Input_Format.xlsx    # Ham tüketim verisi
+├── processed/
+│   ├── features_historical.parquet      # Training için (~48K satır, ~152 feature)
+│   └── features_forecast.parquet        # Prediction için (48 satır)
+├── static/
+│   └── turkish_holidays.parquet         # Tatil verileri
+└── external/
+    ├── epias/{year}.parquet             # EPIAS cache (yıllık)
+    ├── profile/{year}.parquet           # Profil katsayıları (yıllık)
+    └── weather_cache.sqlite             # OpenMeteo cache
+
+configs/
+├── settings.yaml           # Genel ayarlar, path'ler
+├── pipeline.yaml           # Feature pipeline
+├── data_loader.yaml        # Excel yükleme
+├── openmeteo.yaml          # Hava durumu
+├── catboost.yaml           # CatBoost model config
+├── prophet.yaml            # Prophet model config
+├── tft.yaml                # TFT model config
+├── hyperparameters.yaml    # Optuna arama uzayı
+├── smoke_test.yaml         # Smoke test override
+└── features/
+    ├── calendar.yaml
+    ├── consumption.yaml
+    ├── epias.yaml
+    ├── solar.yaml
+    └── weather.yaml
+```
+
+## Bilinen Sorunlar
+
+| Sorun | Açıklama | Workaround |
+|-------|----------|------------|
+| FDPP deprecated | EPIAS API'den artık çekilemiyor | Diğer 4 değişken kullanılıyor |
+| EPIAS duplicate timestamps | Cache'te duplicate satırlar olabiliyor | `~df.index.duplicated(keep='first')` ile temizle |
+| Windows cp1254 codec | Unicode box-drawing karakterler çalışmaz | ASCII karakterler kullan |
+| Prophet cmdstanpy | Bazı ortamlarda kurulum sorunu | `pip install cmdstanpy` sonra `cmdstanpy.install_cmdstan()` |
 
 ## Detaylı Bilgi
 @SPEC.md — Proje spesifikasyonu (forecast akışı, model mimarisi, API tasarımı)

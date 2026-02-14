@@ -123,7 +123,9 @@ class EpiasClient:
             msg = f"EPIAS authentication request failed: {exc}"
             raise EpiasAuthError(msg) from exc
 
-        self._token = response.text.strip()
+        # TGT token is in Location header, not body
+        location = response.headers.get("location", "")
+        self._token = location.split("/")[-1] if location else response.text.strip()
         self._token_time = now
         logger.debug("EPIAS authentication successful")
         return self._token

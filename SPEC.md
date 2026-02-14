@@ -1,7 +1,7 @@
 # SPEC.md — Energy Forecast
 
 > Proje anayasası. Claude Code ve geliştirici bu dosyayı tek kaynak olarak referans alır.
-> Son güncelleme: 2026-02-06
+> Son güncelleme: 2025-02-09
 
 ---
 
@@ -108,13 +108,13 @@ son veri noktasından 48 saat sonradır.
 
 **Değişkenler:**
 
-| Kısaltma | Tam Adı | Açıklama |
-|----------|---------|----------|
-| FDPP | Final Daily Production Plan | Kesinleşmiş Günlük Üretim Planı |
-| Real_Time_Consumption | — | Gerçek zamanlı tüketim |
-| DAM_Purchase | Day-Ahead Market Purchase | GOP satın alma |
-| Bilateral_Agreement_Purchase | — | İkili anlaşma satın alma |
-| Load_Forecast | — | Yük tahmini |
+| Kısaltma | Tam Adı | Durum |
+|----------|---------|-------|
+| ~~FDPP~~ | ~~Final Daily Production Plan~~ | **DEPRECATED** — API'den artık çekilemiyor |
+| Real_Time_Consumption | — | Aktif |
+| DAM_Purchase | Day-Ahead Market Purchase | Aktif |
+| Bilateral_Agreement_Purchase | — | Aktif |
+| Load_Forecast | — | Aktif |
 
 **Kritik kural:** Ham EPİAŞ değerleri doğrudan feature olarak KULLANILMAZ.
 Sadece türetilmiş versiyonları (lag, rolling) kullanılır. Ham değerler pipeline'da drop edilir.
@@ -126,7 +126,7 @@ Sadece türetilmiş versiyonları (lag, rolling) kullanılır. Ham değerler pip
 | Kaynak | Open-Meteo API (ücretsiz) |
 | Yaklaşım | 4 şehir ağırlıklı ortalama |
 | Authentication | Yok (açık API) |
-| Cache | SQLite backend, configurable TTL |
+| Cache | SQLite backend: `data/external/weather_cache.sqlite` |
 
 **Lokasyon Ağırlıkları:**
 
@@ -155,10 +155,10 @@ Weather forecast ve solar hesaplamaları (lead dahil) data leakage DEĞİLDİR:
 
 ### 3.4 Statik Veriler
 
-| Dosya | İçerik | Format |
-|-------|--------|--------|
-| `data/static/turkish_holidays.parquet` | Türk resmi tatilleri | Parquet |
-| (opsiyonel) `data/external/profile/` | EPİAŞ profil katsayıları | Parquet |
+| Dosya | İçerik | Format | Zorunlu |
+|-------|--------|--------|---------|
+| `data/static/turkish_holidays.parquet` | Türk resmi tatilleri | Parquet | Evet |
+| `data/external/profile/{year}.parquet` | EPİAŞ profil katsayıları | Parquet | Evet |
 
 ---
 
@@ -175,6 +175,8 @@ Weather forecast ve solar hesaplamaları (lead dahil) data leakage DEĞİLDİR:
 | Weather | OpenMeteo verileri | HDD/CDD, comfort index, extremes, rolling, severity |
 | Solar | pvlib hesaplamaları | GHI/DNI/DHI, POA, clearness index, cloud proxy |
 | EPIAS | EPİAŞ piyasa verileri | Lag, rolling, expanding (türetilmiş değerler) |
+
+**Toplam feature sayısı:** ~152
 
 ### 4.2 Data Leakage Kuralları
 
@@ -199,17 +201,27 @@ ama production'da başarısız olur. KESİNLİKLE UYULMALIDIR:
 
 Bu feature'lar hem training hem prediction'da kullanılabilir.
 
-### 4.3 Feature Pipeline
+### 4.3 Dataset Hazırlama (Unified Pipeline)
 
-```python
-pipeline = FeaturePipeline(config)
+Feature pipeline training ve prediction için AYNI şekilde çalışır. Ayrı "mode" yoktur.
+
+**Kritik kural — tek seferde pipeline:**
+
+```
+1. Excel yükle (son satır T-1 23:00)
+2. 48 boş satır ekle (T + T+1, consumption=NaN)
+3. EPIAS + Weather merge et
+4. Feature pipeline TEK SEFERDE çalıştır
+5. Split:
+   - historical = df[:-48] → training için
+   - forecast = df[-48:] → prediction için
 ```
 
-Pipeline tüm feature'ları her durumda üretir. Solar lead ve weather forecast known future
-inputs olduğu için train/predict ayrımı gerekmez.
+Bu sayede uzun lag'ler (consumption_lag_720 gibi) forecast satırlarında da doğru hesaplanır.
 
-Tek fark: Ham EPİAŞ değerleri pipeline çıkışında her zaman DROP edilir (sadece
-türetilmiş lag/rolling versiyonları kalır).
+**Çıktı dosyaları:**
+- `data/processed/features_historical.parquet` (~48K satır)
+- `data/processed/features_forecast.parquet` (48 satır)
 
 ---
 
@@ -243,9 +255,9 @@ Input (feature-engineered DataFrame)
 | Learning rate | 0.01-0.1 | Log scale |
 | Depth | 4-7 | Optuna ile optimize |
 | Loss function | RMSE / MAE / MAPE | Optuna ile seç |
-| Early stopping | 200 rounds | Validation metric'e göre |
+| Early stopping | 50 rounds | Validation metric'e göre |
 | has_time | true | Zaman sırası korunur |
-| Kategorik kolonlar | configs/models/catboost.yaml'da tanımlı | NaN → "missing" |
+| Kategorik kolonlar | configs/catboost.yaml'da tanımlı | NaN → "missing" |
 
 **Güçlü yanı:** Feature etkileşimleri (tatil × saat × mevsim), tabular data'da en iyi performans.
 
@@ -308,18 +320,22 @@ Split 3: [██████████ train ██████████][v
 Split N: [█████████████████ train █████████████████][val][test]
 ```
 
-| Parametre | Değer |
-|-----------|-------|
-| n_splits | 12 |
-| val_period | 1 ay |
-| test_period | 1 ay |
-| Shuffle | HAYIR (has_time=true) |
+| Parametre | Production | Smoke Test |
+|-----------|------------|------------|
+| n_splits | 12 | 2 |
+| val_period | 1 ay | 1 ay |
+| test_period | 1 ay | 1 ay |
+| Shuffle | HAYIR | HAYIR |
 
 ### 6.2 Hyperparameter Tuning
 
-- Optuna ile CatBoost parametreleri optimize edilir
-- n_trials: 50+ (production), 3-5 (development/debug)
+- Optuna ile parametreler optimize edilir
 - Objective: Validation MAPE ortalaması (tüm split'ler üzerinden)
+
+| Ayar | Production | Smoke Test |
+|------|------------|------------|
+| n_trials | 50+ | 2 |
+| iterations | 1000-3000 | 10-50 |
 
 ### 6.3 Evaluation Metrikleri
 
@@ -341,6 +357,23 @@ MLflow ile tüm eğitimler izlenir:
 - Model artifact'ları
 - Feature importance
 
+### 6.5 Smoke Testing
+
+Hızlı E2E validation için minimal parametrelerle test:
+
+```bash
+# Sadece CatBoost (~10 saniye)
+make smoke-test-minimal
+
+# CatBoost + Prophet (~1 dakika)
+make smoke-test-fast
+
+# Tüm modeller (~5 dakika)
+make smoke-test
+```
+
+**Smoke test config override:** `configs/smoke_test.yaml`
+
 ---
 
 ## 7. Serving / API
@@ -351,6 +384,7 @@ MLflow ile tüm eğitimler izlenir:
 - **Deploy:** AWS (Docker container)
 - **Tetik:** Web UI'dan kullanıcı talebi (on-demand)
 - **Authentication:** API key
+- **Pattern:** Async job processing
 
 ### 7.2 Kullanıcı Akışı
 
@@ -359,15 +393,18 @@ MLflow ile tüm eğitimler izlenir:
 2. Excel dosyası upload eder (tüketim verisi → T-1 23:00'a kadar)
 3. Toggle seçer: ☐ Sadece T+1  /  ☑ T + T+1
 4. "Tahmin Üret" butonuna tıklar
-5. Backend:
-   a. Excel'i parse et → DataFrame
-   b. EPİAŞ verisini çek (cache veya API)
-   c. OpenMeteo hava durumu tahminini çek (T ve T+1 için)
-   d. Feature pipeline çalıştır (mode="predict")
-   e. Ensemble prediction üret (48 saat)
-   f. Toggle'a göre filtrele (24 veya 48 saat)
-6. Kullanıcıya sonuç döner (JSON + Excel download)
-7. Opsiyonel: Email ile sonuç gönder
+5. Backend (async):
+   a. Job oluştur → job_id döndür
+   b. Background'da:
+      - Excel'i parse et → DataFrame
+      - EPİAŞ verisini çek (cache veya API)
+      - OpenMeteo hava durumu tahminini çek
+      - Feature pipeline çalıştır
+      - Ensemble prediction üret (48 saat)
+      - Toggle'a göre filtrele
+   c. Job tamamlanınca sonucu sakla
+6. Frontend job_id ile status polling yapar
+7. Tamamlanınca sonuç döner (JSON + Excel download)
 ```
 
 ### 7.3 API Endpoints
@@ -375,14 +412,17 @@ MLflow ile tüm eğitimler izlenir:
 | Method | Path | Açıklama |
 |--------|------|----------|
 | GET | `/health` | Sağlık kontrolü |
-| POST | `/predict` | Tahmin üret (Excel upload + toggle) |
 | GET | `/models` | Aktif model bilgileri |
+| POST | `/jobs` | Yeni tahmin job'ı oluştur |
+| GET | `/jobs/{job_id}` | Job durumunu sorgula |
+| GET | `/jobs/{job_id}/result` | Tamamlanan job sonucunu al |
+| DELETE | `/jobs/{job_id}` | Job'ı iptal et |
 | GET | `/docs` | OpenAPI dokümantasyonu |
 
-### 7.4 `/predict` Request
+### 7.4 Job Oluşturma
 
 ```
-POST /predict
+POST /jobs
 Content-Type: multipart/form-data
 Authorization: Bearer {API_KEY}
 
@@ -391,8 +431,39 @@ forecast_type: "day_ahead" | "day_ahead_and_intraday"
 email: (opsiyonel) results@company.com
 ```
 
-### 7.5 `/predict` Response
+**Response:**
+```json
+{
+  "job_id": "abc123",
+  "status": "pending",
+  "created_at": "2025-01-01T10:00:00+03:00"
+}
+```
 
+### 7.5 Job Status
+
+```
+GET /jobs/{job_id}
+```
+
+**Response:**
+```json
+{
+  "job_id": "abc123",
+  "status": "completed",  // pending | processing | completed | failed
+  "created_at": "2025-01-01T10:00:00+03:00",
+  "completed_at": "2025-01-01T10:00:25+03:00",
+  "progress": 100
+}
+```
+
+### 7.6 Job Result
+
+```
+GET /jobs/{job_id}/result
+```
+
+**Response:**
 ```json
 {
   "success": true,
@@ -416,7 +487,7 @@ email: (opsiyonel) results@company.com
     "min": 980.2,
     "max": 1456.8
   },
-  "download_url": "/files/{prediction_id}.xlsx"
+  "download_url": "/files/{job_id}.xlsx"
 }
 ```
 
@@ -434,7 +505,7 @@ email: (opsiyonel) results@company.com
 │                                          │
 │   ECS / App Runner                       │
 │       └── FastAPI container              │
-│           ├── /predict endpoint          │
+│           ├── /jobs endpoint             │
 │           ├── /health endpoint           │
 │           └── Model files (S3'den yükle) │
 │                                          │
@@ -470,15 +541,15 @@ GitHub Actions:
 
 ```
 configs/
-├── settings.yaml           # Genel: logging, lokasyon, timezone
+├── settings.yaml           # Genel: logging, lokasyon, timezone, paths
 ├── pipeline.yaml           # Pipeline: hangi modüller aktif, merge stratejisi
 ├── data_loader.yaml        # Veri yükleme: Excel format, validation
 ├── openmeteo.yaml          # Hava durumu: lokasyonlar, ağırlıklar, değişkenler
-├── models/
-│   ├── catboost.yaml       # CatBoost: kategorik kolonlar, eğitim parametreleri
-│   ├── hyperparameters.yaml # Optuna arama uzayı
-│   ├── prophet.yaml        # Prophet: seasonality, holidays, regressors
-│   └── tft.yaml            # TFT: architecture, training, quantiles
+├── catboost.yaml           # CatBoost: kategorik kolonlar, eğitim parametreleri
+├── prophet.yaml            # Prophet: seasonality, holidays, regressors
+├── tft.yaml                # TFT: architecture, training, quantiles
+├── hyperparameters.yaml    # Optuna arama uzayı (tüm modeller)
+├── smoke_test.yaml         # Smoke test override (minimal params)
 └── features/
     ├── calendar.yaml       # Calendar feature parametreleri
     ├── consumption.yaml    # Consumption: lag değerleri, window boyutları
@@ -537,6 +608,7 @@ DATABASE_URL=postgresql+asyncpg://user:pass@host:5432/db
 |--------|-----------|
 | Unit tests | Her public fonksiyon/class test edilmeli |
 | Integration tests | End-to-end pipeline (Excel → prediction) |
+| Smoke tests | Hızlı E2E validation (smoke_test.py) |
 | Coverage hedefi | %80+ (eski projedeki %5'ten büyük iyileşme) |
 | Mock kuralı | Sadece external API'ler mock'lanır (EPİAŞ, OpenMeteo) |
 
@@ -572,7 +644,18 @@ Commit format: `feat(scope): description` / `fix(scope): description`
 
 ---
 
-## 12. Domain Sözlüğü
+## 12. Known Issues
+
+| Sorun | Açıklama | Workaround |
+|-------|----------|------------|
+| FDPP deprecated | EPIAS API'den artık çekilemiyor | Diğer 4 değişken (Real_Time_Consumption, DAM_Purchase, Bilateral, Load_Forecast) kullanılıyor |
+| EPIAS duplicate timestamps | Yıllık cache dosyalarında duplicate satırlar olabiliyor | `df[~df.index.duplicated(keep='first')]` ile temizle |
+| Windows cp1254 codec | Unicode box-drawing karakterler encode edilemiyor | ASCII karakterler kullan (print summary'de) |
+| Prophet cmdstanpy | Bazı ortamlarda kurulum sorunu olabiliyor | `pip install cmdstanpy` sonra `cmdstanpy.install_cmdstan()` |
+
+---
+
+## 13. Domain Sözlüğü
 
 | Terim | Açıklama |
 |-------|----------|
@@ -587,12 +670,12 @@ Commit format: `feat(scope): description` / `fix(scope): description`
 | DNI | Direct Normal Irradiance |
 | DHI | Diffuse Horizontal Irradiance |
 | POA | Plane of Array (güneş paneli yüzeyi ışınımı) |
-| FDPP | Final Daily Production Plan |
+| FDPP | Final Daily Production Plan (DEPRECATED) |
 | Uludağ Bölgesi | Bursa + Balıkesir + Yalova + Çanakkale dağıtım bölgesi |
 
 ---
 
-## 13. Referanslar
+## 14. Referanslar
 
 | Dosya | İçerik |
 |-------|--------|

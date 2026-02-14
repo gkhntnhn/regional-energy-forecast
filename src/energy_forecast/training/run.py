@@ -2,6 +2,7 @@
 
 Usage:
     python -m energy_forecast.training.run --model catboost [--n-trials 5] [--data PATH]
+    python -m energy_forecast.training.run --model catboost --config configs/smoke_test.yaml --no-mlflow
 """
 
 from __future__ import annotations
@@ -12,9 +13,11 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
+import yaml
 from loguru import logger
 
 from energy_forecast.config import Settings, load_config
+from energy_forecast.config.settings import SearchParamConfig
 from energy_forecast.training.catboost_trainer import CatBoostTrainer
 from energy_forecast.training.experiment import ExperimentTracker
 
@@ -62,6 +65,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Path to configs directory.",
     )
     parser.add_argument(
+        "--config",
+        type=Path,
+        default=None,
+        help="Path to override config YAML (e.g., configs/smoke_test.yaml).",
+    )
+    parser.add_argument(
         "--models",
         type=str,
         default=None,
@@ -89,6 +98,82 @@ def load_data(data_path: Path) -> pd.DataFrame:
     df: pd.DataFrame = pd.read_parquet(data_path)
     logger.info("Loaded data: {} rows, {} columns", len(df), len(df.columns))
     return df
+
+
+def apply_config_overrides(settings: Settings, config_path: Path) -> None:
+    """Apply override config (e.g., smoke_test.yaml) to settings.
+
+    Modifies settings in-place by overriding hyperparameters and CV config.
+
+    Args:
+        settings: Settings object to modify.
+        config_path: Path to override YAML file.
+    """
+    if not config_path.exists():
+        msg = f"Override config not found: {config_path}"
+        raise FileNotFoundError(msg)
+
+    with open(config_path, encoding="utf-8") as f:
+        overrides = yaml.safe_load(f)
+
+    logger.info("Applying config overrides from {}", config_path)
+
+    hp = settings.hyperparameters
+
+    # Override CatBoost
+    if "catboost" in overrides:
+        cb_override = overrides["catboost"]
+        cb_config = hp.catboost
+        if "n_trials" in cb_override:
+            object.__setattr__(cb_config, "n_trials", cb_override["n_trials"])
+        if "search_space" in cb_override:
+            new_space = {
+                k: SearchParamConfig(**v) for k, v in cb_override["search_space"].items()
+            }
+            object.__setattr__(cb_config, "search_space", new_space)
+        logger.debug("CatBoost overrides applied")
+
+    # Override Prophet
+    if "prophet" in overrides:
+        p_override = overrides["prophet"]
+        p_config = hp.prophet
+        if "n_trials" in p_override:
+            object.__setattr__(p_config, "n_trials", p_override["n_trials"])
+        if "search_space" in p_override:
+            new_space = {
+                k: SearchParamConfig(**v) for k, v in p_override["search_space"].items()
+            }
+            object.__setattr__(p_config, "search_space", new_space)
+        logger.debug("Prophet overrides applied")
+
+    # Override TFT
+    if "tft" in overrides:
+        tft_override = overrides["tft"]
+        tft_config = hp.tft
+        if "n_trials" in tft_override:
+            object.__setattr__(tft_config, "n_trials", tft_override["n_trials"])
+        if "search_space" in tft_override:
+            new_space = {
+                k: SearchParamConfig(**v) for k, v in tft_override["search_space"].items()
+            }
+            object.__setattr__(tft_config, "search_space", new_space)
+        # Override TFT training params
+        if "training" in tft_override:
+            train_ovr = tft_override["training"]
+            train_cfg = settings.tft.training
+            for key, val in train_ovr.items():
+                if hasattr(train_cfg, key):
+                    object.__setattr__(train_cfg, key, val)
+        logger.debug("TFT overrides applied")
+
+    # Override cross-validation
+    if "cross_validation" in overrides:
+        cv_override = overrides["cross_validation"]
+        cv_config = hp.cross_validation
+        for key, val in cv_override.items():
+            if hasattr(cv_config, key):
+                object.__setattr__(cv_config, key, val)
+        logger.debug("Cross-validation overrides applied")
 
 
 def run_catboost(
@@ -227,6 +312,10 @@ def main(argv: list[str] | None = None) -> None:
 
     logger.info("Loading config from {}", args.configs)
     settings = load_config(args.configs)
+
+    # Apply override config if specified (e.g., smoke_test.yaml)
+    if args.config is not None:
+        apply_config_overrides(settings, args.config)
 
     # Override n_trials if specified (applies to all models for ensemble)
     if args.n_trials is not None:

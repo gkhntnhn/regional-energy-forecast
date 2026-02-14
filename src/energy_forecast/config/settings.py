@@ -100,10 +100,13 @@ class ForecastConfig(BaseModel, frozen=True):
     min_lag: int = Field(default=48, ge=1)
 
 
-class PathsConfig(BaseModel, frozen=True):
+class TrainingPathsConfig(BaseModel, frozen=True):
     """Default file paths for training and models."""
 
-    features_data: str = "data/processed/features.parquet"
+    raw_excel: str = "data/raw/Consumption_Input_Format.xlsx"
+    features_historical: str = "data/processed/features_historical.parquet"
+    features_forecast: str = "data/processed/features_forecast.parquet"
+    features_data: str = "data/processed/features_historical.parquet"  # Alias for training
     models_dir: str = "models"
     ensemble_weights: str = "models/ensemble_weights.json"
 
@@ -1004,7 +1007,7 @@ class Settings(BaseModel, frozen=True):
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     region: RegionConfig
     forecast: ForecastConfig = Field(default_factory=ForecastConfig)
-    paths: PathsConfig = Field(default_factory=PathsConfig)
+    paths: TrainingPathsConfig = Field(default_factory=TrainingPathsConfig)
     epias_api: EpiasApiConfig = Field(default_factory=EpiasApiConfig)
     pipeline: PipelineConfig = Field(default_factory=PipelineConfig)
     data_loader: DataLoaderConfig = Field(default_factory=DataLoaderConfig)

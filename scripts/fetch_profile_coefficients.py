@@ -46,7 +46,9 @@ METER_TYPE_TARGET = "Tek Zamanlı"
 OUTPUT_DIR = Path("data/external/profile")
 
 # Explicit profile group name → English column mapping
+# Note: API returns names with dashes (e.g., "Mesken - AG", "Sanayi-AG")
 PROFILE_NAME_MAPPING: dict[str, str] = {
+    # Original format
     "Mesken AG": "profile_residential_lv",
     "Mesken OG": "profile_residential_mv",
     "Sanayi AG": "profile_industrial_lv",
@@ -57,6 +59,15 @@ PROFILE_NAME_MAPPING: dict[str, str] = {
     "Tarımsal Sulama OG": "profile_agricultural_irrigation_mv",
     "Genel Aydınlatma": "profile_lighting",
     "Resmi Daire": "profile_government",
+    # API format with dashes
+    "Mesken - AG": "profile_residential_lv",
+    "Mesken - OG": "profile_residential_mv",
+    "Sanayi-AG": "profile_industrial_lv",
+    "Sanayi-OG": "profile_industrial_mv",
+    "Ticarethane - AG": "profile_commercial_lv",
+    "Ticarethane - OG": "profile_commercial_mv",
+    "Tarımsal Sulama - AG": "profile_agricultural_irrigation_lv",
+    "Tarımsal Sulama - OG": "profile_agricultural_irrigation_mv",
 }
 
 # Aggregate pairs: (output_col, lv_col, mv_col)
@@ -103,7 +114,9 @@ def authenticate(username: str, password: str) -> str:
     except httpx.HTTPError as exc:
         msg = f"EPIAS authentication failed: {exc}"
         raise EpiasAuthError(msg) from exc
-    return response.text.strip()
+    # TGT token is in Location header, not body
+    location = response.headers.get("location", "")
+    return location.split("/")[-1] if location else response.text.strip()
 
 
 # ---------------------------------------------------------------------------
@@ -155,12 +168,14 @@ def _api_request(
         raise EpiasApiError(msg) from exc
 
     data = response.json()
-    items: list[dict[str, Any]] = data.get("body", {}).get(
-        "content",
-        data.get("items", []),
-    )
-    if not items and isinstance(data, list):
+    # Handle both list and dict responses
+    if isinstance(data, list):
         items = data
+    else:
+        items = data.get("body", {}).get(
+            "content",
+            data.get("items", []),
+        )
     return items
 
 
@@ -186,9 +201,10 @@ def get_distribution_id(tgt: str, target: str = DISTRIBUTION_TARGET) -> int:
         body={"period": period},
     )
     for item in items:
-        name = item.get("distributionCompanyName", "")
+        # API returns 'name' and 'id' (not distributionCompanyName/Id)
+        name = item.get("name", item.get("distributionCompanyName", ""))
         if target.lower() in name.lower():
-            dist_id: int = item["distributionCompanyId"]
+            dist_id: int = item.get("id", item.get("distributionCompanyId", 0))
             logger.info("Found distribution: {} (ID={})", name, dist_id)
             return dist_id
 
@@ -212,9 +228,10 @@ def get_meter_type_id(tgt: str, target: str = METER_TYPE_TARGET) -> int:
         method="GET",
     )
     for item in items:
-        name = item.get("meterReadingTypeName", "")
+        # API returns 'name' and 'id' (not meterReadingTypeName/Id)
+        name = item.get("name", item.get("meterReadingTypeName", ""))
         if target.lower() in name.lower():
-            type_id: int = item["meterReadingTypeId"]
+            type_id: int = item.get("id", item.get("meterReadingTypeId", 0))
             logger.info("Found meter type: {} (ID={})", name, type_id)
             return type_id
 
@@ -242,10 +259,11 @@ def get_profile_groups(
         tgt,
         body={"distributionId": distribution_id, "period": period},
     )
+    # API returns 'id' and 'name' (not subscriberProfileGroupId/Name)
     groups = [
         {
-            "id": item["subscriberProfileGroupId"],
-            "name": item["subscriberProfileGroupName"],
+            "id": item.get("id", item.get("subscriberProfileGroupId", 0)),
+            "name": item.get("name", item.get("subscriberProfileGroupName", "")),
         }
         for item in items
     ]

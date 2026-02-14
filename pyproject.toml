@@ -131,3 +131,8 @@ omit = ["*/tests/*"]
 [tool.coverage.report]
 fail_under = 80
 show_missing = true
+
+[dependency-groups]
+dev = [
+    "debugpy>=1.8.20",
+]

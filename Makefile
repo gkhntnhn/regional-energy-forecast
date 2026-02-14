@@ -1,4 +1,4 @@
-.PHONY: install test lint format serve train-catboost train-prophet train-tft train-ensemble prepare-data clean
+.PHONY: install test lint format serve train-catboost train-prophet train-tft train-ensemble prepare-data clean smoke-test smoke-test-fast smoke-test-minimal
 
 install:
 	uv sync --all-extras
@@ -30,7 +30,7 @@ train-ensemble:
 	uv run python -m energy_forecast.training.run --model ensemble
 
 prepare-data:
-	uv run python -m energy_forecast.data.prepare
+	uv run python scripts/prepare_dataset.py
 
 clean:
 	find . -type d -name __pycache__ -exec rm -rf {} +
@@ -38,3 +38,12 @@ clean:
 	find . -type d -name .mypy_cache -exec rm -rf {} +
 	find . -type d -name .ruff_cache -exec rm -rf {} +
 	rm -rf dist/ build/ *.egg-info
+
+smoke-test:
+	uv run python scripts/smoke_test.py --config configs/smoke_test.yaml
+
+smoke-test-fast:
+	uv run python scripts/smoke_test.py --config configs/smoke_test.yaml --skip-tft
+
+smoke-test-minimal:
+	uv run python scripts/smoke_test.py --config configs/smoke_test.yaml --skip-prophet --skip-tft

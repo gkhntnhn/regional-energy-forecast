@@ -36,7 +36,10 @@ forecast:
   min_lag: 48
 
 paths:
-  features_data: "data/processed/features.parquet"
+  raw_excel: "data/raw/Consumption_Input_Format.xlsx"
+  features_historical: "data/processed/features_historical.parquet"
+  features_forecast: "data/processed/features_forecast.parquet"
+  features_data: "data/processed/features_historical.parquet"  # Alias for training
   models_dir: "models"
   ensemble_weights: "models/ensemble_weights.json"
 
