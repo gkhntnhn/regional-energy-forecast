@@ -13,9 +13,9 @@ holidays:
   include_ramadan: true
 
 regressors:
-  - name: "temperature"
+  - name: "temperature_2m"
     mode: "additive"
-  - name: "humidity"
+  - name: "relative_humidity_2m"
     mode: "additive"
 
 changepoint:

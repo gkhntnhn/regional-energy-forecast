@@ -15,7 +15,7 @@ training:
   early_stop_patience: 10
   gradient_clip_val: 0.1
   random_seed: 42
-  accelerator: "cpu"  # "cpu", "gpu", or "auto"
+  accelerator: "auto"  # "auto" uses GPU if available, else CPU
   num_workers: 0
 
 optimization:
@@ -34,8 +34,8 @@ covariates:
     - is_holiday
     - is_weekend
     - is_ramadan
-    - solar_elevation
-    - solar_azimuth
+    - sol_elevation
+    - sol_azimuth
     - temperature_2m
     - relative_humidity_2m
     - apparent_temperature

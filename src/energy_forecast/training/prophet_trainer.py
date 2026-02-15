@@ -12,6 +12,7 @@ Uses the same shared infrastructure as CatBoostTrainer:
 
 from __future__ import annotations
 
+import pickle
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -127,6 +128,10 @@ class ProphetTrainer:
                 prophet_df[reg.name] = df[reg.name].values
                 if reg.name not in self._regressor_names:
                     self._regressor_names.append(reg.name)
+            else:
+                logger.warning(
+                    "Regressor '{}' configured but not in DataFrame columns", reg.name
+                )
 
         return prophet_df
 
@@ -134,6 +139,11 @@ class ProphetTrainer:
 
     def _create_prophet(self, params: dict[str, Any]) -> Prophet:
         """Create Prophet model with given parameters.
+
+        Only adds regressors that were found in the data (populated by
+        ``_to_prophet_format``).  This prevents Prophet from raising
+        ``ValueError`` when a configured regressor is missing from the
+        DataFrame.
 
         Args:
             params: Hyperparameters (from Optuna or defaults).
@@ -158,9 +168,12 @@ class ProphetTrainer:
 
         model = Prophet(**model_params)
 
-        # Add regressors (must be before fit)
+        # Add only regressors confirmed present in data
         for reg in cfg.regressors:
-            model.add_regressor(reg.name, mode=reg.mode)
+            if reg.name in self._regressor_names:
+                model.add_regressor(reg.name, mode=reg.mode)
+            else:
+                logger.warning("Regressor '{}' not found in data, skipping", reg.name)
 
         return model
 
@@ -399,6 +412,15 @@ class ProphetTrainer:
 
         with self._tracker.start_run("prophet_final"):
             final_model = self.train_final(df, study.best_params)
+
+            # Save model to local disk (always, regardless of MLflow)
+            model_dir = Path(self._settings.paths.models_dir) / "prophet"
+            model_dir.mkdir(parents=True, exist_ok=True)
+            model_path = model_dir / "model.pkl"
+            with open(model_path, "wb") as f:
+                pickle.dump(final_model, f)
+            logger.info("Model saved to {}", model_path)
+
             self._tracker.log_prophet_model(final_model, "prophet_model")
 
         elapsed = time.monotonic() - start

@@ -11,16 +11,16 @@ panel:
   azimuth: 180  # south-facing
 
 features:
-  - solar_elevation
-  - solar_azimuth
-  - ghi
-  - dni
-  - dhi
-  - poa_global
-  - clearness_index
-  - cloud_proxy
-  - is_daylight
-  - daylight_hours
+  - sol_elevation
+  - sol_azimuth
+  - sol_ghi
+  - sol_dni
+  - sol_dhi
+  - sol_poa_global
+  - sol_clearness_index
+  - sol_cloud_proxy
+  - sol_is_daylight
+  - sol_daylight_hours
 
 lead:
   enabled: true

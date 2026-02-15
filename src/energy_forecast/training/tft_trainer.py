@@ -15,6 +15,7 @@ from __future__ import annotations
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -309,13 +310,11 @@ class TFTTrainer:
     def optimize(
         self,
         df: pd.DataFrame,
-        fast_epochs: int = 10,
     ) -> tuple[Study, TFTTrainingResult]:
         """Run Optuna hyperparameter optimization.
 
         Args:
             df: Feature-engineered DataFrame.
-            fast_epochs: Reduced epochs for optimization trials.
 
         Returns:
             Tuple of (study, best_trial_result trained on all splits).
@@ -325,7 +324,7 @@ class TFTTrainer:
             sampler=TPESampler(seed=self._tft_config.training.random_seed),
         )
 
-        objective = self._create_objective(df, fast_epochs)
+        objective = self._create_objective(df)
         study.optimize(objective, n_trials=self._search_config.n_trials)
 
         logger.info(
@@ -377,13 +376,11 @@ class TFTTrainer:
     def run(
         self,
         df: pd.DataFrame,
-        fast_epochs: int = 10,
     ) -> TFTPipelineResult:
         """Execute full training pipeline: optimize + final model + MLflow.
 
         Args:
             df: Feature-engineered DataFrame (pipeline output).
-            fast_epochs: Reduced epochs for optimization trials.
 
         Returns:
             TFTPipelineResult with study, final model, and metrics.
@@ -391,7 +388,7 @@ class TFTTrainer:
         start = time.monotonic()
 
         with self._tracker.start_run("tft_optimization"):
-            study, best_result = self.optimize(df, fast_epochs)
+            study, best_result = self.optimize(df)
             self._tracker.log_params(study.best_params)
             self._tracker.log_metrics(
                 {
@@ -407,6 +404,13 @@ class TFTTrainer:
 
         with self._tracker.start_run("tft_final"):
             final_model = self.train_final(df, study.best_params)
+
+            # Save model to local disk (always, regardless of MLflow)
+            model_dir = Path(self._settings.paths.models_dir) / "tft"
+            model_dir.mkdir(parents=True, exist_ok=True)
+            final_model.save(model_dir)
+            logger.info("Model saved to {}", model_dir)
+
             self._tracker.log_tft_model(final_model, "tft_model")
 
         elapsed = time.monotonic() - start

@@ -14,7 +14,7 @@ catboost:
   search_space:
     iterations:
       type: int
-      low: 25
+      low: 50
       high: 50
     learning_rate:
       type: float
@@ -42,7 +42,7 @@ catboost:
 
 # Minimal Prophet - fixed values
 prophet:
-  n_trials: 2
+  n_trials: 1
   search_space:
     changepoint_prior_scale:
       type: float
@@ -62,9 +62,9 @@ prophet:
 
 # Minimal TFT - very small network, few epochs
 tft:
-  n_trials: 2
+  n_trials: 1
   training:
-    max_epochs: 2
+    max_epochs: 1          # 3 → 1
     early_stop_patience: 1
     gradient_clip_val: 0.1
     accelerator: "auto"
@@ -73,8 +73,8 @@ tft:
   search_space:
     hidden_size:
       type: int
-      low: 16
-      high: 16
+      low: 8               # 16 → 8
+      high: 8
     attention_head_size:
       type: categorical
       choices: [1]
@@ -84,8 +84,8 @@ tft:
       high: 0.1
     hidden_continuous_size:
       type: int
-      low: 8
-      high: 8
+      low: 4               # 8 → 4
+      high: 4
     lstm_layers:
       type: categorical
       choices: [1]
@@ -95,11 +95,11 @@ tft:
       high: 0.01
     batch_size:
       type: categorical
-      choices: [64]
+      choices: [256]        # 64 → 256 (daha az step)
 
-# Minimal cross-validation - fewer splits, shorter periods
+# Cross validation
 cross_validation:
-  n_splits: 12
+  n_splits: 2
   val_months: 1
   test_months: 1
   gap_hours: 0

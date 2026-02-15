@@ -53,6 +53,14 @@ dev = [
     "types-openpyxl>=3.1",
 ]
 
+[[tool.uv.index]]
+name = "pytorch-cu126"
+url = "https://download.pytorch.org/whl/cu126"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu126" }
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
@@ -99,6 +107,7 @@ module = [
     "prophet.*",
     "pytorch_forecasting.*",
     "pytorch_lightning.*",
+    "lightning.*",
     "pvlib.*",
     "sklearn.*",
     "mlflow.*",

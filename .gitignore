@@ -25,18 +25,18 @@ env/
 # Environment
 .env
 
-# Data files (large)
+# Data files
 data/raw/*.xlsx
 data/raw/*.csv
-data/processed/*.parquet
-data/external/epias/*.parquet
-data/external/weather_cache.db
+data/processed/
+data/external/
+data/uploads/
+data/outputs/
 
 # Model artifacts
-models/*.cbm
-models/*.pkl
-models/*.ckpt
-models/*.pt
+models/catboost/
+models/prophet/
+models/tft/
 
 # MLflow
 mlruns/
@@ -44,6 +44,10 @@ mlartifacts/
 
 # CatBoost
 catboost_info/
+
+# Lightning / PyTorch
+lightning_logs/
+checkpoints/
 
 # Reports
 reports/*.html

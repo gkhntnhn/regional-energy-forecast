@@ -450,16 +450,16 @@ class SolarConfig(BaseModel, frozen=True):
     panel: SolarPanelConfig = Field(default_factory=SolarPanelConfig)
     features: list[str] = Field(
         default_factory=lambda: [
-            "solar_elevation",
-            "solar_azimuth",
-            "ghi",
-            "dni",
-            "dhi",
-            "poa_global",
-            "clearness_index",
-            "cloud_proxy",
-            "is_daylight",
-            "daylight_hours",
+            "sol_elevation",
+            "sol_azimuth",
+            "sol_ghi",
+            "sol_dni",
+            "sol_dhi",
+            "sol_poa_global",
+            "sol_clearness_index",
+            "sol_cloud_proxy",
+            "sol_is_daylight",
+            "sol_daylight_hours",
         ]
     )
     lead: SolarLeadConfig = Field(default_factory=SolarLeadConfig)
@@ -714,8 +714,8 @@ class TFTCovariatesConfig(BaseModel, frozen=True):
             "is_holiday",
             "is_weekend",
             "is_ramadan",
-            "solar_elevation",
-            "solar_azimuth",
+            "sol_elevation",
+            "sol_azimuth",
             "temperature_2m",
             "relative_humidity_2m",
             "apparent_temperature",

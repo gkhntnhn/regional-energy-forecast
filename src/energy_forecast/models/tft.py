@@ -23,7 +23,7 @@ from energy_forecast.config.settings import TFTConfig
 from energy_forecast.models.base import BaseForecaster
 
 if TYPE_CHECKING:
-    import pytorch_lightning as pl
+    import lightning.pytorch as pl
 
 # Constants for TimeSeriesDataSet
 GROUP_ID = "series_0"
@@ -203,16 +203,14 @@ class TFTForecaster(BaseForecaster):
             max_epochs: Override max epochs (for testing).
 
         Returns:
-            Configured pytorch_lightning.Trainer.
+            Configured lightning Trainer.
         """
-        import pytorch_lightning as pl_lib
-        from pytorch_lightning.callbacks import Callback, EarlyStopping, LearningRateMonitor
+        import lightning.pytorch as pl_lib
+        from lightning.pytorch.callbacks import Callback, EarlyStopping
 
         cfg = self._tft_config.training
 
-        callbacks: list[Callback] = [
-            LearningRateMonitor(logging_interval="step"),
-        ]
+        callbacks: list[Callback] = []
 
         if cfg.early_stop_patience > 0:
             callbacks.append(
@@ -236,6 +234,7 @@ class TFTForecaster(BaseForecaster):
             enable_progress_bar=True,
             enable_model_summary=False,
             logger=False,  # Disable Lightning's logger, we use MLflow
+            default_root_dir=str(Path("models") / "tft"),
         )
 
         return trainer

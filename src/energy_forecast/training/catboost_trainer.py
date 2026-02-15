@@ -9,6 +9,7 @@ from __future__ import annotations
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -313,6 +314,14 @@ class CatBoostTrainer:
 
         with self._tracker.start_run("catboost_final"):
             final_model = self.train_final(df, study.best_params, best_result.avg_best_iteration)
+
+            # Save model to local disk (always, regardless of MLflow)
+            model_dir = Path(self._settings.paths.models_dir) / "catboost"
+            model_dir.mkdir(parents=True, exist_ok=True)
+            model_path = model_dir / "model.cbm"
+            final_model.save_model(str(model_path))
+            logger.info("Model saved to {}", model_path)
+
             self._tracker.log_model(final_model, artifact_path="catboost_model")
 
             importance = dict(
