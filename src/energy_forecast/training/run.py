@@ -175,6 +175,13 @@ def apply_config_overrides(settings: Settings, config_path: Path) -> None:
                 object.__setattr__(cv_config, key, val)
         logger.debug("Cross-validation overrides applied")
 
+    # Override validation settings
+    if "validation" in overrides:
+        val_override = overrides["validation"]
+        if val_override.get("skip_after_optuna", False):
+            object.__setattr__(hp, "skip_validation_after_optuna", True)
+            logger.debug("Post-Optuna validation skip enabled")
+
 
 def run_catboost(
     settings: Settings,

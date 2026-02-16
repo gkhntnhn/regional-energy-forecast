@@ -51,12 +51,25 @@ def transformed_df(
 
 @pytest.fixture()
 def holidays_parquet(tmp_path: Path) -> Path:
-    """Small holidays parquet with 2024-01-01 as a holiday."""
+    """Small holidays parquet with varied holiday types."""
     holidays = pd.DataFrame(
         {
-            "date": pd.to_datetime(["2024-01-01", "2024-04-10"]),
-            "name": ["Yilbasi", "Ramazan Bayrami"],
-            "is_ramadan": [0, 1],
+            "date": pd.to_datetime([
+                "2024-01-01",  # New Year (resmi) — Monday
+                "2024-04-10",  # Ramazan Bayrami (dini) — Wednesday
+                "2024-04-11",  # Ramazan Bayrami 2. Gun (dini) — Thursday
+                "2024-04-12",  # Ramazan Bayrami 3. Gun (dini) — Friday
+                "2024-04-23",  # 23 Nisan (resmi) — Tuesday
+            ]),
+            "holiday_name": [
+                "New Year's Day",
+                "Ramazan Bayrami 1. Gun",
+                "Ramazan Bayrami 2. Gun",
+                "Ramazan Bayrami 3. Gun",
+                "National Sovereignty and Children's Day",
+            ],
+            "is_ramadan": [0, 0, 0, 0, 0],
+            "bayram_gun_no": [0, 1, 2, 3, 0],
         }
     )
     p = tmp_path / "turkish_holidays.parquet"
@@ -281,3 +294,168 @@ class TestSeasonFlags:
     def test_season_column_values(self, transformed_df: pd.DataFrame) -> None:
         """January maps to season=0 (winter)."""
         assert (transformed_df["season"] == 0).all()
+
+
+# ---------------------------------------------------------------------------
+# 7. Holiday interaction features (P0-2)
+# ---------------------------------------------------------------------------
+
+
+class TestHolidayInteractionFeatures:
+    """Holiday × hour, holiday type, and bridge day features."""
+
+    def test_is_holiday_x_hour_on_holiday(
+        self,
+        holiday_engineer: CalendarFeatureEngineer,
+        calendar_df: pd.DataFrame,
+    ) -> None:
+        """is_holiday_x_hour = hour on holiday, 0 on normal days."""
+        result = holiday_engineer.transform(calendar_df)
+        # Jan 1 is holiday — is_holiday_x_hour should equal the hour
+        jan1_rows = result.loc["2024-01-01"]
+        expected = jan1_rows.index.hour
+        np.testing.assert_array_equal(jan1_rows["is_holiday_x_hour"].values, expected)
+
+    def test_is_holiday_x_hour_on_normal_day(
+        self,
+        holiday_engineer: CalendarFeatureEngineer,
+        calendar_df: pd.DataFrame,
+    ) -> None:
+        """is_holiday_x_hour = 0 for non-holiday days."""
+        result = holiday_engineer.transform(calendar_df)
+        jan2_rows = result.loc["2024-01-02"]
+        assert (jan2_rows["is_holiday_x_hour"] == 0).all()
+
+    def test_tatil_tipi_dini(self, tmp_path: Path) -> None:
+        """Ramazan Bayrami is classified as dini (tatil_tipi=2)."""
+        holidays = pd.DataFrame(
+            {
+                "date": pd.to_datetime(["2024-04-10"]),
+                "holiday_name": ["Ramazan Bayrami 1. Gun"],
+                "is_ramadan": [0],
+                "bayram_gun_no": [1],
+            }
+        )
+        p = tmp_path / "h.parquet"
+        holidays.to_parquet(p, index=False)
+
+        cfg = CalendarConfig().model_dump()
+        cfg["holidays"]["path"] = str(p)
+        eng = CalendarFeatureEngineer(config=cfg)
+
+        idx = pd.date_range("2024-04-10", periods=24, freq="h")
+        df = pd.DataFrame({"consumption": 1000.0}, index=idx).rename_axis("datetime")
+        result = eng.transform(df)
+
+        assert (result["tatil_tipi"] == 2).all()
+
+    def test_tatil_tipi_resmi(self, tmp_path: Path) -> None:
+        """New Year's Day is classified as resmi (tatil_tipi=1)."""
+        holidays = pd.DataFrame(
+            {
+                "date": pd.to_datetime(["2024-01-01"]),
+                "holiday_name": ["New Year's Day"],
+                "is_ramadan": [0],
+                "bayram_gun_no": [0],
+            }
+        )
+        p = tmp_path / "h.parquet"
+        holidays.to_parquet(p, index=False)
+
+        cfg = CalendarConfig().model_dump()
+        cfg["holidays"]["path"] = str(p)
+        eng = CalendarFeatureEngineer(config=cfg)
+
+        idx = pd.date_range("2024-01-01", periods=24, freq="h")
+        df = pd.DataFrame({"consumption": 1000.0}, index=idx).rename_axis("datetime")
+        result = eng.transform(df)
+
+        assert (result["tatil_tipi"] == 1).all()
+
+    def test_tatil_tipi_none_on_normal_day(
+        self,
+        holiday_engineer: CalendarFeatureEngineer,
+        calendar_df: pd.DataFrame,
+    ) -> None:
+        """Normal days have tatil_tipi=0."""
+        result = holiday_engineer.transform(calendar_df)
+        jan2_rows = result.loc["2024-01-02"]
+        assert (jan2_rows["tatil_tipi"] == 0).all()
+
+    def test_bridge_day_friday_after_thursday_holiday(self, tmp_path: Path) -> None:
+        """Friday is a bridge day when Thursday is a holiday (Thu+Fri+Sat+Sun)."""
+        # Thursday 2024-04-04 is holiday, Friday should be bridge
+        holidays = pd.DataFrame(
+            {
+                "date": pd.to_datetime(["2024-04-04"]),
+                "holiday_name": ["Test Holiday"],
+                "is_ramadan": [0],
+                "bayram_gun_no": [0],
+            }
+        )
+        p = tmp_path / "h.parquet"
+        holidays.to_parquet(p, index=False)
+
+        cfg = CalendarConfig().model_dump()
+        cfg["holidays"]["path"] = str(p)
+        eng = CalendarFeatureEngineer(config=cfg)
+
+        idx = pd.date_range("2024-04-01", periods=168, freq="h")
+        df = pd.DataFrame({"consumption": 1000.0}, index=idx).rename_axis("datetime")
+        result = eng.transform(df)
+
+        # Friday 2024-04-05: prev=Thu(holiday), next=Sat(weekend)
+        friday_rows = result.loc["2024-04-05"]
+        assert (friday_rows["is_bridge_day"] == 1).all()
+
+    def test_bridge_day_tuesday_after_monday_holiday(self, tmp_path: Path) -> None:
+        """Monday is a bridge day when Tuesday is a holiday (Sat+Sun+Mon+Tue)."""
+        # Tuesday 2024-04-23 is 23 Nisan holiday, Monday should be bridge
+        holidays = pd.DataFrame(
+            {
+                "date": pd.to_datetime(["2024-04-23"]),
+                "holiday_name": ["National Sovereignty and Children's Day"],
+                "is_ramadan": [0],
+                "bayram_gun_no": [0],
+            }
+        )
+        p = tmp_path / "h.parquet"
+        holidays.to_parquet(p, index=False)
+
+        cfg = CalendarConfig().model_dump()
+        cfg["holidays"]["path"] = str(p)
+        eng = CalendarFeatureEngineer(config=cfg)
+
+        idx = pd.date_range("2024-04-19", periods=168, freq="h")
+        df = pd.DataFrame({"consumption": 1000.0}, index=idx).rename_axis("datetime")
+        result = eng.transform(df)
+
+        # Monday 2024-04-22: prev=Sun(weekend), next=Tue(holiday) → classic bridge
+        monday_rows = result.loc["2024-04-22"]
+        assert (monday_rows["is_bridge_day"] == 1).all()
+
+    def test_no_bridge_on_normal_friday(
+        self,
+        holiday_engineer: CalendarFeatureEngineer,
+    ) -> None:
+        """Regular Fridays without nearby holidays are NOT bridge days."""
+        # Use a period with no holidays nearby
+        idx = pd.date_range("2024-02-05", periods=168, freq="h")
+        df = pd.DataFrame({"consumption": 1000.0}, index=idx).rename_axis("datetime")
+        result = holiday_engineer.transform(df)
+
+        # Friday 2024-02-09: no nearby holiday → NOT bridge
+        friday_rows = result.loc["2024-02-09"]
+        assert (friday_rows["is_bridge_day"] == 0).all()
+
+    def test_missing_holidays_sets_defaults(self, calendar_df: pd.DataFrame) -> None:
+        """Missing holidays file sets tatil_tipi=0 and is_holiday_x_hour=0."""
+        cfg = CalendarConfig().model_dump()
+        cfg["holidays"]["path"] = "/nonexistent/path/holidays.parquet"
+        eng = CalendarFeatureEngineer(config=cfg)
+        result = eng.transform(calendar_df)
+
+        assert "tatil_tipi" in result.columns
+        assert "is_holiday_x_hour" in result.columns
+        assert (result["tatil_tipi"] == 0).all()
+        assert (result["is_holiday_x_hour"] == 0).all()

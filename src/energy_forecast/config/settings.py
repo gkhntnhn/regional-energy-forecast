@@ -472,7 +472,7 @@ class EpiasSourceConfig(BaseModel, frozen=True):
     """EPIAS data source paths."""
 
     cache_dir: str = "data/external/epias"
-    file_pattern: str = "{year}.parquet"
+    file_pattern: str = "epias_market_{year}.parquet"
 
 
 class EpiasLagConfig(BaseModel, frozen=True):
@@ -919,6 +919,7 @@ class HyperparameterConfig(BaseModel, frozen=True):
         default_factory=CrossValidationConfig,
     )
     target_col: str = "consumption"
+    skip_validation_after_optuna: bool = False
 
 
 # ---------------------------------------------------------------------------

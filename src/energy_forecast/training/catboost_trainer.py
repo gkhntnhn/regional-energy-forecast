@@ -91,6 +91,7 @@ class CatBoostTrainer:
         self._tracker = tracker or ExperimentTracker(enabled=False)
         self._splitter = TimeSeriesSplitter.from_config(settings.hyperparameters.cross_validation)
         self._target_col = settings.hyperparameters.target_col
+        self._skip_validation = settings.hyperparameters.skip_validation_after_optuna
 
     # -- X/y split (resolves M4 leakage audit warning) --
 
@@ -207,6 +208,8 @@ class CatBoostTrainer:
             suggested = suggest_params(trial, search_space)
             params = {**fixed_params, **suggested}
             result = self._train_all_splits(df, params)
+            trial.set_user_attr("avg_best_iteration", result.avg_best_iteration)
+            trial.set_user_attr("avg_test_mape", result.avg_test_mape)
             return result.avg_val_mape
 
         return objective
@@ -236,7 +239,6 @@ class CatBoostTrainer:
             study.best_params,
         )
 
-        # Re-train with best params to get full results
         fixed_params: dict[str, Any] = {
             "task_type": self._cb_config.training.task_type,
             "eval_metric": self._cb_config.training.eval_metric,
@@ -245,7 +247,25 @@ class CatBoostTrainer:
             "use_best_model": True,
         }
         best_params = {**fixed_params, **study.best_params}
-        best_result = self._train_all_splits(df, best_params)
+
+        if self._skip_validation:
+            logger.info("Skipping post-Optuna validation (skip_validation_after_optuna=true)")
+            x_sample, _ = self._split_xy(df.iloc[:1])
+            best_result = TrainingResult(
+                split_results=[],
+                avg_val_mape=study.best_value,
+                avg_test_mape=float(
+                    study.best_trial.user_attrs.get("avg_test_mape", float("nan"))
+                ),
+                std_val_mape=0.0,
+                avg_best_iteration=int(
+                    study.best_trial.user_attrs.get("avg_best_iteration", 500)
+                ),
+                feature_names=list(x_sample.columns),
+            )
+        else:
+            best_result = self._train_all_splits(df, best_params)
+
         return study, best_result
 
     # -- Final model --

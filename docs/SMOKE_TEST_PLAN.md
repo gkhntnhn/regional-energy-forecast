@@ -190,16 +190,16 @@ Parametreler: 3 model, smoke config
 ### On Kosul: Adim 1, 2, 3 basariyla tamamlanmis olmali!
 
 ### Kontrol Listesi:
-- [ ] Script hatasiz basladi
-- [ ] 3 model sirayla egitildi (CatBoost -> Prophet -> TFT)
-- [ ] Tum modeller basarili (veya graceful degradation aktif)
-- [ ] Weight optimization calisti (SLSQP)
-- [ ] Optimized weights loglandi
-- [ ] Weights sum = 1.0
-- [ ] Ensemble MAPE hesaplandi
-- [ ] Comparison table yazdirildi
-- [ ] ensemble_weights.json kaydedildi
-- [ ] Modeller kaydedildi
+- [x] Script hatasiz basladi
+- [x] 3 model sirayla egitildi (CatBoost -> Prophet -> TFT)
+- [x] Tum modeller basarili (veya graceful degradation aktif)
+- [x] Weight optimization calisti (SLSQP)
+- [x] Optimized weights loglandi
+- [x] Weights sum = 1.0
+- [x] Ensemble MAPE hesaplandi
+- [x] Comparison table yazdirildi
+- [x] ensemble_weights.json kaydedildi
+- [x] Modeller kaydedildi
 
 ### Incelenecek Metrikler:
 - [ ] CatBoost MAPE: ____%
@@ -207,6 +207,12 @@ Parametreler: 3 model, smoke config
 - [ ] TFT MAPE: ____%
 - [ ] Ensemble MAPE: ____% (en iyi tek modelden dusuk olmali)
 - [ ] Weights: CatBoost=___, Prophet=___, TFT=___
+- Ensemble Notlar:
+- Val MAPE: 5.00%, Test MAPE: 4.07%
+- Weights: CatBoost=0.80, Prophet=0.10, TFT=0.10
+- CatBoost baskın — Prophet/TFT smoke'da zayıf olduğu için
+- Pipeline E2E çalışıyor: train → optimize weights → save
+- 1081s (18dk) toplam süre
 
 ### Beklenen:
 - Ensemble MAPE < en iyi tek model MAPE (degilse weight optimization'da sorun var)

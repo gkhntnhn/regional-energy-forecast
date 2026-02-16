@@ -18,6 +18,7 @@ categorical_features:
   - is_holiday
   - is_weekend
   - is_ramadan
+  - bayram_gun_no
   - weather_code
   - season
 

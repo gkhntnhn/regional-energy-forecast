@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pandas as pd
@@ -229,7 +230,7 @@ class TestTFTForecasterSaveLoad:
         tft_config: TFTConfig,
         sample_df: pd.DataFrame,
     ) -> None:
-        """Test save creates checkpoint and metadata files."""
+        """Test save creates checkpoint, metadata, and training dataset files."""
         model = TFTForecaster(tft_config)
         train_df = sample_df.iloc[:200]
         val_df = sample_df.iloc[200:]
@@ -243,6 +244,7 @@ class TestTFTForecasterSaveLoad:
             assert (save_path / "tft_model.ckpt").exists()
             assert (save_path / "metadata.json").exists()
             assert (save_path / "dataset_params.json").exists()
+            assert (save_path / "training_dataset.pkl").exists()
 
     def test_save_raises_if_not_fitted(
         self,
@@ -261,7 +263,7 @@ class TestTFTForecasterSaveLoad:
         tft_config: TFTConfig,
         sample_df: pd.DataFrame,
     ) -> None:
-        """Test load restores metadata and quantiles."""
+        """Test load restores metadata, quantiles, and makes model usable."""
         model = TFTForecaster(tft_config)
         train_df = sample_df.iloc[:200]
         val_df = sample_df.iloc[200:]
@@ -272,12 +274,43 @@ class TestTFTForecasterSaveLoad:
             save_path = Path(tmpdir)
             model.save(save_path)
 
-            # Load into new model
+            # Load into new model via instance method
             new_model = TFTForecaster(tft_config)
             new_model.load(save_path)
 
             assert new_model._quantiles == model._quantiles
             assert new_model._dataset_params == model._dataset_params
+            assert new_model.is_fitted is True
+
+    @pytest.mark.slow
+    def test_from_checkpoint_creates_functional_model(
+        self,
+        tft_config: TFTConfig,
+        sample_df: pd.DataFrame,
+    ) -> None:
+        """Test from_checkpoint returns a model that can predict."""
+        model = TFTForecaster(tft_config)
+        train_df = sample_df.iloc[:200]
+        val_df = sample_df.iloc[200:250]
+        test_df = sample_df.iloc[250:]
+
+        model.train(train_df, val_df, max_epochs=2)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            save_path = Path(tmpdir)
+            model.save(save_path)
+
+            # Load via classmethod
+            loaded = TFTForecaster.from_checkpoint(save_path)
+
+            assert loaded.is_fitted is True
+            assert loaded._quantiles == model._quantiles
+
+            # Verify prediction works
+            predictions = loaded.predict(test_df)
+            assert isinstance(predictions, pd.DataFrame)
+            assert "yhat" in predictions.columns
+            assert len(predictions) > 0
 
 
 class TestTFTForecasterQuantiles:
@@ -292,3 +325,163 @@ class TestTFTForecasterQuantiles:
 
         with pytest.raises(RuntimeError, match="No predictions"):
             model.get_quantile_predictions()
+
+
+class TestPredictRolling:
+    """Tests for rolling window prediction."""
+
+    def _make_mock_model(
+        self, tft_config: TFTConfig, pred_len: int
+    ) -> TFTForecaster:
+        """Create a TFTForecaster with mocked predict()."""
+        model = TFTForecaster(tft_config)
+        # Mark as fitted so predict_rolling doesn't fail early
+        model._model = MagicMock()
+        return model
+
+    def test_short_input_delegates_to_predict(
+        self,
+        tft_config: TFTConfig,
+        sample_df: pd.DataFrame,
+    ) -> None:
+        """Input <= enc+pred delegates directly to predict()."""
+        model = self._make_mock_model(tft_config, pred_len=12)
+        enc_len = tft_config.training.encoder_length  # 24
+        pred_len = tft_config.training.prediction_length  # 12
+        window_size = enc_len + pred_len  # 36
+
+        # Use exactly window_size rows
+        short_df = sample_df.iloc[:window_size]
+        expected_result = pd.DataFrame(
+            {"yhat": np.ones(pred_len)},
+            index=short_df.index[-pred_len:],
+        )
+
+        with patch.object(model, "predict", return_value=expected_result) as mock_pred:
+            result = model.predict_rolling(short_df)
+            mock_pred.assert_called_once()
+            assert len(result) == pred_len
+
+    def test_rolling_produces_full_coverage(
+        self,
+        tft_config: TFTConfig,
+        sample_df: pd.DataFrame,
+    ) -> None:
+        """Input > enc+pred produces predictions beyond the first window."""
+        model = self._make_mock_model(tft_config, pred_len=12)
+        enc_len = tft_config.training.encoder_length  # 24
+        pred_len = tft_config.training.prediction_length  # 12
+
+        # Use 100 rows (much larger than enc+pred=36)
+        long_df = sample_df.iloc[:100]
+
+        def mock_predict(window_df: pd.DataFrame, target_col: str | None = None) -> pd.DataFrame:
+            """Return pred_len predictions from end of window."""
+            return pd.DataFrame(
+                {"yhat": np.ones(pred_len) * 42.0},
+                index=window_df.index[-pred_len:],
+            )
+
+        with patch.object(model, "predict", side_effect=mock_predict):
+            result = model.predict_rolling(long_df)
+
+        # Should have more than pred_len predictions
+        assert len(result) > pred_len
+        # All predictions should have the mocked value
+        assert np.allclose(result["yhat"].values, 42.0)
+
+    def test_non_overlapping_single_prediction_per_timestamp(
+        self,
+        tft_config: TFTConfig,
+        sample_df: pd.DataFrame,
+    ) -> None:
+        """With step=pred_len, each timestamp gets exactly 1 prediction."""
+        model = self._make_mock_model(tft_config, pred_len=12)
+        enc_len = tft_config.training.encoder_length  # 24
+        pred_len = tft_config.training.prediction_length  # 12
+
+        long_df = sample_df.iloc[:72]  # 3 full windows (24+12)*2
+        call_count = 0
+
+        def mock_predict(window_df: pd.DataFrame, target_col: str | None = None) -> pd.DataFrame:
+            nonlocal call_count
+            call_count += 1
+            return pd.DataFrame(
+                {"yhat": np.ones(pred_len) * float(call_count)},
+                index=window_df.index[-pred_len:],
+            )
+
+        with patch.object(model, "predict", side_effect=mock_predict):
+            result = model.predict_rolling(long_df, step=pred_len)
+
+        # Each window produces different values, no averaging expected
+        assert call_count >= 2
+        # Timestamps should be unique (no duplicates in index)
+        assert result.index.is_unique
+
+    def test_overlapping_averages_predictions(
+        self,
+        tft_config: TFTConfig,
+        sample_df: pd.DataFrame,
+    ) -> None:
+        """With step < pred_len, overlapping timestamps are averaged."""
+        model = self._make_mock_model(tft_config, pred_len=12)
+        pred_len = tft_config.training.prediction_length  # 12
+        step = pred_len // 2  # 6 — produces overlaps
+
+        long_df = sample_df.iloc[:60]
+        window_num = 0
+
+        def mock_predict(window_df: pd.DataFrame, target_col: str | None = None) -> pd.DataFrame:
+            nonlocal window_num
+            window_num += 1
+            # Alternate between 10.0 and 20.0 per window
+            val = 10.0 if window_num % 2 == 1 else 20.0
+            return pd.DataFrame(
+                {"yhat": np.ones(pred_len) * val},
+                index=window_df.index[-pred_len:],
+            )
+
+        with patch.object(model, "predict", side_effect=mock_predict):
+            result = model.predict_rolling(long_df, step=step)
+
+        # With overlapping windows returning 10 and 20, averaged should be 15
+        # (for timestamps covered by both windows)
+        assert result.index.is_unique
+        # At least some predictions should be averaged (value = 15.0)
+        values = result["yhat"].values
+        has_averaged = any(np.isclose(v, 15.0) for v in values)
+        assert has_averaged, f"Expected some averaged values (15.0), got: {np.unique(values)}"
+
+    def test_predict_rolling_raises_if_not_fitted(
+        self,
+        tft_config: TFTConfig,
+        sample_df: pd.DataFrame,
+    ) -> None:
+        """predict_rolling raises if model not fitted (short input delegates to predict)."""
+        model = TFTForecaster(tft_config)
+        enc_len = tft_config.training.encoder_length
+        pred_len = tft_config.training.prediction_length
+        short_df = sample_df.iloc[: enc_len + pred_len]
+
+        with pytest.raises(RuntimeError, match="trained"):
+            model.predict_rolling(short_df)
+
+    def test_all_windows_fail_raises_error(
+        self,
+        tft_config: TFTConfig,
+        sample_df: pd.DataFrame,
+    ) -> None:
+        """If all windows fail, raises RuntimeError."""
+        model = self._make_mock_model(tft_config, pred_len=12)
+        long_df = sample_df.iloc[:100]
+
+        def mock_predict_fail(
+            window_df: pd.DataFrame, target_col: str | None = None
+        ) -> pd.DataFrame:
+            msg = "Simulated failure"
+            raise ValueError(msg)
+
+        with patch.object(model, "predict", side_effect=mock_predict_fail):
+            with pytest.raises(RuntimeError, match="All.*windows failed"):
+                model.predict_rolling(long_df)

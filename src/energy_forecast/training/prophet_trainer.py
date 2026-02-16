@@ -98,6 +98,7 @@ class ProphetTrainer:
         self._tracker = tracker or ExperimentTracker(enabled=False)
         self._splitter = TimeSeriesSplitter.from_config(settings.hyperparameters.cross_validation)
         self._target_col = settings.hyperparameters.target_col
+        self._skip_validation = settings.hyperparameters.skip_validation_after_optuna
         self._regressor_names: list[str] = []
 
     # -- Prophet format conversion --
@@ -154,10 +155,12 @@ class ProphetTrainer:
         cfg = self._prophet_config
 
         # Fixed parameters from config
+        # Disable auto-detect seasonality — we add them manually with config
+        # fourier_order values (daily=12, weekly=6, yearly=10 by default)
         model_params: dict[str, Any] = {
-            "daily_seasonality": True,
-            "weekly_seasonality": True,
-            "yearly_seasonality": True,
+            "daily_seasonality": False,
+            "weekly_seasonality": False,
+            "yearly_seasonality": False,
             "uncertainty_samples": cfg.uncertainty.mcmc_samples,
             "interval_width": cfg.uncertainty.interval_width,
             "n_changepoints": cfg.changepoint.n_changepoints,
@@ -167,6 +170,26 @@ class ProphetTrainer:
         model_params.update(params)
 
         model = Prophet(**model_params)
+
+        # Add seasonalities with config-specified Fourier orders
+        model.add_seasonality(
+            name="daily",
+            period=1,
+            fourier_order=cfg.seasonality.daily.fourier_order,
+            mode=cfg.seasonality.mode,
+        )
+        model.add_seasonality(
+            name="weekly",
+            period=7,
+            fourier_order=cfg.seasonality.weekly.fourier_order,
+            mode=cfg.seasonality.mode,
+        )
+        model.add_seasonality(
+            name="yearly",
+            period=365.25,
+            fourier_order=cfg.seasonality.yearly.fourier_order,
+            mode=cfg.seasonality.mode,
+        )
 
         # Add only regressors confirmed present in data
         for reg in cfg.regressors:
@@ -326,6 +349,7 @@ class ProphetTrainer:
         def objective(trial: Trial) -> float:
             suggested = suggest_params(trial, search_space)
             result = self._train_all_splits(df, suggested)
+            trial.set_user_attr("avg_test_mape", result.avg_test_mape)
             return result.avg_val_mape
 
         return objective
@@ -355,8 +379,20 @@ class ProphetTrainer:
             study.best_params,
         )
 
-        # Re-train with best params to get full results
-        best_result = self._train_all_splits(df, study.best_params)
+        if self._skip_validation:
+            logger.info("Skipping post-Optuna validation (skip_validation_after_optuna=true)")
+            best_result = ProphetTrainingResult(
+                split_results=[],
+                avg_val_mape=study.best_value,
+                avg_test_mape=float(
+                    study.best_trial.user_attrs.get("avg_test_mape", float("nan"))
+                ),
+                std_val_mape=0.0,
+                regressor_names=list(self._regressor_names),
+            )
+        else:
+            best_result = self._train_all_splits(df, study.best_params)
+
         return study, best_result
 
     # -- Final model --

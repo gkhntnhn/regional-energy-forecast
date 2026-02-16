@@ -101,7 +101,7 @@ class CalendarFeatureEngineer(BaseFeatureEngineer):
     # ------------------------------------------------------------------
 
     def _add_holiday_features(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Add holiday, Ramadan, bridge day, and proximity features."""
+        """Add holiday, Ramadan, bridge day, interaction, and proximity features."""
         h_cfg: dict[str, Any] = self.config.get("holidays", {})
         h_path = h_cfg.get("path", "data/static/turkish_holidays.parquet")
 
@@ -125,7 +125,41 @@ class CalendarFeatureEngineer(BaseFeatureEngineer):
             else:
                 df["is_ramadan"] = 0
 
-            # Bridge days
+            # Bayram day number (1-3 Ramazan, 1-4 Kurban, 0 otherwise)
+            if "bayram_gun_no" in holidays_df.columns:
+                bayram_map = dict(
+                    zip(
+                        pd.to_datetime(holidays_df["date"]).dt.date,
+                        holidays_df["bayram_gun_no"],
+                        strict=False,
+                    )
+                )
+                df["bayram_gun_no"] = date_series.map(bayram_map).fillna(0).astype(int)
+            else:
+                df["bayram_gun_no"] = 0
+
+            # Countdown to next bayram (computed for ALL dates, not just holidays)
+            if "bayram_gun_no" in holidays_df.columns:
+                bayram_dates = sorted(
+                    pd.to_datetime(
+                        holidays_df.loc[holidays_df["bayram_gun_no"] == 1, "date"]
+                    ).dt.date
+                )
+            else:
+                bayram_dates = []
+            if bayram_dates:
+                df = self._add_bayram_countdown(df, bayram_dates)
+            else:
+                df["bayrama_kalan_gun"] = -1
+
+            # Holiday type classification: dini / resmi / none
+            df = self._add_holiday_type(df, holidays_df, date_series)
+
+            # Holiday × hour interaction (captures different hourly patterns)
+            idx = cast(pd.DatetimeIndex, df.index)
+            df["is_holiday_x_hour"] = df["is_holiday"] * idx.hour
+
+            # Bridge days (extended detection for holiday+weekend adjacency)
             if h_cfg.get("bridge_days", True):
                 df = self._detect_bridge_days(df)
 
@@ -134,6 +168,10 @@ class CalendarFeatureEngineer(BaseFeatureEngineer):
         else:
             df["is_holiday"] = 0
             df["is_ramadan"] = 0
+            df["bayram_gun_no"] = 0
+            df["bayrama_kalan_gun"] = -1
+            df["tatil_tipi"] = 0
+            df["is_holiday_x_hour"] = 0
             df["is_bridge_day"] = 0
             df["days_until_holiday"] = -1
             df["days_since_holiday"] = -1
@@ -153,17 +191,83 @@ class CalendarFeatureEngineer(BaseFeatureEngineer):
             logger.warning("Failed to read holiday file: {}", p)
             return None
 
+    # Religious holiday keywords for tatil_tipi classification
+    _DINI_KEYWORDS = frozenset({
+        "ramazan", "eid al-fitr", "eid al-adha",
+        "kurban bayrami", "ramazan bayrami",
+    })
+
+    @staticmethod
+    def _add_holiday_type(
+        df: pd.DataFrame,
+        holidays_df: pd.DataFrame,
+        date_series: pd.Series[Any],
+    ) -> pd.DataFrame:
+        """Classify holidays as dini (religious) or resmi (official).
+
+        Encoded as integer: 0=none, 1=resmi, 2=dini.
+        """
+        name_col = "holiday_name" if "holiday_name" in holidays_df.columns else "name"
+        if name_col not in holidays_df.columns:
+            df["tatil_tipi"] = 0
+            return df
+
+        # Build date → type mapping
+        type_map: dict[Any, int] = {}
+        for _, row in holidays_df.iterrows():
+            d = pd.to_datetime(row["date"]).date()
+            name_lower = str(row[name_col]).lower()
+            is_dini = any(kw in name_lower for kw in CalendarFeatureEngineer._DINI_KEYWORDS)
+            # dini=2 takes priority if a date has both (e.g., "Eid al-Fitr; Republic Day")
+            current = type_map.get(d, 0)
+            new_val = 2 if is_dini else 1
+            type_map[d] = max(current, new_val)
+
+        df["tatil_tipi"] = date_series.map(type_map).fillna(0).astype(int)
+        return df
+
     @staticmethod
     def _detect_bridge_days(df: pd.DataFrame) -> pd.DataFrame:
-        """Weekday sandwiched between holiday/weekend on both sides."""
+        """Detect bridge days: weekdays near holiday+weekend clusters.
+
+        A bridge day is a weekday that, if taken off, extends a
+        holiday+weekend combination into a longer break. Detects:
+        1. Classic sandwich: weekday between two off-days
+        2. Before cluster: weekday followed by 2+ consecutive off-days
+           (e.g., Thursday before Friday-holiday + weekend)
+        3. After cluster: weekday preceded by 2+ consecutive off-days
+           (e.g., Tuesday after weekend + Monday-holiday)
+
+        Cases 2 and 3 require a holiday within the off-day cluster to avoid
+        flagging every Friday/Monday adjacent to a normal weekend.
+        """
         idx = cast(pd.DatetimeIndex, df.index)
-        is_off = (df.get("is_holiday", pd.Series(0, index=df.index)) == 1) | (
-            idx.dayofweek >= 5
-        )
+        is_holiday = df.get("is_holiday", pd.Series(0, index=df.index)) == 1
+        is_off = is_holiday | (idx.dayofweek >= 5)
+        is_weekday = idx.dayofweek < 5
+
         prev_off = is_off.shift(24, fill_value=False)
         next_off = is_off.shift(-24, fill_value=False)
-        is_weekday = idx.dayofweek < 5
-        df["is_bridge_day"] = (is_weekday & prev_off & next_off).astype(int)
+        prev_prev_off = is_off.shift(48, fill_value=False)
+        next_next_off = is_off.shift(-48, fill_value=False)
+
+        # Holiday within 2 days on either side
+        prev_holiday = is_holiday.shift(24, fill_value=False)
+        next_holiday = is_holiday.shift(-24, fill_value=False)
+        prev_prev_holiday = is_holiday.shift(48, fill_value=False)
+        next_next_holiday = is_holiday.shift(-48, fill_value=False)
+        nearby_holiday = prev_holiday | next_holiday | prev_prev_holiday | next_next_holiday
+
+        # 1. Classic: sandwiched between two off-days
+        classic = is_weekday & prev_off & next_off
+
+        # 2. Before a 2-day off cluster containing a holiday
+        before_cluster = is_weekday & next_off & next_next_off & nearby_holiday
+
+        # 3. After a 2-day off cluster containing a holiday
+        after_cluster = is_weekday & prev_off & prev_prev_off & nearby_holiday
+
+        df["is_bridge_day"] = (classic | before_cluster | after_cluster).astype(int)
         return df
 
     @staticmethod
@@ -190,6 +294,24 @@ class CalendarFeatureEngineer(BaseFeatureEngineer):
         date_arr = cast(pd.DatetimeIndex, df.index).date
         df["days_until_holiday"] = np.array([until_map.get(d, -1) for d in date_arr])
         df["days_since_holiday"] = np.array([since_map.get(d, -1) for d in date_arr])
+        return df
+
+    @staticmethod
+    def _add_bayram_countdown(
+        df: pd.DataFrame,
+        bayram_starts: list[Any],
+    ) -> pd.DataFrame:
+        """Days until next bayram start date (Ramazan or Kurban)."""
+        unique_dates = pd.Series(cast(pd.DatetimeIndex, df.index).date).unique()
+        countdown_map: dict[Any, int] = {}
+        for d in unique_dates:
+            future = [b for b in bayram_starts if b >= d]
+            countdown_map[d] = (future[0] - d).days if future else -1
+
+        date_arr = cast(pd.DatetimeIndex, df.index).date
+        df["bayrama_kalan_gun"] = np.array(
+            [countdown_map.get(d, -1) for d in date_arr]
+        )
         return df
 
     # ------------------------------------------------------------------

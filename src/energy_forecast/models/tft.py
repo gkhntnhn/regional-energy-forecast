@@ -7,6 +7,7 @@ Handles TimeSeriesDataSet conversion and quantile prediction output.
 from __future__ import annotations
 
 import json
+import pickle
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -44,6 +45,7 @@ class TFTForecaster(BaseForecaster):
     MODEL_FILENAME = "tft_model.ckpt"
     METADATA_FILENAME = "metadata.json"
     DATASET_PARAMS_FILENAME = "dataset_params.json"
+    TRAINING_DATASET_FILENAME = "training_dataset.pkl"
 
     def __init__(self, config: TFTConfig) -> None:
         super().__init__(config.model_dump())  # Convert to dict for base class
@@ -408,6 +410,111 @@ class TFTForecaster(BaseForecaster):
 
         return result
 
+    def predict_rolling(
+        self,
+        X: pd.DataFrame,
+        target_col: str | None = None,
+        *,
+        step: int | None = None,
+    ) -> pd.DataFrame:
+        """Generate predictions using a sliding window across the full input.
+
+        For inputs longer than encoder_length + prediction_length, slides a window
+        of that size across the data, calling predict() per window. Overlapping
+        predictions are averaged.
+
+        For short inputs (<= encoder + prediction), delegates directly to predict().
+
+        Args:
+            X: Feature DataFrame with DatetimeIndex.
+            target_col: Target column name (default: from config).
+            step: Window step size in rows. Defaults to prediction_length
+                  (non-overlapping predictions).
+
+        Returns:
+            DataFrame with 'yhat' column covering the prediction region of X.
+        """
+        if target_col is None:
+            target_col = self._target_col
+
+        enc_len = self._tft_config.training.encoder_length
+        pred_len = self._tft_config.training.prediction_length
+        window_size = enc_len + pred_len
+
+        # Short input: delegate directly
+        if len(X) <= window_size:
+            return self.predict(X, target_col)
+
+        if step is None:
+            step = pred_len
+
+        from collections import defaultdict
+
+        all_preds: defaultdict[Any, list[float]] = defaultdict(list)
+        n_windows = 0
+        n_failed = 0
+        pos = enc_len  # First decode position (encoder ends here)
+
+        while pos < len(X):
+            # Calculate window boundaries
+            window_end = min(pos + pred_len, len(X))
+            window_start = window_end - pred_len - enc_len
+
+            # If last window is short, slide back to maintain full window
+            if window_start < 0:
+                window_start = 0
+                window_end = min(window_size, len(X))
+
+            window_df = X.iloc[window_start:window_end]
+
+            if len(window_df) < window_size:
+                # Skip windows that can't form a complete encoder+decoder
+                pos += step
+                continue
+
+            try:
+                preds = self.predict(window_df, target_col)
+                for ts, row in preds.iterrows():
+                    all_preds[ts].append(float(row["yhat"]))
+                n_windows += 1
+            except Exception:
+                n_failed += 1
+                logger.warning(
+                    "Rolling window {} failed (start={}), skipping",
+                    n_windows + n_failed,
+                    window_df.index[0],
+                )
+
+            pos += step
+
+        if n_windows == 0:
+            msg = f"All {n_failed} rolling windows failed"
+            raise RuntimeError(msg)
+
+        if n_failed > 0:
+            logger.warning(
+                "Rolling prediction: {}/{} windows succeeded",
+                n_windows,
+                n_windows + n_failed,
+            )
+
+        # Build result: average overlapping predictions, sort by timestamp
+        sorted_ts = sorted(all_preds.keys())
+        averaged = [np.mean(all_preds[ts]) for ts in sorted_ts]
+
+        result = pd.DataFrame(
+            {"yhat": averaged},
+            index=pd.DatetimeIndex(sorted_ts),
+        )
+
+        logger.debug(
+            "Rolling prediction: {} windows, {} unique timestamps",
+            n_windows,
+            len(result),
+        )
+
+        return result
+
     def get_quantile_predictions(self) -> dict[float, NDArray[np.floating[Any]]]:
         """Get all quantile predictions from last predict() call.
 
@@ -428,7 +535,13 @@ class TFTForecaster(BaseForecaster):
         return result
 
     def save(self, path: Path) -> None:
-        """Save TFT model checkpoint and metadata.
+        """Save TFT model checkpoint, metadata, and training dataset.
+
+        Saves all artifacts needed for full model reconstruction:
+        - state_dict (model weights)
+        - metadata (architecture params for rebuilding)
+        - dataset_params (feature structure)
+        - training_dataset (normalizers + structure for prediction)
 
         Args:
             path: Directory to save model files.
@@ -442,7 +555,7 @@ class TFTForecaster(BaseForecaster):
 
         logger.info("Saving TFT model to {}", path)
 
-        # Save model checkpoint
+        # Save model state dict
         model_path = path / self.MODEL_FILENAME
         torch.save(self._model.state_dict(), model_path)  # type: ignore[union-attr]
 
@@ -451,30 +564,155 @@ class TFTForecaster(BaseForecaster):
         with open(params_path, "w") as f:
             json.dump(self._dataset_params, f, indent=2)
 
-        # Save metadata
+        # Save metadata with full architecture params for model rebuild
         metadata = {
             "quantiles": self._quantiles,
             "hidden_size": self._tft_config.architecture.hidden_size,
+            "attention_head_size": self._tft_config.architecture.attention_head_size,
+            "lstm_layers": self._tft_config.architecture.lstm_layers,
+            "dropout": self._tft_config.architecture.dropout,
+            "hidden_continuous_size": self._tft_config.architecture.hidden_continuous_size,
+            "learning_rate": self._tft_config.training.learning_rate,
             "encoder_length": self._tft_config.training.encoder_length,
             "prediction_length": self._tft_config.training.prediction_length,
+            "batch_size": self._tft_config.training.batch_size,
+            "num_workers": self._tft_config.training.num_workers,
+            "reduce_on_plateau_patience": self._tft_config.training.early_stop_patience,
         }
         metadata_path = path / self.METADATA_FILENAME
         with open(metadata_path, "w") as f:
             json.dump(metadata, f, indent=2)
 
+        # Save training dataset (pickle) for prediction reconstruction
+        if self._training_dataset is not None:
+            ds_path = path / self.TRAINING_DATASET_FILENAME
+            with open(ds_path, "wb") as f:
+                pickle.dump(self._training_dataset, f, protocol=pickle.HIGHEST_PROTOCOL)
+            logger.debug("Saved training dataset to {}", ds_path)
+
         logger.info("TFT model saved successfully")
 
-    def load(self, path: Path) -> None:
-        """Load TFT model from checkpoint.
+    @classmethod
+    def from_checkpoint(cls, path: Path | str) -> TFTForecaster:
+        """Load a fully functional TFTForecaster from a saved checkpoint directory.
 
-        Note: Full loading requires the original training dataset structure.
-        This method loads the state dict but requires a matching architecture.
+        Reconstructs the model architecture from the training dataset and metadata,
+        then loads the trained weights. The returned instance is ready for prediction.
+
+        Args:
+            path: Directory containing saved model files (ckpt, metadata, dataset).
+
+        Returns:
+            TFTForecaster ready for prediction.
+
+        Raises:
+            FileNotFoundError: If required files are missing.
+        """
+        path = Path(path)
+        logger.info("Loading TFT model from checkpoint: {}", path)
+
+        # Load metadata
+        metadata_path = path / cls.METADATA_FILENAME
+        if not metadata_path.exists():
+            msg = f"Metadata not found: {metadata_path}"
+            raise FileNotFoundError(msg)
+        with open(metadata_path) as f:
+            metadata = json.load(f)
+
+        # Load dataset params
+        params_path = path / cls.DATASET_PARAMS_FILENAME
+        dataset_params: dict[str, Any] = {}
+        if params_path.exists():
+            with open(params_path) as f:
+                dataset_params = json.load(f)
+
+        # Load training dataset (required for model architecture reconstruction)
+        ds_path = path / cls.TRAINING_DATASET_FILENAME
+        if not ds_path.exists():
+            msg = (
+                f"Training dataset not found: {ds_path}. "
+                "Model was saved with an older format. Please retrain."
+            )
+            raise FileNotFoundError(msg)
+        with open(ds_path, "rb") as f:
+            training_dataset: TimeSeriesDataSet = pickle.load(f)  # noqa: S301
+
+        # Load state dict
+        model_path = path / cls.MODEL_FILENAME
+        if not model_path.exists():
+            msg = f"Model checkpoint not found: {model_path}"
+            raise FileNotFoundError(msg)
+        state_dict = torch.load(model_path, map_location="cpu", weights_only=True)
+
+        # Reconstruct model architecture from dataset + metadata
+        quantiles = metadata.get("quantiles", [0.02, 0.1, 0.25, 0.5, 0.75, 0.9, 0.98])
+        tft_model = TemporalFusionTransformer.from_dataset(
+            training_dataset,
+            hidden_size=metadata.get("hidden_size", 64),
+            attention_head_size=metadata.get("attention_head_size", 4),
+            dropout=metadata.get("dropout", 0.1),
+            hidden_continuous_size=metadata.get("hidden_continuous_size", 16),
+            lstm_layers=metadata.get("lstm_layers", 2),
+            output_size=len(quantiles),
+            loss=QuantileLoss(quantiles=quantiles),
+            learning_rate=metadata.get("learning_rate", 0.001),
+            reduce_on_plateau_patience=metadata.get("reduce_on_plateau_patience", 4),
+        )
+        tft_model.load_state_dict(state_dict)
+        tft_model.eval()
+
+        # Build a minimal TFTConfig for the instance
+        from energy_forecast.config.settings import (
+            TFTArchitectureConfig,
+            TFTConfig,
+            TFTCovariatesConfig,
+            TFTTrainingConfig,
+        )
+
+        config = TFTConfig(
+            architecture=TFTArchitectureConfig(
+                hidden_size=metadata.get("hidden_size", 64),
+                attention_head_size=metadata.get("attention_head_size", 4),
+                lstm_layers=metadata.get("lstm_layers", 2),
+                dropout=metadata.get("dropout", 0.1),
+                hidden_continuous_size=metadata.get("hidden_continuous_size", 16),
+            ),
+            training=TFTTrainingConfig(
+                encoder_length=metadata.get("encoder_length", 168),
+                prediction_length=metadata.get("prediction_length", 48),
+                batch_size=metadata.get("batch_size", 64),
+                max_epochs=1,  # Not used for inference
+                learning_rate=metadata.get("learning_rate", 0.001),
+                num_workers=metadata.get("num_workers", 0),
+            ),
+            covariates=TFTCovariatesConfig(
+                time_varying_known=dataset_params.get("time_varying_known_reals", []),
+            ),
+            quantiles=quantiles,
+        )
+
+        # Construct the instance without calling __init__ training path
+        instance = cls(config)
+        instance._model = tft_model
+        instance._training_dataset = training_dataset
+        instance._dataset_params = dataset_params
+        instance._quantiles = quantiles
+        instance._loaded_state_dict = None
+
+        logger.info("TFT model loaded successfully — ready for prediction")
+        return instance
+
+    def load(self, path: Path) -> None:
+        """Load TFT model from checkpoint directory.
+
+        If a training dataset pickle is available, the model is fully
+        reconstructed and ready for prediction. Otherwise, only the state
+        dict is loaded (backward compatibility).
 
         Args:
             path: Directory containing saved model files.
         """
         path = Path(path)
-
         logger.info("Loading TFT model from {}", path)
 
         # Load dataset params
@@ -496,15 +734,37 @@ class TFTForecaster(BaseForecaster):
             msg = f"Model checkpoint not found: {model_path}"
             raise FileNotFoundError(msg)
 
-        # Note: For full loading, we need the training dataset to reconstruct
-        # the model architecture. This is a limitation of pytorch-forecasting.
-        logger.warning(
-            "TFT model loading requires training dataset for full reconstruction. "
-            "State dict loaded but model architecture must match."
-        )
-
         state_dict = torch.load(model_path, map_location="cpu", weights_only=True)
-        # Store for later use when training dataset is available
-        self._loaded_state_dict = state_dict
 
-        logger.info("TFT state dict loaded, awaiting dataset for full reconstruction")
+        # Try to load training dataset for full reconstruction
+        ds_path = path / self.TRAINING_DATASET_FILENAME
+        if ds_path.exists():
+            with open(ds_path, "rb") as f:
+                self._training_dataset = pickle.load(f)  # noqa: S301
+
+            quantiles = self._quantiles
+            tft_model = TemporalFusionTransformer.from_dataset(
+                self._training_dataset,
+                hidden_size=metadata.get("hidden_size", 64),
+                attention_head_size=metadata.get("attention_head_size", 4),
+                dropout=metadata.get("dropout", 0.1),
+                hidden_continuous_size=metadata.get("hidden_continuous_size", 16),
+                lstm_layers=metadata.get("lstm_layers", 2),
+                output_size=len(quantiles),
+                loss=QuantileLoss(quantiles=quantiles),
+                learning_rate=metadata.get("learning_rate", 0.001),
+                reduce_on_plateau_patience=metadata.get(
+                    "reduce_on_plateau_patience", 4
+                ),
+            )
+            tft_model.load_state_dict(state_dict)
+            tft_model.eval()
+            self._model = tft_model
+            logger.info("TFT model fully reconstructed — ready for prediction")
+        else:
+            # Fallback: store state dict for later use (old format)
+            self._loaded_state_dict = state_dict
+            logger.warning(
+                "Training dataset not found. State dict loaded but model "
+                "needs retraining with new save format for full prediction."
+            )

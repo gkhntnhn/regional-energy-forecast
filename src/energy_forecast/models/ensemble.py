@@ -152,13 +152,22 @@ class EnsembleForecaster(BaseForecaster):
         )
         raise NotImplementedError(msg)
 
-    def predict(self, X: pd.DataFrame) -> pd.DataFrame:
+    def predict(
+        self,
+        X: pd.DataFrame,
+        *,
+        history: pd.DataFrame | None = None,
+    ) -> pd.DataFrame:
         """Generate weighted-average ensemble prediction.
 
         Uses only active models that have been loaded.
 
         Args:
             X: Feature DataFrame with DatetimeIndex.
+            history: Optional historical data for TFT rolling prediction.
+                When provided and len(X) > prediction_length, TFT uses
+                predict_rolling() with encoder context from history.
+                When None, TFT uses standard single-window predict().
 
         Returns:
             DataFrame with 'prediction' column and individual model predictions.
@@ -185,8 +194,28 @@ class EnsembleForecaster(BaseForecaster):
 
         # TFT prediction (uses median quantile)
         if "tft" in self._active_models and self._tft_model is not None:
-            tft_result = self._tft_model.predict(X, target_col=self._target_col)
-            predictions["tft"] = np.asarray(tft_result["yhat"].values, dtype=np.float64)
+            pred_len = self._tft_model._tft_config.training.prediction_length
+            enc_len = self._tft_model._tft_config.training.encoder_length
+
+            if history is not None and len(X) > pred_len:
+                # Rolling prediction: prepend encoder context from history
+                context = history.iloc[-enc_len:]
+                full_df = pd.concat([context, X])
+                full_df = full_df[~full_df.index.duplicated(keep="last")].sort_index()
+                tft_result = self._tft_model.predict_rolling(
+                    full_df, target_col=self._target_col
+                )
+                # Reindex to X's index (drop encoder context timestamps)
+                tft_aligned = tft_result.reindex(X.index)
+                predictions["tft"] = np.asarray(
+                    tft_aligned["yhat"].values, dtype=np.float64
+                )
+            else:
+                # Standard single-window prediction (serving case, ~48 rows)
+                tft_result = self._tft_model.predict(X, target_col=self._target_col)
+                predictions["tft"] = np.asarray(
+                    tft_result["yhat"].values, dtype=np.float64
+                )
 
         if not predictions:
             msg = "No active models loaded. Call set_models() first."
@@ -317,10 +346,8 @@ class EnsembleForecaster(BaseForecaster):
 
         # Load TFT
         if tft_path is not None and tft_path.exists():
-            from energy_forecast.config.settings import TFTConfig
-
-            # Create TFT with default config for loading
-            default_config = TFTConfig()
-            self._tft_model = TFTForecaster(default_config)
-            self._tft_model.load(tft_path)
-            logger.info("Loaded TFT model from {}", tft_path)
+            try:
+                self._tft_model = TFTForecaster.from_checkpoint(tft_path)
+                logger.info("Loaded TFT model from {}", tft_path)
+            except FileNotFoundError as e:
+                logger.warning("TFT model incomplete, skipping: {}", e)

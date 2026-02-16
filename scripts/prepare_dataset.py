@@ -198,16 +198,21 @@ def fetch_epias_data(
 
         dfs = []
         for year in range(start_year, end_year + 1):
-            cache_path = cache_dir / f"{year}.parquet"
+            cache_path = cache_dir / f"epias_market_{year}.parquet"
             if cache_path.exists():
                 dfs.append(pd.read_parquet(cache_path))
                 logger.debug("Loaded cache: {}", cache_path.name)
 
         if dfs:
             epias_df = pd.concat(dfs)
-            if "date" in epias_df.columns:
-                epias_df["date"] = pd.to_datetime(epias_df["date"])
-                epias_df = epias_df.set_index("date").sort_index()
+            if "datetime" in epias_df.columns:
+                epias_df["datetime"] = pd.to_datetime(epias_df["datetime"])
+                epias_df = epias_df.set_index("datetime").sort_index()
+            # Remove duplicates at year boundaries
+            if epias_df.index.duplicated().any():
+                n_dups = epias_df.index.duplicated().sum()
+                logger.warning("EPIAS cache: {} duplicate timestamps, keeping first", n_dups)
+                epias_df = epias_df[~epias_df.index.duplicated(keep="first")]
             logger.info("EPIAS cache: {} rows", len(epias_df))
             return epias_df
 
@@ -219,8 +224,9 @@ def fetch_epias_data(
         epias_df = client.fetch(start_date, end_date)
 
     if epias_df is not None and not epias_df.empty:
-        if "date" in epias_df.columns:
-            epias_df = epias_df.set_index("date").sort_index()
+        if "datetime" in epias_df.columns:
+            epias_df["datetime"] = pd.to_datetime(epias_df["datetime"])
+            epias_df = epias_df.set_index("datetime").sort_index()
         logger.info("EPIAS API: {} rows", len(epias_df))
         return epias_df
 
@@ -311,6 +317,12 @@ def merge_data_sources(
             if col not in merged.columns:
                 merged[col] = weather_aligned[col]
         logger.info("After weather merge: {} columns", len(merged.columns))
+
+    # Safety: remove duplicate timestamps after merge
+    if merged.index.duplicated().any():
+        n_dups = merged.index.duplicated().sum()
+        logger.warning("Merged data has {} duplicate timestamps, keeping first", n_dups)
+        merged = merged[~merged.index.duplicated(keep="first")]
 
     return merged
 
@@ -417,8 +429,11 @@ def main() -> int:
     merged_df = merge_data_sources(extended_df, epias_df, weather_df)
 
     # Fill missing values for external data columns (forecast rows)
-    # Use forward fill then backward fill
+    # Use forward fill then backward fill — but preserve consumption NaN
+    # in forecast rows (consumption is the prediction target, must stay NaN)
+    consumption_col = merged_df["consumption"].copy()
     merged_df = merged_df.ffill().bfill()
+    merged_df["consumption"] = consumption_col
 
     # Step 6: Run feature pipeline
     logger.info("[6/6] Running feature pipeline...")

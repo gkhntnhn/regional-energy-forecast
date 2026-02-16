@@ -239,7 +239,7 @@ class EpiasClient:
         Returns:
             DataFrame if cache exists, None otherwise.
         """
-        path = self.cache_dir / f"{year}.parquet"
+        path = self.cache_dir / f"epias_market_{year}.parquet"
         if not path.exists():
             return None
         df = pd.read_parquet(path)
@@ -259,7 +259,7 @@ class EpiasClient:
             df: DataFrame to save.
         """
         self.cache_dir.mkdir(parents=True, exist_ok=True)
-        path = self.cache_dir / f"{year}.parquet"
+        path = self.cache_dir / f"epias_market_{year}.parquet"
         save_df = df.copy()
         save_df.index.name = "datetime"
         save_df = save_df.reset_index()
@@ -351,8 +351,7 @@ class EpiasClient:
             return pd.DataFrame(columns=[column_name])
 
         df = pd.DataFrame(rows)
-        df["datetime"] = pd.to_datetime(df["datetime"], utc=True)
-        df["datetime"] = df["datetime"].dt.tz_localize(None)
+        df["datetime"] = pd.to_datetime(df["datetime"]).dt.tz_localize(None)
         df = df.set_index("datetime").sort_index()
         df = df[~df.index.duplicated(keep="first")]
         return df

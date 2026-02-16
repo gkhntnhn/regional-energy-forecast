@@ -32,11 +32,11 @@ data/processed/
 data/external/
 data/uploads/
 data/outputs/
+data/static/
 
 # Model artifacts
-models/catboost/
-models/prophet/
-models/tft/
+models/*
+!models/.gitkeep
 
 # MLflow
 mlruns/

@@ -5,7 +5,7 @@ thresholds:
   cdd_base: 24.0    # Cooling Degree Days base temperature
   extreme_cold: 0.0
   extreme_hot: 35.0
-  high_wind: 50.0   # km/h
+  high_wind: 25.0   # km/h (data max ~31, old 50 was always 0)
 
 comfort_index:
   method: "apparent_temperature"
@@ -22,5 +22,5 @@ rolling:
 
 severity:
   enabled: true
-  wind_threshold: 50.0
-  precip_threshold: 10.0
+  wind_threshold: 25.0
+  precip_threshold: 5.0
