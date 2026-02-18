@@ -67,11 +67,13 @@ class EpiasClient:
         password: str,
         config: EpiasApiConfig | None = None,
         variables: list[str] | None = None,
+        file_pattern: str = "epias_market_{year}.parquet",
     ) -> None:
         self.username = username
         self.password = password
         self.config = config or EpiasApiConfig()
         self.cache_dir = Path(self.config.cache_dir)
+        self.file_pattern = file_pattern
         self.rate_limit_seconds = self.config.rate_limit_seconds
         self.variables = variables or list(_VARIABLE_MAP.keys())
         self._token: str | None = None
@@ -239,7 +241,7 @@ class EpiasClient:
         Returns:
             DataFrame if cache exists, None otherwise.
         """
-        path = self.cache_dir / f"epias_market_{year}.parquet"
+        path = self.cache_dir / self.file_pattern.format(year=year)
         if not path.exists():
             return None
         df = pd.read_parquet(path)
@@ -259,7 +261,7 @@ class EpiasClient:
             df: DataFrame to save.
         """
         self.cache_dir.mkdir(parents=True, exist_ok=True)
-        path = self.cache_dir / f"epias_market_{year}.parquet"
+        path = self.cache_dir / self.file_pattern.format(year=year)
         save_df = df.copy()
         save_df.index.name = "datetime"
         save_df = save_df.reset_index()

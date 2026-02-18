@@ -147,7 +147,7 @@ class DataLoader:
     def extend_for_forecast(
         self,
         df: pd.DataFrame,
-        horizon_hours: int = 48,
+        horizon_hours: int = 48,  # Should match settings.forecast.horizon_hours
     ) -> pd.DataFrame:
         """Extend DataFrame with NaN rows for forecast period.
 

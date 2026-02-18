@@ -385,8 +385,8 @@ class WeatherSeverityConfig(BaseModel, frozen=True):
     """Weather severity thresholds."""
 
     enabled: bool = True
-    wind_threshold: float = 50.0
-    precip_threshold: float = 10.0
+    wind_threshold: float = 25.0
+    precip_threshold: float = 5.0
 
 
 class WeatherThresholdsConfig(BaseModel, frozen=True):
@@ -396,7 +396,7 @@ class WeatherThresholdsConfig(BaseModel, frozen=True):
     cdd_base: float = 24.0
     extreme_cold: float = 0.0
     extreme_hot: float = 35.0
-    high_wind: float = 50.0
+    high_wind: float = 25.0
 
 
 class WeatherRollingConfig(BaseModel, frozen=True):
@@ -583,6 +583,7 @@ class CatBoostConfig(BaseModel, frozen=True):
             "is_holiday",
             "is_weekend",
             "is_ramadan",
+            "bayram_gun_no",
             "weather_code",
             "season",
         ]
@@ -604,13 +605,13 @@ class ProphetSeasonalityConfig(BaseModel, frozen=True):
 
     mode: Literal["additive", "multiplicative"] = "multiplicative"
     daily: SeasonalityPeriodConfig = Field(
-        default_factory=lambda: SeasonalityPeriodConfig(fourier_order=12),
+        default_factory=lambda: SeasonalityPeriodConfig(fourier_order=15),
     )
     weekly: SeasonalityPeriodConfig = Field(
-        default_factory=lambda: SeasonalityPeriodConfig(fourier_order=6),
+        default_factory=lambda: SeasonalityPeriodConfig(fourier_order=8),
     )
     yearly: SeasonalityPeriodConfig = Field(
-        default_factory=lambda: SeasonalityPeriodConfig(fourier_order=10),
+        default_factory=lambda: SeasonalityPeriodConfig(fourier_order=12),
     )
 
 
@@ -660,8 +661,15 @@ class ProphetConfig(BaseModel, frozen=True):
     holidays: ProphetHolidaysConfig = Field(default_factory=ProphetHolidaysConfig)
     regressors: list[ProphetRegressorConfig] = Field(
         default_factory=lambda: [
-            ProphetRegressorConfig(name="temperature", mode="additive"),
-            ProphetRegressorConfig(name="humidity", mode="additive"),
+            ProphetRegressorConfig(name="temperature_2m", mode="multiplicative"),
+            ProphetRegressorConfig(name="apparent_temperature", mode="multiplicative"),
+            ProphetRegressorConfig(name="relative_humidity_2m", mode="additive"),
+            ProphetRegressorConfig(name="wind_speed_10m", mode="additive"),
+            ProphetRegressorConfig(name="shortwave_radiation", mode="multiplicative"),
+            ProphetRegressorConfig(name="wth_cdd", mode="multiplicative"),
+            ProphetRegressorConfig(name="wth_hdd", mode="multiplicative"),
+            ProphetRegressorConfig(name="is_weekend", mode="multiplicative"),
+            ProphetRegressorConfig(name="is_holiday", mode="multiplicative"),
         ]
     )
     changepoint: ProphetChangepointConfig = Field(

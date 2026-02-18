@@ -34,7 +34,7 @@ catboost:
       high: 1.0
     loss_function:
       type: categorical
-      choices: ["RMSE", "MAE"]
+      choices: ["RMSE", "MAE", "MAPE"]
 
 prophet:
   n_trials: 30

@@ -31,7 +31,7 @@ class EwmaFeatures(BaseEstimator, TransformerMixin):  # type: ignore[misc]
         self,
         variables: list[str],
         spans: list[int],
-        periods: int = 48,
+        periods: int = 48,  # Must match settings.forecast.min_lag
     ) -> None:
         self.variables = variables
         self.spans = spans
@@ -69,7 +69,7 @@ class MomentumFeatures(BaseEstimator, TransformerMixin):  # type: ignore[misc]
     def __init__(
         self,
         variables: list[str],
-        min_lag: int = 48,
+        min_lag: int = 48,  # Must match settings.forecast.min_lag
         momentum_periods: list[int] | None = None,
     ) -> None:
         self.variables = variables
@@ -112,8 +112,8 @@ class QuantileFeatures(BaseEstimator, TransformerMixin):  # type: ignore[misc]
         self,
         variables: list[str],
         quantiles: list[float] | None = None,
-        window: int = 168,
-        periods: int = 48,
+        window: int = 168,  # Must match settings.features.consumption.quantile.window
+        periods: int = 48,  # Must match settings.forecast.min_lag
     ) -> None:
         self.variables = variables
         self.quantiles = quantiles or [0.25, 0.50, 0.75]

@@ -2,7 +2,7 @@
 # CRITICAL: min_lag=48, raw values are DROPPED after feature creation
 source:
   cache_dir: "data/external/epias"
-  file_pattern: "{year}.parquet"
+  file_pattern: "epias_market_{year}.parquet"
 
 variables:
   - FDPP

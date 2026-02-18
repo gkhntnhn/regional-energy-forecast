@@ -131,11 +131,20 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Add middleware
+# Load CORS origins from config (fallback to ["*"] if config unavailable)
+try:
+    _cors_settings = load_config()
+    _cors_origins = _cors_settings.api.cors_origins
+except Exception:
+    _cors_origins = ["*"]
+
+# CORS spec: allow_credentials=True is incompatible with allow_origins=["*"]
+_allow_credentials = "*" not in _cors_origins
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=_cors_origins,
+    allow_credentials=_allow_credentials,
     allow_methods=["*"],
     allow_headers=["*"],
 )

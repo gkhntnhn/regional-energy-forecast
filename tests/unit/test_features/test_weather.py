@@ -184,7 +184,7 @@ class TestWeatherFeatureEngineer:
         assert result["wth_heavy_precip"].iloc[0] == 1
 
     def test_extreme_wind_flag(self, engineer: WeatherFeatureEngineer) -> None:
-        """Wind speed > high_wind (50) sets wth_extreme_wind=1."""
+        """Wind speed > high_wind (25) sets wth_extreme_wind=1."""
         idx = pd.date_range("2024-01-01", periods=168, freq="h")
         df = pd.DataFrame(
             {
