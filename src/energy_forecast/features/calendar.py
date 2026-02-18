@@ -191,8 +191,8 @@ class CalendarFeatureEngineer(BaseFeatureEngineer):
             return None
         try:
             return pd.read_parquet(p)
-        except Exception:
-            logger.warning("Failed to read holiday file: {}", p)
+        except Exception as e:
+            logger.warning("Failed to read holiday file {}: {}", p, e)
             return None
 
     # Religious holiday keywords for tatil_tipi classification

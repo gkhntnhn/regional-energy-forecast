@@ -19,7 +19,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
 from energy_forecast.config.settings import load_config
-from energy_forecast.serving.exceptions import APIError, JobQueueFullError
+from energy_forecast.serving.exceptions import APIError, JobNotFoundError, JobQueueFullError
 from energy_forecast.utils import TZ_ISTANBUL
 from energy_forecast.serving.job_manager import JobManager
 from energy_forecast.serving.schemas import (
@@ -169,7 +169,8 @@ app = FastAPI(
 try:
     _cors_settings = load_config()
     _cors_origins = _cors_settings.api.cors_origins
-except Exception:
+except Exception as e:
+    logger.warning("Failed to load CORS config, falling back to wildcard: {}", e)
     _cors_origins = ["*"]
 
 # CORS spec: allow_credentials=True is incompatible with allow_origins=["*"]
@@ -319,8 +320,11 @@ async def get_status(
 
     try:
         job = job_manager.get_job(job_id)
+    except JobNotFoundError:
+        raise HTTPException(status_code=404, detail="Job not found")
     except Exception as e:
-        raise HTTPException(status_code=404, detail="Job not found") from e
+        logger.error("Unexpected error fetching job {}: {}", job_id, e)
+        raise HTTPException(status_code=500, detail="Internal server error") from e
 
     return JobStatusResponse(
         job_id=job.id,

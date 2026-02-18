@@ -143,11 +143,14 @@ configs/
 ├── pipeline.yaml           # Feature pipeline
 ├── data_loader.yaml        # Excel yükleme
 ├── openmeteo.yaml          # Hava durumu
-├── catboost.yaml           # CatBoost model config
-├── prophet.yaml            # Prophet model config
-├── tft.yaml                # TFT model config
-├── hyperparameters.yaml    # Optuna arama uzayı
+├── api.yaml                # API config (CORS, rate limit)
 ├── smoke_test.yaml         # Smoke test override
+├── models/
+│   ├── catboost.yaml       # CatBoost model config
+│   ├── prophet.yaml        # Prophet model config
+│   ├── tft.yaml            # TFT model config
+│   ├── ensemble.yaml       # Ensemble config
+│   └── hyperparameters.yaml # Optuna arama uzayı
 └── features/
     ├── calendar.yaml
     ├── consumption.yaml

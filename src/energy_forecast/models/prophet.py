@@ -12,6 +12,7 @@ import pandas as pd
 from loguru import logger
 
 from energy_forecast.models.base import BaseForecaster
+from energy_forecast.utils.prophet_utils import to_prophet_format
 
 if TYPE_CHECKING:
     from prophet import Prophet
@@ -73,17 +74,8 @@ class ProphetForecaster(BaseForecaster):
         Returns:
             Prophet-formatted DataFrame with ds, y, and regressors.
         """
-        prophet_df = pd.DataFrame()
-        prophet_df["ds"] = df.index
-
-        if include_target and self._target_col in df.columns:
-            prophet_df["y"] = df[self._target_col].values
-
-        for col in self._regressor_names:
-            if col in df.columns:
-                prophet_df[col] = df[col].values
-
-        return prophet_df
+        target = self._target_col if include_target else None
+        return to_prophet_format(df, self._regressor_names, target_col=target)
 
     def predict(self, X: pd.DataFrame) -> pd.DataFrame:
         """Generate predictions using trained Prophet model.
@@ -189,7 +181,7 @@ class ProphetForecaster(BaseForecaster):
             with open(metadata_path) as f:
                 meta = json.load(f)
                 self._regressor_names = meta.get("regressor_names", [])
-                self.config.update(meta.get("config", {}))
+                self.config = {**self.config, **meta.get("config", {})}
 
         logger.info("Prophet model loaded from {}", path)
 

@@ -58,6 +58,7 @@ docs/reviews/
 
 # Ad-hoc debug/analysis scripts (CLI session artifacts)
 scripts/adhoc/
+scripts/debug_*.py
 
 # OS
 .DS_Store
@@ -71,6 +72,9 @@ htmlcov/
 # Type checking / Linting
 .mypy_cache/
 .ruff_cache/
+
+# Optuna study persistence
+models/optuna_studies/
 
 # Notebooks
 notebooks/.ipynb_checkpoints/

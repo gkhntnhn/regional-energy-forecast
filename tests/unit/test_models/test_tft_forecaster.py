@@ -25,10 +25,10 @@ def sample_df() -> pd.DataFrame:
     n_samples = 300  # Small for fast tests
     dates = pd.date_range("2023-01-01", periods=n_samples, freq="h")
 
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     df = pd.DataFrame(
         {
-            "consumption": 1000 + 200 * np.sin(np.arange(n_samples) * 2 * np.pi / 24) + np.random.randn(n_samples) * 50,
+            "consumption": 1000 + 200 * np.sin(np.arange(n_samples) * 2 * np.pi / 24) + rng.standard_normal(n_samples) * 50,
             "hour_sin": np.sin(np.arange(n_samples) % 24 * 2 * np.pi / 24),
             "hour_cos": np.cos(np.arange(n_samples) % 24 * 2 * np.pi / 24),
             "day_of_week_sin": np.sin(np.arange(n_samples) // 24 % 7 * 2 * np.pi / 7),

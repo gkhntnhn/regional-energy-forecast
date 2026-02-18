@@ -479,12 +479,13 @@ class TFTForecaster(BaseForecaster):
                 for ts, row in preds.iterrows():
                     all_preds[ts].append(float(row[PREDICTION_COL]))
                 n_windows += 1
-            except Exception:
+            except Exception as e:
                 n_failed += 1
                 logger.warning(
-                    "Rolling window {} failed (start={}), skipping",
+                    "Rolling window {} failed (start={}): {}, skipping",
                     n_windows + n_failed,
                     window_df.index[0],
+                    e,
                 )
 
             pos += step

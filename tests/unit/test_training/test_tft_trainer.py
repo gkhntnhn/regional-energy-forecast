@@ -26,10 +26,10 @@ def sample_df() -> pd.DataFrame:
     n_samples = 24 * 30 * 6  # 6 months for TSCV splits
     dates = pd.date_range("2023-01-01", periods=n_samples, freq="h")
 
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     df = pd.DataFrame(
         {
-            "consumption": 1000 + 200 * np.sin(np.arange(n_samples) * 2 * np.pi / 24) + np.random.randn(n_samples) * 50,
+            "consumption": 1000 + 200 * np.sin(np.arange(n_samples) * 2 * np.pi / 24) + rng.standard_normal(n_samples) * 50,
             "hour_sin": np.sin(np.arange(n_samples) % 24 * 2 * np.pi / 24),
             "hour_cos": np.cos(np.arange(n_samples) % 24 * 2 * np.pi / 24),
             "day_of_week_sin": np.sin(np.arange(n_samples) // 24 % 7 * 2 * np.pi / 7),
@@ -42,7 +42,7 @@ def sample_df() -> pd.DataFrame:
             "sol_elevation": np.maximum(0, 45 * np.sin((np.arange(n_samples) % 24 - 6) * np.pi / 12)),
             "sol_azimuth": 180 + 90 * np.sin((np.arange(n_samples) % 24 - 12) * np.pi / 12),
             "temperature_2m": 15 + 10 * np.sin((np.arange(n_samples) % 24 - 14) * np.pi / 12),
-            "relative_humidity_2m": 60 + 20 * np.random.randn(n_samples),
+            "relative_humidity_2m": 60 + 20 * rng.standard_normal(n_samples),
             "apparent_temperature": 14 + 10 * np.sin((np.arange(n_samples) % 24 - 14) * np.pi / 12),
         },
         index=dates,

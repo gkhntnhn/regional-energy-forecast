@@ -257,7 +257,7 @@ Input (feature-engineered DataFrame)
 | Loss function | RMSE / MAE / MAPE | Optuna ile seç |
 | Early stopping | 50 rounds | Validation metric'e göre |
 | has_time | true | Zaman sırası korunur |
-| Kategorik kolonlar | configs/catboost.yaml'da tanımlı | NaN → "missing" |
+| Kategorik kolonlar | configs/models/catboost.yaml'da tanımlı | NaN → "missing" |
 
 **Güçlü yanı:** Feature etkileşimleri (tatil × saat × mevsim), tabular data'da en iyi performans.
 
@@ -545,11 +545,14 @@ configs/
 ├── pipeline.yaml           # Pipeline: hangi modüller aktif, merge stratejisi
 ├── data_loader.yaml        # Veri yükleme: Excel format, validation
 ├── openmeteo.yaml          # Hava durumu: lokasyonlar, ağırlıklar, değişkenler
-├── catboost.yaml           # CatBoost: kategorik kolonlar, eğitim parametreleri
-├── prophet.yaml            # Prophet: seasonality, holidays, regressors
-├── tft.yaml                # TFT: architecture, training, quantiles
-├── hyperparameters.yaml    # Optuna arama uzayı (tüm modeller)
+├── api.yaml                # API: CORS, rate limit
 ├── smoke_test.yaml         # Smoke test override (minimal params)
+├── models/
+│   ├── catboost.yaml       # CatBoost: kategorik kolonlar, eğitim parametreleri
+│   ├── prophet.yaml        # Prophet: seasonality, holidays, regressors
+│   ├── tft.yaml            # TFT: architecture, training, quantiles
+│   ├── ensemble.yaml       # Ensemble: ağırlıklar, aktif modeller
+│   └── hyperparameters.yaml # Optuna arama uzayı (tüm modeller)
 └── features/
     ├── calendar.yaml       # Calendar feature parametreleri
     ├── consumption.yaml    # Consumption: lag değerleri, window boyutları

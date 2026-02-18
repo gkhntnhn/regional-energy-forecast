@@ -16,6 +16,7 @@ from loguru import logger
 from energy_forecast.config.settings import EnsembleConfig
 from energy_forecast.models.base import PREDICTION_COL, BaseForecaster
 from energy_forecast.models.tft import TFTForecaster
+from energy_forecast.utils.prophet_utils import to_prophet_format
 
 if TYPE_CHECKING:
     from prophet import Prophet
@@ -255,15 +256,7 @@ class EnsembleForecaster(BaseForecaster):
         Returns:
             Prophet-formatted DataFrame.
         """
-        prophet_df = pd.DataFrame()
-        prophet_df["ds"] = df.index
-
-        # Add regressors
-        for reg in self._prophet_regressors:
-            if reg in df.columns:
-                prophet_df[reg] = df[reg].values
-
-        return prophet_df
+        return to_prophet_format(df, self._prophet_regressors)
 
     def save(self, path: Path) -> None:
         """Save ensemble configuration and model paths.
@@ -331,9 +324,12 @@ class EnsembleForecaster(BaseForecaster):
         """
         # Load CatBoost
         if catboost_path is not None and catboost_path.exists():
-            self._catboost_model = CatBoostRegressor()
-            self._catboost_model.load_model(str(catboost_path))
-            logger.info("Loaded CatBoost model from {}", catboost_path)
+            try:
+                self._catboost_model = CatBoostRegressor()
+                self._catboost_model.load_model(str(catboost_path))
+                logger.info("Loaded CatBoost model from {}", catboost_path)
+            except Exception as e:
+                logger.warning("Failed to load CatBoost model, skipping: {}", e)
 
         # Load Prophet (with hash integrity check)
         if prophet_path is not None and prophet_path.exists():

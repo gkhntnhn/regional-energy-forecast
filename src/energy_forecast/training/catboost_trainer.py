@@ -95,6 +95,19 @@ class CatBoostTrainer:
         self._target_col = settings.hyperparameters.target_col
         self._skip_validation = settings.hyperparameters.skip_validation_after_optuna
 
+    # -- Optuna storage --
+
+    def _optuna_storage(self, model_name: str) -> str | None:
+        """Return SQLite storage URL for Optuna study persistence.
+
+        Returns None for very short runs (n_trials <= 3) to avoid overhead.
+        """
+        if self._search_config.n_trials <= 3:
+            return None
+        studies_dir = Path(self._settings.paths.models_dir) / "optuna_studies"
+        studies_dir.mkdir(parents=True, exist_ok=True)
+        return f"sqlite:///{studies_dir / model_name}.db"
+
     # -- X/y split (resolves M4 leakage audit warning) --
 
     def _split_xy(self, df: pd.DataFrame) -> tuple[pd.DataFrame, pd.Series[Any]]:
@@ -232,8 +245,12 @@ class CatBoostTrainer:
         Returns:
             Tuple of (study, best_trial_result).
         """
+        storage = self._optuna_storage("catboost")
         study = create_study(
+            study_name="catboost",
             direction="minimize",
+            storage=storage,
+            load_if_exists=True,
             sampler=TPESampler(
                 multivariate=True,
                 seed=self._cb_config.training.random_seed,

@@ -106,6 +106,16 @@ class ProphetTrainer:
         self._regressor_names: list[str] = []
         self._holidays_df = self._load_holidays()  # load once, reuse across splits
 
+    # -- Optuna storage --
+
+    def _optuna_storage(self, model_name: str) -> str | None:
+        """Return SQLite storage URL for Optuna study persistence."""
+        if self._search_config.n_trials <= 3:
+            return None
+        studies_dir = Path(self._settings.paths.models_dir) / "optuna_studies"
+        studies_dir.mkdir(parents=True, exist_ok=True)
+        return f"sqlite:///{studies_dir / model_name}.db"
+
     # -- Prophet format conversion --
 
     def _to_prophet_format(
@@ -390,8 +400,12 @@ class ProphetTrainer:
         Returns:
             Tuple of (study, best_trial_result).
         """
+        storage = self._optuna_storage("prophet")
         study = create_study(
+            study_name="prophet",
             direction="minimize",
+            storage=storage,
+            load_if_exists=True,
             sampler=TPESampler(seed=self._prophet_config.optimization.random_seed),
         )
 

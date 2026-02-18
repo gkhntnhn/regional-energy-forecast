@@ -101,6 +101,16 @@ class TFTTrainer:
         self._target_col = settings.hyperparameters.target_col
         self._skip_validation = settings.hyperparameters.skip_validation_after_optuna
 
+    # -- Optuna storage --
+
+    def _optuna_storage(self, model_name: str) -> str | None:
+        """Return SQLite storage URL for Optuna study persistence."""
+        if self._search_config.n_trials <= 3:
+            return None
+        studies_dir = Path(self._settings.paths.models_dir) / "optuna_studies"
+        studies_dir.mkdir(parents=True, exist_ok=True)
+        return f"sqlite:///{studies_dir / model_name}.db"
+
     # -- Build TFT config with overrides --
 
     def _build_tft_config(self, params: dict[str, Any]) -> Any:
@@ -344,8 +354,12 @@ class TFTTrainer:
         Returns:
             Tuple of (study, best_trial_result trained on all splits).
         """
+        storage = self._optuna_storage("tft")
         study = create_study(
+            study_name="tft",
             direction="minimize",
+            storage=storage,
+            load_if_exists=True,
             sampler=TPESampler(seed=self._tft_config.training.random_seed),
         )
 

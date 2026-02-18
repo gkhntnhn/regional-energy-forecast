@@ -3,12 +3,15 @@
 Usage::
 
     python scripts/generate_holidays.py
+    python scripts/generate_holidays.py --start-year 2020 --end-year 2030
+    python scripts/generate_holidays.py --output custom_holidays.parquet
 
 Output: ``data/static/turkish_holidays.parquet``
 """
 
 from __future__ import annotations
 
+import argparse
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -368,11 +371,17 @@ def _add_bayrama_kalan_gun(
 
 def main() -> None:
     """Generate and save Turkish holiday parquet file."""
-    df = generate_holiday_catalog()
+    parser = argparse.ArgumentParser(description="Generate Turkish holiday parquet")
+    parser.add_argument("--start-year", type=int, default=2015, help="First year (default: 2015)")
+    parser.add_argument("--end-year", type=int, default=2044, help="Last year (default: 2044)")
+    parser.add_argument("--output", type=Path, default=OUTPUT_PATH, help="Output path")
+    args = parser.parse_args()
 
-    OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    df.to_parquet(OUTPUT_PATH, engine="pyarrow", compression="snappy")
-    logger.info("Saved holiday catalog to {}", OUTPUT_PATH)
+    df = generate_holiday_catalog(start_year=args.start_year, end_year=args.end_year)
+
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    df.to_parquet(args.output, engine="pyarrow", compression="snappy")
+    logger.info("Saved holiday catalog to {}", args.output)
     logger.info("Total holidays: {}", len(df))
     logger.info("Date range: {} to {}", df["date"].min(), df["date"].max())
 
