@@ -8,9 +8,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated
 
-from fastapi import BackgroundTasks, FastAPI, Form, HTTPException, Request, UploadFile
+from fastapi import BackgroundTasks, Depends, FastAPI, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from loguru import logger
 from pydantic import EmailStr
 from slowapi import Limiter
@@ -19,9 +20,11 @@ from slowapi.util import get_remote_address
 
 from energy_forecast.config.settings import load_config
 from energy_forecast.serving.exceptions import APIError, JobQueueFullError
+from energy_forecast.utils import TZ_ISTANBUL
 from energy_forecast.serving.job_manager import JobManager
 from energy_forecast.serving.schemas import (
     ErrorResponse,
+    ForecastType,
     HealthResponse,
     JobResponse,
     JobStatusResponse,
@@ -35,6 +38,32 @@ from energy_forecast.serving.services.prediction_service import (
 
 if TYPE_CHECKING:
     pass
+
+# ---------------------------------------------------------------------------
+# Authentication
+# ---------------------------------------------------------------------------
+
+_bearer_scheme = HTTPBearer(auto_error=False)
+
+
+async def verify_api_key(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
+) -> HTTPAuthorizationCredentials:
+    """Validate Bearer token against configured API key.
+
+    Raises:
+        HTTPException: 401 if token is missing, empty, or invalid.
+    """
+    expected_key: str = getattr(getattr(request.app.state, "_api_key_ref", None), "key", "")
+    if not expected_key:
+        # Try loading from settings stored in app state
+        expected_key = getattr(request.app.state, "api_key", "")
+    if not expected_key:
+        raise HTTPException(status_code=401, detail="API key not configured on server")
+    if credentials is None or credentials.credentials != expected_key:
+        raise HTTPException(status_code=401, detail="Invalid or missing API key")
+    return credentials
 
 # ---------------------------------------------------------------------------
 # Rate Limiter
@@ -106,6 +135,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     except Exception as e:
         logger.warning("Failed to load models (API will reject predictions): {}", e)
 
+    # Store API key for auth middleware
+    app.state.api_key = settings.env.api_key
+    if not settings.env.api_key:
+        logger.warning("API_KEY is empty — all authenticated endpoints will reject requests")
+
     # Initialize job manager
     app.state.job_manager = JobManager()
 
@@ -140,6 +174,11 @@ except Exception:
 
 # CORS spec: allow_credentials=True is incompatible with allow_origins=["*"]
 _allow_credentials = "*" not in _cors_origins
+if "*" in _cors_origins:
+    logger.warning(
+        "CORS allow_origins contains wildcard '*' — credentials disabled. "
+        "Set specific origins in configs/api.yaml for production."
+    )
 
 app.add_middleware(
     CORSMiddleware,
@@ -187,7 +226,7 @@ async def health() -> HealthResponse:
     """Health check endpoint."""
     return HealthResponse(
         status="ok",
-        timestamp=datetime.now(),
+        timestamp=datetime.now(tz=TZ_ISTANBUL),
         version="0.1.0",
     )
 
@@ -199,6 +238,8 @@ async def predict(
     background_tasks: BackgroundTasks,
     file: UploadFile,
     email: Annotated[EmailStr, Form()],
+    forecast_type: Annotated[ForecastType, Form()] = ForecastType.DAY_AHEAD_AND_INTRADAY,
+    _auth: HTTPAuthorizationCredentials = Depends(verify_api_key),
 ) -> JobResponse:
     """Submit a prediction job.
 
@@ -260,7 +301,11 @@ async def predict(
 
 
 @app.get("/status/{job_id}", response_model=JobStatusResponse)
-async def get_status(request: Request, job_id: str) -> JobStatusResponse:
+async def get_status(
+    request: Request,
+    job_id: str,
+    _auth: HTTPAuthorizationCredentials = Depends(verify_api_key),
+) -> JobStatusResponse:
     """Get job status by ID.
 
     Args:
@@ -288,14 +333,20 @@ async def get_status(request: Request, job_id: str) -> JobStatusResponse:
 
 
 @app.get("/models")
-async def get_models(request: Request) -> dict[str, object]:
+async def get_models(
+    request: Request,
+    _auth: HTTPAuthorizationCredentials = Depends(verify_api_key),
+) -> dict[str, object]:
     """Get information about loaded models."""
     prediction_service: PredictionService = request.app.state.prediction_service
     return prediction_service.get_model_info()
 
 
 @app.get("/jobs")
-async def list_jobs(request: Request) -> dict[str, object]:
+async def list_jobs(
+    request: Request,
+    _auth: HTTPAuthorizationCredentials = Depends(verify_api_key),
+) -> dict[str, object]:
     """List all jobs (for debugging/admin)."""
     job_manager: JobManager = request.app.state.job_manager
     jobs = job_manager.get_all_jobs()

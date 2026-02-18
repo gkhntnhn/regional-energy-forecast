@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -156,6 +157,7 @@ class PredictionService:
             raise ModelNotLoadedError("Models not loaded. Call load_models() first.")
 
         self._warnings = []  # reset warnings for each prediction run
+        start_time = time.perf_counter()
 
         def update_progress(msg: str) -> None:
             logger.info(msg)
@@ -206,14 +208,19 @@ class PredictionService:
 
             # Step 8: Prepare output DataFrame
             result = self._prepare_output(predictions, last_timestamp)
-            update_progress("Prediction complete!")
 
+            latency_ms = (time.perf_counter() - start_time) * 1000
             logger.info(
-                "Generated {} predictions from {} to {}",
+                "Prediction completed in {:.0f}ms — {} rows from {} to {}",
+                latency_ms,
                 len(result),
                 result.index.min(),
                 result.index.max(),
             )
+            update_progress("Prediction complete!")
+
+            # Attach latency metadata for API response
+            result.attrs["latency_ms"] = round(latency_ms)
             return result
 
         except (ModelNotLoadedError, PredictionError, FeaturePipelineError):

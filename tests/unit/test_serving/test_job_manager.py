@@ -11,6 +11,7 @@ import pytest
 from energy_forecast.serving.exceptions import JobNotFoundError, JobQueueFullError
 from energy_forecast.serving.job_manager import Job, JobManager
 from energy_forecast.serving.schemas import JobStatus
+from energy_forecast.utils import TZ_ISTANBUL
 
 
 @pytest.fixture
@@ -189,7 +190,7 @@ class TestJobManager:
         job_manager._complete_job(job.id, Path("/tmp/out.xlsx"))
 
         # Make it old
-        job_manager._jobs[job.id].completed_at = datetime.now() - timedelta(hours=48)
+        job_manager._jobs[job.id].completed_at = datetime.now(tz=TZ_ISTANBUL) - timedelta(hours=48)
 
         removed = job_manager.cleanup_old_jobs(max_age_hours=24)
 
@@ -234,7 +235,7 @@ class TestJobManagerProcessJob:
 
     @pytest.mark.asyncio
     async def test_process_job_failure(self, job_manager: JobManager) -> None:
-        """Test job processing with failure."""
+        """Test job processing with failure (error is captured, not re-raised)."""
         job = job_manager.create_job("test@test.com", Path("/tmp/test.xlsx"))
 
         # Mock services with error
@@ -245,13 +246,13 @@ class TestJobManagerProcessJob:
         mock_email = MagicMock()
         mock_email.send_error_notification.return_value = True
 
-        with pytest.raises(Exception, match="Prediction failed"):
-            await job_manager.process_job(
-                job=job,
-                prediction_service=mock_prediction,
-                file_service=mock_file,
-                email_service=mock_email,
-            )
+        # Background tasks should NOT re-raise — error is recorded in job state
+        await job_manager.process_job(
+            job=job,
+            prediction_service=mock_prediction,
+            file_service=mock_file,
+            email_service=mock_email,
+        )
 
         assert job_manager.get_job(job.id).status == JobStatus.FAILED
         assert "Prediction failed" in job_manager.get_job(job.id).error  # type: ignore

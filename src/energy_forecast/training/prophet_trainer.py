@@ -12,6 +12,8 @@ Uses the same shared infrastructure as CatBoostTrainer:
 
 from __future__ import annotations
 
+import hashlib
+import json
 import pickle
 import time
 from collections.abc import Callable
@@ -477,7 +479,14 @@ class ProphetTrainer:
             model_path = model_dir / "model.pkl"
             with open(model_path, "wb") as f:
                 pickle.dump(final_model, f)
-            logger.info("Model saved to {}", model_path)
+
+            # Write SHA256 hash for integrity verification (CWE-502 mitigation)
+            model_hash = "sha256:" + hashlib.sha256(model_path.read_bytes()).hexdigest()
+            metadata_path = model_dir / "metadata.json"
+            with open(metadata_path, "w", encoding="utf-8") as f:
+                json.dump({"model_hash": model_hash}, f, indent=2)
+
+            logger.info("Model saved to {} (hash: {})", model_path, model_hash[:24])
 
             self._tracker.log_prophet_model(final_model, "prophet_model")
 

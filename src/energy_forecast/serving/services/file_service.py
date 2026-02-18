@@ -16,6 +16,7 @@ from energy_forecast.serving.exceptions import (
     FileUploadError,
     InvalidFileTypeError,
 )
+from energy_forecast.utils import TZ_ISTANBUL
 
 if TYPE_CHECKING:
     from fastapi import UploadFile
@@ -78,7 +79,7 @@ class FileService:
 
         # Generate unique filename
         unique_id = uuid.uuid4().hex[:8]
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.now(tz=TZ_ISTANBUL).strftime("%Y%m%d_%H%M%S")
         safe_filename = f"{timestamp}_{unique_id}{ext}"
         save_path = self._config.upload_dir / safe_filename
 
@@ -125,7 +126,7 @@ class FileService:
         Returns:
             Path to created Excel file.
         """
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.now(tz=TZ_ISTANBUL).strftime("%Y%m%d_%H%M%S")
         filename = f"forecast_{job_id}_{timestamp}.xlsx"
         output_path = self._config.output_dir / filename
 
@@ -146,13 +147,13 @@ class FileService:
         Returns:
             Number of files removed.
         """
-        threshold = datetime.now() - timedelta(hours=self._config.cleanup_after_hours)
+        threshold = datetime.now(tz=TZ_ISTANBUL) - timedelta(hours=self._config.cleanup_after_hours)
         removed = 0
 
         for directory in [self._config.upload_dir, self._config.output_dir]:
             for file_path in directory.iterdir():
                 if file_path.is_file():
-                    mtime = datetime.fromtimestamp(file_path.stat().st_mtime)
+                    mtime = datetime.fromtimestamp(file_path.stat().st_mtime, tz=TZ_ISTANBUL)
                     if mtime < threshold:
                         file_path.unlink()
                         removed += 1

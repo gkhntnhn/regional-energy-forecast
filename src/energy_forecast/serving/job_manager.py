@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 
 from energy_forecast.serving.exceptions import JobNotFoundError, JobQueueFullError
 from energy_forecast.serving.schemas import JobStatus
+from energy_forecast.utils import TZ_ISTANBUL
 
 if TYPE_CHECKING:
     from energy_forecast.serving.services.email_service import EmailService
@@ -30,7 +31,7 @@ class Job(BaseModel):
     progress: str | None = None
     error: str | None = None
     result_path: Path | None = None
-    created_at: datetime = Field(default_factory=datetime.now)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(tz=TZ_ISTANBUL))
     completed_at: datetime | None = None
 
     model_config = {"arbitrary_types_allowed": True}
@@ -134,7 +135,7 @@ class JobManager:
         if job_id in self._jobs:
             self._jobs[job_id].status = JobStatus.COMPLETED
             self._jobs[job_id].result_path = result_path
-            self._jobs[job_id].completed_at = datetime.now()
+            self._jobs[job_id].completed_at = datetime.now(tz=TZ_ISTANBUL)
             self._active_job_id = None
             logger.info("Job {} completed", job_id)
 
@@ -148,7 +149,7 @@ class JobManager:
         if job_id in self._jobs:
             self._jobs[job_id].status = JobStatus.FAILED
             self._jobs[job_id].error = error
-            self._jobs[job_id].completed_at = datetime.now()
+            self._jobs[job_id].completed_at = datetime.now(tz=TZ_ISTANBUL)
             self._active_job_id = None
             logger.error("Job {} failed: {}", job_id, error)
 
@@ -210,8 +211,6 @@ class JobManager:
                 except Exception as email_err:
                     logger.error("Failed to send error notification: {}", email_err)
 
-                raise
-
     def cleanup_old_jobs(self, max_age_hours: int = 24) -> int:
         """Remove old completed/failed jobs from memory.
 
@@ -223,7 +222,7 @@ class JobManager:
         """
         from datetime import timedelta
 
-        threshold = datetime.now() - timedelta(hours=max_age_hours)
+        threshold = datetime.now(tz=TZ_ISTANBUL) - timedelta(hours=max_age_hours)
         to_remove = []
 
         for job_id, job in self._jobs.items():

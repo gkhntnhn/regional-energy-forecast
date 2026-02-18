@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import pickle
 from pathlib import Path
@@ -14,6 +15,10 @@ from energy_forecast.models.base import BaseForecaster
 
 if TYPE_CHECKING:
     from prophet import Prophet
+
+
+class ModelIntegrityError(RuntimeError):
+    """Raised when model file hash verification fails (CWE-502 mitigation)."""
 
 
 class ProphetForecaster(BaseForecaster):
@@ -120,15 +125,20 @@ class ProphetForecaster(BaseForecaster):
         path.mkdir(parents=True, exist_ok=True)
 
         # Model pickle
-        with open(path / "prophet_model.pkl", "wb") as f:
+        pkl_path = path / "prophet_model.pkl"
+        with open(pkl_path, "wb") as f:
             pickle.dump(self._model, f)
 
-        # Metadata
+        # Compute SHA256 hash for integrity verification (CWE-502 mitigation)
+        model_hash = "sha256:" + hashlib.sha256(pkl_path.read_bytes()).hexdigest()
+
+        # Metadata (includes model hash)
         with open(path / "metadata.json", "w") as f:
             json.dump(
                 {
                     "regressor_names": self._regressor_names,
                     "config": self.config,
+                    "model_hash": model_hash,
                 },
                 f,
                 indent=2,
@@ -149,6 +159,22 @@ class ProphetForecaster(BaseForecaster):
         if not model_path.exists():
             msg = f"Model not found: {model_path}"
             raise FileNotFoundError(msg)
+
+        # Verify integrity via SHA256 hash if metadata exists
+        metadata_path = path / "metadata.json"
+        if metadata_path.exists():
+            with open(metadata_path, encoding="utf-8") as f:
+                metadata = json.load(f)
+            expected_hash = metadata.get("model_hash")
+            if expected_hash:
+                actual_hash = "sha256:" + hashlib.sha256(model_path.read_bytes()).hexdigest()
+                if actual_hash != expected_hash:
+                    msg = f"Model file integrity check failed: {model_path}"
+                    raise ModelIntegrityError(msg)
+            else:
+                logger.warning("No model_hash in metadata — skipping integrity check")
+        else:
+            logger.warning("No metadata.json found — skipping integrity check for {}", path)
 
         try:
             with open(model_path, "rb") as f:

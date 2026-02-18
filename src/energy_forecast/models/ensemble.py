@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import pickle
 from pathlib import Path
@@ -334,8 +335,26 @@ class EnsembleForecaster(BaseForecaster):
             self._catboost_model.load_model(str(catboost_path))
             logger.info("Loaded CatBoost model from {}", catboost_path)
 
-        # Load Prophet
+        # Load Prophet (with hash integrity check)
         if prophet_path is not None and prophet_path.exists():
+            # Verify hash if metadata exists
+            metadata_path = prophet_path.parent / "metadata.json"
+            if metadata_path.exists():
+                with open(metadata_path, encoding="utf-8") as f:
+                    metadata = json.load(f)
+                expected_hash = metadata.get("model_hash")
+                if expected_hash:
+                    actual = "sha256:" + hashlib.sha256(
+                        prophet_path.read_bytes()
+                    ).hexdigest()
+                    if actual != expected_hash:
+                        msg = f"Prophet model integrity check failed: {prophet_path}"
+                        raise RuntimeError(msg)
+                else:
+                    logger.warning("No model_hash in metadata — skipping integrity check")
+            else:
+                logger.warning("No metadata.json — skipping Prophet integrity check")
+
             try:
                 with open(prophet_path, "rb") as f:
                     self._prophet_model = pickle.load(f)

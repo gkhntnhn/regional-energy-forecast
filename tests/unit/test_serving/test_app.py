@@ -12,6 +12,8 @@ from fastapi.testclient import TestClient
 
 # Excel MIME type constant to keep lines short
 XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+TEST_API_KEY = "test-secret-key-12345"
+AUTH_HEADER = {"Authorization": f"Bearer {TEST_API_KEY}"}
 
 
 @pytest.fixture
@@ -66,6 +68,7 @@ def test_client(
     app.state.file_service = mock_file_service
     app.state.email_service = mock_email_service
     app.state.job_manager = JobManager()
+    app.state.api_key = TEST_API_KEY
 
     return TestClient(app, raise_server_exceptions=False)
 
@@ -84,12 +87,52 @@ class TestHealthEndpoint:
         assert data["version"] == "0.1.0"
 
 
+class TestAuthentication:
+    """Tests for API key authentication."""
+
+    def test_health_no_auth_required(self, test_client: TestClient) -> None:
+        """Health endpoint should work without auth."""
+        response = test_client.get("/health")
+        assert response.status_code == 200
+
+    def test_predict_requires_auth(self, test_client: TestClient) -> None:
+        """Predict endpoint rejects requests without auth."""
+        excel_content = BytesIO(b"fake excel content")
+        response = test_client.post(
+            "/predict",
+            files={"file": ("test.xlsx", excel_content, XLSX_MIME)},
+            data={"email": "test@example.com"},
+        )
+        assert response.status_code == 401
+
+    def test_predict_rejects_wrong_key(self, test_client: TestClient) -> None:
+        """Predict endpoint rejects wrong API key."""
+        excel_content = BytesIO(b"fake excel content")
+        response = test_client.post(
+            "/predict",
+            files={"file": ("test.xlsx", excel_content, XLSX_MIME)},
+            data={"email": "test@example.com"},
+            headers={"Authorization": "Bearer wrong-key"},
+        )
+        assert response.status_code == 401
+
+    def test_jobs_requires_auth(self, test_client: TestClient) -> None:
+        """Jobs endpoint rejects requests without auth."""
+        response = test_client.get("/jobs")
+        assert response.status_code == 401
+
+    def test_models_requires_auth(self, test_client: TestClient) -> None:
+        """Models endpoint rejects requests without auth."""
+        response = test_client.get("/models")
+        assert response.status_code == 401
+
+
 class TestModelsEndpoint:
     """Tests for /models endpoint."""
 
     def test_get_models_info(self, test_client: TestClient) -> None:
         """Test getting model information."""
-        response = test_client.get("/models")
+        response = test_client.get("/models", headers=AUTH_HEADER)
 
         assert response.status_code == 200
         data = response.json()
@@ -113,6 +156,7 @@ class TestPredictEndpoint:
             "/predict",
             files={"file": ("test.xlsx", excel_content, XLSX_MIME)},
             data={"email": "test@example.com"},
+            headers=AUTH_HEADER,
         )
 
         assert response.status_code == 200
@@ -129,6 +173,7 @@ class TestPredictEndpoint:
             "/predict",
             files={"file": ("test.xlsx", excel_content, XLSX_MIME)},
             data={"email": "not-an-email"},
+            headers=AUTH_HEADER,
         )
 
         assert response.status_code == 422  # Validation error
@@ -146,6 +191,7 @@ class TestPredictEndpoint:
             "/predict",
             files={"file": ("test.xlsx", excel_content, XLSX_MIME)},
             data={"email": "test@example.com"},
+            headers=AUTH_HEADER,
         )
 
         assert response.status_code == 503
@@ -164,6 +210,7 @@ class TestPredictEndpoint:
             "/predict",
             files={"file": ("test.xlsx", excel_content1, XLSX_MIME)},
             data={"email": "test1@example.com"},
+            headers=AUTH_HEADER,
         )
         assert response1.status_code == 200
         job_id = response1.json()["job_id"]
@@ -178,6 +225,7 @@ class TestPredictEndpoint:
             "/predict",
             files={"file": ("test.xlsx", excel_content2, XLSX_MIME)},
             data={"email": "test2@example.com"},
+            headers=AUTH_HEADER,
         )
         assert response2.status_code == 429
 
@@ -197,11 +245,12 @@ class TestStatusEndpoint:
             "/predict",
             files={"file": ("test.xlsx", excel_content, XLSX_MIME)},
             data={"email": "test@example.com"},
+            headers=AUTH_HEADER,
         )
         job_id = create_response.json()["job_id"]
 
         # Get status
-        response = test_client.get(f"/status/{job_id}")
+        response = test_client.get(f"/status/{job_id}", headers=AUTH_HEADER)
 
         assert response.status_code == 200
         data = response.json()
@@ -211,7 +260,7 @@ class TestStatusEndpoint:
 
     def test_get_status_not_found(self, test_client: TestClient) -> None:
         """Test getting status of nonexistent job."""
-        response = test_client.get("/status/nonexistent123")
+        response = test_client.get("/status/nonexistent123", headers=AUTH_HEADER)
 
         assert response.status_code == 404
 
@@ -226,7 +275,7 @@ class TestJobsEndpoint:
         from energy_forecast.serving.job_manager import JobManager
         app.state.job_manager = JobManager()
 
-        response = test_client.get("/jobs")
+        response = test_client.get("/jobs", headers=AUTH_HEADER)
 
         assert response.status_code == 200
         data = response.json()
@@ -241,9 +290,10 @@ class TestJobsEndpoint:
             "/predict",
             files={"file": ("test.xlsx", excel_content, XLSX_MIME)},
             data={"email": "test@example.com"},
+            headers=AUTH_HEADER,
         )
 
-        response = test_client.get("/jobs")
+        response = test_client.get("/jobs", headers=AUTH_HEADER)
 
         assert response.status_code == 200
         data = response.json()
