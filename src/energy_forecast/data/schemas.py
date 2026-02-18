@@ -25,14 +25,20 @@ class ConsumptionSchema(pa.DataFrameModel):
 
 
 class EpiasSchema(pa.DataFrameModel):
-    """Schema for EPIAS market data."""
+    """Schema for EPIAS market data.
+
+    FDPP is deprecated (no longer available from EPIAS API) so it is
+    not required — the schema only validates the 4 active variables.
+    """
 
     datetime: Index[pa.DateTime]
-    FDPP: Series[float] = pa.Field(nullable=True)
     Real_Time_Consumption: Series[float] = pa.Field(nullable=True)
     DAM_Purchase: Series[float] = pa.Field(nullable=True)
     Bilateral_Agreement_Purchase: Series[float] = pa.Field(nullable=True)
     Load_Forecast: Series[float] = pa.Field(nullable=True)
+
+    class Config:
+        strict = False  # allow extra columns (e.g. FDPP if present in old cache)
 
 
 class WeatherSchema(pa.DataFrameModel):

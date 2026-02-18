@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 
 from energy_forecast.config.settings import Settings
 from energy_forecast.data.epias_client import EpiasClient
+from energy_forecast.data.exceptions import EpiasAuthError
 from energy_forecast.data.loader import DataLoader
 from energy_forecast.data.openmeteo_client import OpenMeteoClient
 from energy_forecast.features.pipeline import FeaturePipeline
@@ -55,11 +56,17 @@ class PredictionService:
         self._feature_pipeline: FeaturePipeline | None = None
         self._data_loader: DataLoader | None = None
         self._models_loaded = False
+        self._warnings: list[str] = []
 
     @property
     def is_ready(self) -> bool:
         """Check if models are loaded and service is ready."""
         return self._models_loaded and self._ensemble is not None
+
+    @property
+    def warnings(self) -> list[str]:
+        """Warnings collected during the last prediction run."""
+        return list(self._warnings)
 
     def load_models(self) -> None:
         """Load ensemble models and initialize pipeline.
@@ -145,9 +152,10 @@ class PredictionService:
         if not self.is_ready:
             raise ModelNotLoadedError("Models not loaded. Call load_models() first.")
 
-        assert self._data_loader is not None
-        assert self._feature_pipeline is not None
-        assert self._ensemble is not None
+        if not self._data_loader or not self._feature_pipeline or not self._ensemble:
+            raise ModelNotLoadedError("Models not loaded. Call load_models() first.")
+
+        self._warnings = []  # reset warnings for each prediction run
 
         def update_progress(msg: str) -> None:
             logger.info(msg)
@@ -215,7 +223,11 @@ class PredictionService:
             raise PredictionError(f"Prediction failed: {e}") from e
 
     def _fetch_epias_data(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Fetch EPIAS data for the date range in df."""
+        """Fetch EPIAS data for the date range in df.
+
+        Raises:
+            EpiasAuthError: If authentication fails (critical, not recoverable).
+        """
         start_date = df.index.min().strftime("%Y-%m-%d")
         end_date = df.index.max().strftime("%Y-%m-%d")
 
@@ -226,9 +238,12 @@ class PredictionService:
                 config=self._settings.epias_api,
             ) as client:
                 return client.fetch(start_date, end_date)
+        except EpiasAuthError:
+            raise  # auth failures are critical — do not swallow
         except Exception as e:
-            logger.warning("EPIAS fetch failed, using empty DataFrame: {}", e)
-            # Return empty DataFrame with expected columns
+            msg = f"EPIAS fetch failed, predictions will lack market features: {e}"
+            logger.warning(msg)
+            self._warnings.append(msg)
             return pd.DataFrame(index=df.index)
 
     def _fetch_weather_data(self, df: pd.DataFrame) -> pd.DataFrame:

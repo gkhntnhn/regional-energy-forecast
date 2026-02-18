@@ -17,7 +17,7 @@ from pathlib import Path
 
 from loguru import logger
 
-from energy_forecast.config.settings import EnvConfig
+from energy_forecast.config.settings import EnvConfig, EpiasApiConfig
 from energy_forecast.data.epias_client import EpiasClient
 from energy_forecast.data.exceptions import EpiasApiError
 
@@ -49,10 +49,11 @@ def main(start_year: int = 2020, end_year: int | None = None) -> None:
     skipped = 0
     failed = 0
 
+    epias_config = EpiasApiConfig(cache_dir=str(cache_dir))
     with EpiasClient(
         username=env.epias_username,
         password=env.epias_password,
-        cache_dir=cache_dir,
+        config=epias_config,
     ) as client:
         for year in range(start_year, end_year + 1):
             cached = client.load_cache(year)

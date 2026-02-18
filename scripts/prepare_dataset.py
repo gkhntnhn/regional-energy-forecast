@@ -32,18 +32,18 @@ import pandas as pd
 from dotenv import load_dotenv
 from loguru import logger
 
+from energy_forecast.config import Settings, load_config
+from energy_forecast.data.epias_client import EpiasClient
+from energy_forecast.data.loader import DataLoader
+from energy_forecast.data.openmeteo_client import OpenMeteoClient
+from energy_forecast.data.schemas import ConsumptionSchema, EpiasSchema, WeatherSchema
+from energy_forecast.features.pipeline import FeaturePipeline
+
 # Load .env for credentials
 load_dotenv()
 
-# Add project root to path
+# Project root for locating configs directory
 PROJECT_ROOT = Path(__file__).parent.parent
-sys.path.insert(0, str(PROJECT_ROOT / "src"))
-
-from energy_forecast.config import Settings, load_config  # noqa: E402
-from energy_forecast.data.epias_client import EpiasClient  # noqa: E402
-from energy_forecast.data.loader import DataLoader  # noqa: E402
-from energy_forecast.data.openmeteo_client import OpenMeteoClient  # noqa: E402
-from energy_forecast.features.pipeline import FeaturePipeline  # noqa: E402
 
 
 def parse_args() -> argparse.Namespace:
@@ -249,21 +249,49 @@ def fetch_weather_data(
     Returns:
         DataFrame with weather data, or None if unavailable.
     """
-    logger.info("Fetching weather data...")
+    logger.info("Fetching weather data (historical + forecast)...")
     try:
         with OpenMeteoClient(
             settings.openmeteo,
             settings.region,
             settings.project.timezone,
         ) as client:
-            # Fetch historical
-            weather_df = client.fetch_historical(start_date, end_date)
+            # Fetch historical weather
+            try:
+                historical_df = client.fetch_historical(start_date, end_date)
+                if historical_df is not None and "date" in historical_df.columns:
+                    historical_df = historical_df.set_index("date").sort_index()
+                logger.info("Historical weather: {} rows", len(historical_df) if historical_df is not None else 0)
+            except Exception as e:
+                logger.warning("Historical weather fetch failed: {}", e)
+                historical_df = None
 
-            if weather_df is not None and not weather_df.empty:
-                if "date" in weather_df.columns:
-                    weather_df = weather_df.set_index("date").sort_index()
-                logger.info("Weather data: {} rows", len(weather_df))
-                return weather_df
+            # Fetch forecast weather for T and T+1 (future 48h+)
+            try:
+                forecast_df = client.fetch_forecast(forecast_days=3)
+                logger.info("Forecast weather: {} rows", len(forecast_df) if forecast_df is not None else 0)
+            except Exception as e:
+                logger.warning("Weather forecast fetch failed: {}", e)
+                forecast_df = None
+
+            # Combine: prefer forecast for overlapping timestamps (more recent)
+            has_hist = historical_df is not None and not historical_df.empty
+            has_fc = forecast_df is not None and not forecast_df.empty
+
+            if has_hist and has_fc:
+                weather_df = pd.concat([historical_df, forecast_df])
+                weather_df = weather_df[~weather_df.index.duplicated(keep="last")]
+                weather_df = weather_df.sort_index()
+            elif has_hist:
+                weather_df = historical_df
+            elif has_fc:
+                weather_df = forecast_df
+            else:
+                logger.warning("Weather data unavailable")
+                return None
+
+            logger.info("Weather data: {} rows total", len(weather_df))
+            return weather_df
 
     except Exception as e:
         logger.error("Weather fetch failed: {}", e)
@@ -371,6 +399,20 @@ def split_and_save(
         len(forecast_df),
     )
 
+    # Sanity checks before saving
+    if len(forecast_df) != forecast_hours:
+        logger.error(
+            "Expected {} forecast rows, got {}",
+            forecast_hours,
+            len(forecast_df),
+        )
+        msg = f"Forecast row count mismatch: expected {forecast_hours}, got {len(forecast_df)}"
+        raise ValueError(msg)
+
+    if len(historical_df) == 0:
+        msg = "Historical DataFrame is empty after split"
+        raise ValueError(msg)
+
     # Save
     historical_path = output_dir / "features_historical.parquet"
     forecast_path = output_dir / "features_forecast.parquet"
@@ -402,6 +444,14 @@ def main() -> int:
     logger.info("[1/6] Loading consumption data...")
     consumption_df = load_consumption_data(settings, args.excel)
 
+    # Validate consumption data
+    try:
+        ConsumptionSchema.validate(consumption_df)
+        logger.info("Consumption data validation passed")
+    except Exception as e:
+        logger.error("Consumption data validation failed: {}", e)
+        return 1
+
     # Step 2: Extend with forecast rows
     logger.info("[2/6] Extending with forecast rows...")
     extended_df = extend_with_forecast_rows(consumption_df, args.forecast_hours)
@@ -416,6 +466,14 @@ def main() -> int:
         settings, start_date, end_date, skip_api=args.skip_epias
     )
 
+    # Validate EPIAS data
+    if epias_df is not None:
+        try:
+            EpiasSchema.validate(epias_df)
+            logger.info("EPIAS data validation passed")
+        except Exception as e:
+            logger.warning("EPIAS data validation failed (continuing): {}", e)
+
     # Step 4: Fetch weather data
     if args.skip_weather:
         logger.info("[4/6] Weather fetch skipped")
@@ -424,16 +482,31 @@ def main() -> int:
         logger.info("[4/6] Fetching weather data...")
         weather_df = fetch_weather_data(settings, start_date, end_date)
 
+    # Validate weather data
+    if weather_df is not None:
+        try:
+            WeatherSchema.validate(weather_df)
+            logger.info("Weather data validation passed")
+        except Exception as e:
+            logger.warning("Weather data validation failed (continuing): {}", e)
+
     # Step 5: Merge all data sources
     logger.info("[5/6] Merging data sources...")
     merged_df = merge_data_sources(extended_df, epias_df, weather_df)
 
-    # Fill missing values for external data columns (forecast rows)
-    # Use forward fill then backward fill — but preserve consumption NaN
-    # in forecast rows (consumption is the prediction target, must stay NaN)
-    consumption_col = merged_df["consumption"].copy()
-    merged_df = merged_df.ffill().bfill()
-    merged_df["consumption"] = consumption_col
+    # Fill missing weather values only (forecast rows may have gaps)
+    # EPIAS and consumption columns must NOT be forward-filled — EPIAS
+    # raw values are dropped by the feature pipeline and consumption NaN
+    # in forecast rows marks the prediction target.
+    weather_prefixes = (
+        "temperature", "humidity", "dew_point", "apparent_temperature",
+        "precipitation", "snow_depth", "weather_code", "surface_pressure",
+        "wind_speed", "wind_direction", "shortwave_radiation",
+    )
+    weather_cols = [c for c in merged_df.columns if c.startswith(weather_prefixes)]
+    if weather_cols:
+        merged_df[weather_cols] = merged_df[weather_cols].ffill().bfill()
+        logger.info("Forward/back-filled {} weather columns", len(weather_cols))
 
     # Step 6: Run feature pipeline
     logger.info("[6/6] Running feature pipeline...")

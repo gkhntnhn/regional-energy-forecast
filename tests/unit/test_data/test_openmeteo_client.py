@@ -270,6 +270,57 @@ class TestWeightedAverage:
         expected = 0.6 * 10.0 + 0.4 * 20.0
         assert abs(df["temperature_2m"].iloc[0] - expected) < 0.01
 
+    def test_weighted_average_nan_renormalized(self, client: OpenMeteoClient) -> None:
+        """When one city has NaN, weights are re-normalized using remaining cities."""
+        resp_a = _make_mock_response(temp_base=10.0)  # CityA: temp=10.0
+        resp_b = _make_mock_response(temp_base=20.0)  # CityB: temp=20.0
+
+        # Inject NaN into CityA temperature for first 3 hours
+        hourly_a = resp_a.Hourly()
+        assert hourly_a is not None
+        temp_a = hourly_a.Variables(0).ValuesAsNumpy()
+        temp_a[:3] = np.nan
+
+        with patch.object(
+            client._client,
+            "weather_api",
+            side_effect=[[resp_a], [resp_b]],
+        ):
+            df = client.fetch_historical("2024-01-01", "2024-01-01")
+
+        # For hours 0-2: CityA is NaN, so result = CityB's value (re-normalized to weight 1.0)
+        assert abs(df["temperature_2m"].iloc[0] - 20.0) < 0.01
+        assert abs(df["temperature_2m"].iloc[1] - 20.5) < 0.01
+        assert abs(df["temperature_2m"].iloc[2] - 21.0) < 0.01
+
+        # For hour 3: both cities valid, normal weighted average
+        expected_h3 = 0.6 * (10.0 + 3 * 0.5) + 0.4 * (20.0 + 3 * 0.5)
+        assert abs(df["temperature_2m"].iloc[3] - expected_h3) < 0.01
+
+    def test_weighted_average_all_nan_stays_nan(self, client: OpenMeteoClient) -> None:
+        """When all cities are NaN for a timestep, result is NaN."""
+        resp_a = _make_mock_response(temp_base=10.0)
+        resp_b = _make_mock_response(temp_base=20.0)
+
+        # Inject NaN into both cities for hour 0
+        hourly_a = resp_a.Hourly()
+        hourly_b = resp_b.Hourly()
+        assert hourly_a is not None and hourly_b is not None
+        hourly_a.Variables(0).ValuesAsNumpy()[0] = np.nan
+        hourly_b.Variables(0).ValuesAsNumpy()[0] = np.nan
+
+        with patch.object(
+            client._client,
+            "weather_api",
+            side_effect=[[resp_a], [resp_b]],
+        ):
+            df = client.fetch_historical("2024-01-01", "2024-01-01")
+
+        # Hour 0: all NaN → result NaN
+        assert pd.isna(df["temperature_2m"].iloc[0])
+        # Hour 1: both valid → normal weighted average
+        assert not pd.isna(df["temperature_2m"].iloc[1])
+
     def test_config_variables_used(self, client: OpenMeteoClient) -> None:
         """Only configured variables appear in output."""
         resp = _make_mock_response()

@@ -316,6 +316,10 @@ class OpenMeteoClient:
     ) -> pd.DataFrame:
         """Compute weighted average across city DataFrames.
 
+        NaN-safe: when a city has missing data for a timestep, its weight
+        is excluded and the remaining weights are re-normalized.  If all
+        cities are NaN for a timestep, the result stays NaN.
+
         Args:
             city_dfs: List of (CityConfig, DataFrame) pairs.
 
@@ -329,13 +333,27 @@ class OpenMeteoClient:
         base_index = city_dfs[0][1].index
         variables = list(city_dfs[0][1].columns)
 
-        result = pd.DataFrame(0.0, index=base_index, columns=variables)
+        result = pd.DataFrame(np.nan, index=base_index, columns=variables)
         result.index.name = "datetime"
 
-        for city, df in city_dfs:
-            aligned = df.reindex(base_index)
-            for var in variables:
+        for var in variables:
+            # Build a matrix: rows=timestamps, cols=cities
+            city_values = pd.DataFrame(index=base_index)
+            city_weights = pd.DataFrame(index=base_index)
+
+            for city, df in city_dfs:
+                aligned = df.reindex(base_index)
                 if var in aligned.columns:
-                    result[var] = result[var] + city.weight * aligned[var].fillna(0.0)
+                    city_values[city.name] = aligned[var]
+                    city_weights[city.name] = city.weight
+
+            # Mask weights where values are NaN
+            valid_mask = city_values.notna()
+            adj_weights = city_weights * valid_mask
+
+            # Normalize weights so they sum to 1 for each row
+            weight_sum = adj_weights.sum(axis=1).replace(0.0, np.nan)
+            weighted_vals = (city_values.fillna(0.0) * adj_weights).sum(axis=1)
+            result[var] = weighted_vals / weight_sum
 
         return result
