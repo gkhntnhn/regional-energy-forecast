@@ -48,7 +48,7 @@ def _make_mock_prophet() -> MagicMock:
 def _make_mock_tft() -> MagicMock:
     """Create a mock TFT model."""
     mock = MagicMock()
-    mock.predict.return_value = pd.DataFrame({"yhat": np.array([950.0] * 48)})
+    mock.predict.return_value = pd.DataFrame({"consumption_mwh": np.array([950.0] * 48)})
     return mock
 
 
@@ -181,7 +181,7 @@ class TestPredict:
         df = _make_feature_df()
         result = forecaster.predict(df)
 
-        assert "prediction" in result.columns
+        assert "consumption_mwh" in result.columns
         assert "catboost_prediction" in result.columns
         assert "prophet_prediction" in result.columns
         assert len(result) == len(df)
@@ -197,7 +197,7 @@ class TestPredict:
         df = _make_feature_df()
         result = forecaster.predict(df)
 
-        assert "prediction" in result.columns
+        assert "consumption_mwh" in result.columns
         assert "catboost_prediction" in result.columns
         assert "prophet_prediction" in result.columns
         assert "tft_prediction" in result.columns
@@ -223,7 +223,7 @@ class TestPredict:
 
         # Expected: 0.6 * 1000 + 0.4 * 500 = 800
         expected = 0.6 * 1000 + 0.4 * 500
-        assert result["prediction"].iloc[0] == pytest.approx(expected)
+        assert result["consumption_mwh"].iloc[0] == pytest.approx(expected)
 
     def test_predict_weighted_average_three_models(self) -> None:
         config = {"weights": {"catboost": 0.5, "prophet": 0.3, "tft": 0.2}}
@@ -236,7 +236,7 @@ class TestPredict:
         mock_pr.predict.return_value = pd.DataFrame({"yhat": np.array([500.0] * 48)})
 
         mock_tft = MagicMock()
-        mock_tft.predict.return_value = pd.DataFrame({"yhat": np.array([800.0] * 48)})
+        mock_tft.predict.return_value = pd.DataFrame({"consumption_mwh": np.array([800.0] * 48)})
 
         forecaster.set_models(
             catboost_model=mock_cb,
@@ -249,7 +249,7 @@ class TestPredict:
 
         # Expected: 0.5 * 1000 + 0.3 * 500 + 0.2 * 800 = 500 + 150 + 160 = 810
         expected = 0.5 * 1000 + 0.3 * 500 + 0.2 * 800
-        assert result["prediction"].iloc[0] == pytest.approx(expected)
+        assert result["consumption_mwh"].iloc[0] == pytest.approx(expected)
 
     def test_predict_normalizes_weights_for_subset(self) -> None:
         """Test that weights are normalized when only some active models are loaded."""
@@ -274,7 +274,7 @@ class TestPredict:
         # Weights normalized: 0.5 / (0.5 + 0.3) = 0.625, 0.3 / 0.8 = 0.375
         # Expected: 0.625 * 1000 + 0.375 * 500 = 625 + 187.5 = 812.5
         expected = (0.5 / 0.8) * 1000 + (0.3 / 0.8) * 500
-        assert result["prediction"].iloc[0] == pytest.approx(expected)
+        assert result["consumption_mwh"].iloc[0] == pytest.approx(expected)
 
 
 # ---------------------------------------------------------------------------

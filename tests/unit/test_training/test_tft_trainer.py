@@ -219,7 +219,7 @@ class TestTFTOptunaObjective:
         from energy_forecast.training.tft_trainer import TFTTrainer
 
         trainer = TFTTrainer(mock_settings)
-        objective = trainer._create_objective(sample_df, fast_epochs=1)
+        objective = trainer._create_objective(sample_df)
 
         # Create mock trial
         mock_trial = MagicMock()

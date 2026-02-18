@@ -47,6 +47,8 @@ class ProphetSplitResult:
     test_metrics: MetricsResult
     val_month: str
     test_month: str
+    val_predictions: np.ndarray[Any, np.dtype[np.floating[Any]]] | None = None
+    val_actuals: np.ndarray[Any, np.dtype[np.floating[Any]]] | None = None
 
 
 @dataclass(frozen=True)
@@ -301,6 +303,8 @@ class ProphetTrainer:
             test_metrics=compute_all(y_test, test_pred),
             val_month=split_info.val_start.strftime("%Y-%m"),
             test_month=split_info.test_start.strftime("%Y-%m"),
+            val_predictions=val_pred,
+            val_actuals=y_val,
         )
 
     # -- All splits training --

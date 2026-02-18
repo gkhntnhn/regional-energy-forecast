@@ -41,6 +41,8 @@ class SplitResult:
     best_iteration: int
     val_month: str
     test_month: str
+    val_predictions: np.ndarray[Any, np.dtype[np.floating[Any]]] | None = None
+    val_actuals: np.ndarray[Any, np.dtype[np.floating[Any]]] | None = None
 
 
 @dataclass(frozen=True)
@@ -103,13 +105,19 @@ class CatBoostTrainer:
 
     # -- Categorical preparation --
 
-    def _prepare_categoricals(self, x: pd.DataFrame) -> list[int]:
-        """Convert categoricals to str, fill NaN, return column indices."""
+    def _prepare_categoricals(
+        self, x: pd.DataFrame
+    ) -> tuple[pd.DataFrame, list[int]]:
+        """Convert categoricals to str, fill NaN, return (df_copy, column indices).
+
+        Returns a defensive copy to avoid mutating the caller's DataFrame.
+        """
+        x = x.copy()
         cat_cols = [c for c in self._cb_config.categorical_features if c in x.columns]
         fill_val = self._cb_config.nan_handling.categorical
         for col in cat_cols:
             x[col] = x[col].fillna(fill_val).astype(str)
-        return [x.columns.get_loc(c) for c in cat_cols]  # type: ignore[misc]
+        return x, [x.columns.get_loc(c) for c in cat_cols]  # type: ignore[misc]
 
     # -- Single split training --
 
@@ -126,9 +134,9 @@ class CatBoostTrainer:
         x_val, y_val = self._split_xy(val_df)
         x_test, y_test = self._split_xy(test_df)
 
-        cat_idx = self._prepare_categoricals(x_train)
-        self._prepare_categoricals(x_val)
-        self._prepare_categoricals(x_test)
+        x_train, cat_idx = self._prepare_categoricals(x_train)
+        x_val, _ = self._prepare_categoricals(x_val)
+        x_test, _ = self._prepare_categoricals(x_test)
 
         train_pool = Pool(x_train, label=y_train, cat_features=cat_idx)
         val_pool = Pool(x_val, label=y_val, cat_features=cat_idx)
@@ -153,6 +161,8 @@ class CatBoostTrainer:
             best_iteration=int(model.best_iteration_),
             val_month=split_info.val_start.strftime("%Y-%m"),
             test_month=split_info.test_start.strftime("%Y-%m"),
+            val_predictions=val_pred,
+            val_actuals=y_val.to_numpy(),
         )
 
     # -- All splits training --
@@ -287,7 +297,7 @@ class CatBoostTrainer:
             Trained CatBoostRegressor.
         """
         x, y = self._split_xy(df)
-        cat_idx = self._prepare_categoricals(x)
+        x, cat_idx = self._prepare_categoricals(x)
 
         final_params = {
             **params,

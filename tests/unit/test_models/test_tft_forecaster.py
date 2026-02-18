@@ -187,7 +187,7 @@ class TestTFTForecasterPredict:
         predictions = model.predict(test_df)
 
         assert isinstance(predictions, pd.DataFrame)
-        assert "yhat" in predictions.columns
+        assert "consumption_mwh" in predictions.columns
 
     @pytest.mark.slow
     def test_predict_stores_all_quantiles(
@@ -309,7 +309,7 @@ class TestTFTForecasterSaveLoad:
             # Verify prediction works
             predictions = loaded.predict(test_df)
             assert isinstance(predictions, pd.DataFrame)
-            assert "yhat" in predictions.columns
+            assert "consumption_mwh" in predictions.columns
             assert len(predictions) > 0
 
 
@@ -353,7 +353,7 @@ class TestPredictRolling:
         # Use exactly window_size rows
         short_df = sample_df.iloc[:window_size]
         expected_result = pd.DataFrame(
-            {"yhat": np.ones(pred_len)},
+            {"consumption_mwh": np.ones(pred_len)},
             index=short_df.index[-pred_len:],
         )
 
@@ -378,7 +378,7 @@ class TestPredictRolling:
         def mock_predict(window_df: pd.DataFrame, target_col: str | None = None) -> pd.DataFrame:
             """Return pred_len predictions from end of window."""
             return pd.DataFrame(
-                {"yhat": np.ones(pred_len) * 42.0},
+                {"consumption_mwh": np.ones(pred_len) * 42.0},
                 index=window_df.index[-pred_len:],
             )
 
@@ -388,7 +388,7 @@ class TestPredictRolling:
         # Should have more than pred_len predictions
         assert len(result) > pred_len
         # All predictions should have the mocked value
-        assert np.allclose(result["yhat"].values, 42.0)
+        assert np.allclose(result["consumption_mwh"].values, 42.0)
 
     def test_non_overlapping_single_prediction_per_timestamp(
         self,
@@ -407,7 +407,7 @@ class TestPredictRolling:
             nonlocal call_count
             call_count += 1
             return pd.DataFrame(
-                {"yhat": np.ones(pred_len) * float(call_count)},
+                {"consumption_mwh": np.ones(pred_len) * float(call_count)},
                 index=window_df.index[-pred_len:],
             )
 
@@ -438,7 +438,7 @@ class TestPredictRolling:
             # Alternate between 10.0 and 20.0 per window
             val = 10.0 if window_num % 2 == 1 else 20.0
             return pd.DataFrame(
-                {"yhat": np.ones(pred_len) * val},
+                {"consumption_mwh": np.ones(pred_len) * val},
                 index=window_df.index[-pred_len:],
             )
 
@@ -449,7 +449,7 @@ class TestPredictRolling:
         # (for timestamps covered by both windows)
         assert result.index.is_unique
         # At least some predictions should be averaged (value = 15.0)
-        values = result["yhat"].values
+        values = result["consumption_mwh"].values
         has_averaged = any(np.isclose(v, 15.0) for v in values)
         assert has_averaged, f"Expected some averaged values (15.0), got: {np.unique(values)}"
 

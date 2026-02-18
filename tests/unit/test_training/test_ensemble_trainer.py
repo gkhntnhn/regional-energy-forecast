@@ -205,7 +205,10 @@ class TestWeightOptimization:
             active_models_override=["catboost", "prophet"],
         )
 
-        # Create mock split results with new structure
+        rng = np.random.default_rng(42)
+        y_true = 800.0 + rng.random(100) * 400
+
+        # Create mock split results with real predictions
         split_results = [
             EnsembleSplitResult(
                 split_idx=i,
@@ -215,11 +218,11 @@ class TestWeightOptimization:
                 },
                 ensemble_metrics=_make_mock_metrics(),
                 model_predictions={
-                    "catboost": np.zeros(100, dtype=np.float64),
-                    "prophet": np.zeros(100, dtype=np.float64),
+                    "catboost": y_true * (1 + rng.normal(0, 0.05, 100)),
+                    "prophet": y_true * (1 + rng.normal(0, 0.08, 100)),
                 },
                 ensemble_predictions=np.zeros(100, dtype=np.float64),
-                y_true=np.ones(100, dtype=np.float64),
+                y_true=y_true,
                 weights={"catboost": 0.6, "prophet": 0.4},
             )
             for i in range(3)
@@ -242,6 +245,9 @@ class TestWeightOptimization:
             active_models_override=["catboost", "prophet"],
         )
 
+        rng = np.random.default_rng(123)
+        y_true = 800.0 + rng.random(100) * 400
+
         split_results = [
             EnsembleSplitResult(
                 split_idx=0,
@@ -251,11 +257,11 @@ class TestWeightOptimization:
                 },
                 ensemble_metrics=_make_mock_metrics(),
                 model_predictions={
-                    "catboost": np.zeros(100, dtype=np.float64),
-                    "prophet": np.zeros(100, dtype=np.float64),
+                    "catboost": y_true * (1 + rng.normal(0, 0.04, 100)),
+                    "prophet": y_true * (1 + rng.normal(0, 0.12, 100)),
                 },
                 ensemble_predictions=np.zeros(100, dtype=np.float64),
-                y_true=np.ones(100, dtype=np.float64),
+                y_true=y_true,
                 weights={"catboost": 0.6, "prophet": 0.4},
             )
         ]
@@ -274,6 +280,9 @@ class TestWeightOptimization:
         settings = _get_test_settings()
         trainer = EnsembleTrainer(settings, ExperimentTracker(enabled=False))
 
+        rng = np.random.default_rng(99)
+        y_true = 800.0 + rng.random(100) * 400
+
         split_results = [
             EnsembleSplitResult(
                 split_idx=0,
@@ -284,12 +293,12 @@ class TestWeightOptimization:
                 },
                 ensemble_metrics=_make_mock_metrics(),
                 model_predictions={
-                    "catboost": np.zeros(100, dtype=np.float64),
-                    "prophet": np.zeros(100, dtype=np.float64),
-                    "tft": np.zeros(100, dtype=np.float64),
+                    "catboost": y_true * (1 + rng.normal(0, 0.05, 100)),
+                    "prophet": y_true * (1 + rng.normal(0, 0.08, 100)),
+                    "tft": y_true * (1 + rng.normal(0, 0.06, 100)),
                 },
                 ensemble_predictions=np.zeros(100, dtype=np.float64),
-                y_true=np.ones(100, dtype=np.float64),
+                y_true=y_true,
                 weights={"catboost": 0.45, "prophet": 0.30, "tft": 0.25},
             )
         ]

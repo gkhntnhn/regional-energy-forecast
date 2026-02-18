@@ -46,6 +46,8 @@ class TFTSplitResult:
     test_metrics: MetricsResult
     val_month: str
     test_month: str
+    val_predictions: np.ndarray[Any, np.dtype[np.floating[Any]]] | None = None
+    val_actuals: np.ndarray[Any, np.dtype[np.floating[Any]]] | None = None
 
 
 @dataclass(frozen=True)
@@ -151,6 +153,7 @@ class TFTTrainer:
             training=TFTTrainingConfig(**train_params),
             covariates=TFTCovariatesConfig(
                 time_varying_known=list(base.covariates.time_varying_known),
+                time_varying_unknown=list(base.covariates.time_varying_unknown),
             ),
             quantiles=list(base.quantiles),
             loss=base.loss,
@@ -202,9 +205,11 @@ class TFTTrainer:
         y_val = np.asarray(val_df[self._target_col].values[-len(val_pred):], dtype=np.float64)
         y_test = np.asarray(test_df[self._target_col].values[-len(test_pred):], dtype=np.float64)
 
-        train_pred_arr = np.asarray(train_pred["yhat"].values, dtype=np.float64)
-        val_pred_arr = np.asarray(val_pred["yhat"].values, dtype=np.float64)
-        test_pred_arr = np.asarray(test_pred["yhat"].values, dtype=np.float64)
+        from energy_forecast.models.base import PREDICTION_COL
+
+        train_pred_arr = np.asarray(train_pred[PREDICTION_COL].values, dtype=np.float64)
+        val_pred_arr = np.asarray(val_pred[PREDICTION_COL].values, dtype=np.float64)
+        test_pred_arr = np.asarray(test_pred[PREDICTION_COL].values, dtype=np.float64)
 
         return TFTSplitResult(
             split_idx=split_info.split_idx,
@@ -213,6 +218,8 @@ class TFTTrainer:
             test_metrics=compute_all(y_test, test_pred_arr),
             val_month=split_info.val_start.strftime("%Y-%m"),
             test_month=split_info.test_start.strftime("%Y-%m"),
+            val_predictions=val_pred_arr,
+            val_actuals=y_val,
         )
 
     # -- All splits training --
@@ -267,7 +274,8 @@ class TFTTrainer:
     ) -> Callable[[Trial], float]:
         """Create Optuna objective using dynamic YAML search space.
 
-        For faster optimization, trains only on first split with reduced epochs.
+        Uses ``optuna_splits`` CV splits (default 2) with reduced epochs
+        to balance speed and robustness against seasonality bias.
 
         Args:
             df: Training data.
@@ -276,34 +284,49 @@ class TFTTrainer:
             Objective function for Optuna.
         """
         fast_epochs = self._tft_config.optimization.fast_epochs
+        n_optuna_splits = self._tft_config.optimization.optuna_splits
         search_space = self._search_config.search_space
 
-        # Get first split for fast optimization
-        splits = list(self._splitter.iter_splits(df))
-        if not splits:
+        all_splits = list(self._splitter.iter_splits(df))
+        if not all_splits:
             msg = "No CV splits available"
             raise ValueError(msg)
 
-        first_split = splits[0]
-        info, train_df, val_df, test_df = first_split
+        # Use up to n_optuna_splits, evenly spaced across available splits
+        if n_optuna_splits >= len(all_splits):
+            selected_splits = all_splits
+        else:
+            indices = np.linspace(0, len(all_splits) - 1, n_optuna_splits, dtype=int)
+            selected_splits = [all_splits[i] for i in indices]
+
+        logger.info(
+            "TFT Optuna: using {}/{} CV splits for objective",
+            len(selected_splits),
+            len(all_splits),
+        )
 
         def objective(trial: Trial) -> float:
             suggested = suggest_params(trial, search_space)
+            val_mapes: list[float] = []
 
-            try:
-                result = self._train_split(
-                    info,
-                    train_df,
-                    val_df,
-                    test_df,
-                    suggested,
-                    max_epochs=fast_epochs,
-                )
-                trial.set_user_attr("test_mape", result.test_metrics.mape)
-                return result.val_metrics.mape
-            except Exception as e:
-                logger.warning("Trial failed: {}", e)
-                return float("inf")
+            for info, train_df, val_df, test_df in selected_splits:
+                try:
+                    result = self._train_split(
+                        info,
+                        train_df,
+                        val_df,
+                        test_df,
+                        suggested,
+                        max_epochs=fast_epochs,
+                    )
+                    val_mapes.append(result.val_metrics.mape)
+                except Exception as e:
+                    logger.warning("Trial split {} failed: {}", info.split_idx, e)
+                    return float("inf")
+
+            avg_mape = float(np.mean(val_mapes))
+            trial.set_user_attr("val_mapes", val_mapes)
+            return avg_mape
 
         return objective
 

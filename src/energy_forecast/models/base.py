@@ -11,6 +11,9 @@ import pandas as pd
 # Default target column name - can be overridden via config
 DEFAULT_TARGET_COL = "consumption"
 
+# Standard prediction output column name — all models MUST use this
+PREDICTION_COL = "consumption_mwh"
+
 
 class BaseForecaster(ABC):
     """Abstract base for all forecasting models.

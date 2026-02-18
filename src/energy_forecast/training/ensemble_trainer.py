@@ -25,7 +25,7 @@ from energy_forecast.training.catboost_trainer import (
     PipelineResult as CatBoostPipelineResult,
 )
 from energy_forecast.training.experiment import ExperimentTracker
-from energy_forecast.training.metrics import MetricsResult
+from energy_forecast.training.metrics import MetricsResult, compute_all, mape as mape_fn
 from energy_forecast.training.prophet_trainer import (
     ProphetPipelineResult,
     ProphetTrainer,
@@ -295,9 +295,10 @@ class EnsembleTrainer:
         self,
         model_results: dict[str, ModelResult],
     ) -> list[EnsembleSplitResult]:
-        """Collect validation metrics from each model's splits.
+        """Collect validation metrics and raw predictions from each model's splits.
 
-        Uses metric interpolation since we don't store raw predictions.
+        Uses real val_predictions/val_actuals from each trainer's SplitResult
+        for proper blended-prediction weight optimization.
         """
         # Get split count from first model
         first_model = next(iter(model_results.values()))
@@ -317,47 +318,58 @@ class EnsembleTrainer:
         for split_idx in range(n_splits):
             model_metrics: dict[str, MetricsResult] = {}
             model_predictions: dict[str, np.ndarray[Any, np.dtype[np.floating[Any]]]] = {}
+            y_true: np.ndarray[Any, np.dtype[np.floating[Any]]] | None = None
 
             for model_name in self._active_models:
                 split_result = model_results[model_name].training_result.split_results[
                     split_idx
                 ]
                 model_metrics[model_name] = split_result.val_metrics
-                # Placeholder predictions for metric-based optimization
-                model_predictions[model_name] = np.zeros(100, dtype=np.float64)
 
-            # Compute weighted ensemble metrics (approximation)
-            ensemble_mape = sum(
-                default_weights[m] * model_metrics[m].mape for m in self._active_models
-            )
-            ensemble_mae = sum(
-                default_weights[m] * model_metrics[m].mae for m in self._active_models
-            )
-            ensemble_rmse = sum(
-                default_weights[m] * model_metrics[m].rmse for m in self._active_models
-            )
-            ensemble_r2 = sum(
-                default_weights[m] * model_metrics[m].r2 for m in self._active_models
-            )
-            ensemble_smape = sum(
-                default_weights[m] * model_metrics[m].smape for m in self._active_models
-            )
-            ensemble_wmape = sum(
-                default_weights[m] * model_metrics[m].wmape for m in self._active_models
-            )
-            ensemble_mbe = sum(
-                default_weights[m] * model_metrics[m].mbe for m in self._active_models
-            )
+                # Extract real predictions (available after trainer fix)
+                if split_result.val_predictions is not None:
+                    model_predictions[model_name] = split_result.val_predictions
+                    if y_true is None and split_result.val_actuals is not None:
+                        y_true = split_result.val_actuals
 
-            ensemble_metrics = MetricsResult(
-                mape=ensemble_mape,
-                mae=ensemble_mae,
-                rmse=ensemble_rmse,
-                r2=ensemble_r2,
-                smape=ensemble_smape,
-                wmape=ensemble_wmape,
-                mbe=ensemble_mbe,
-            )
+            # Truncate to common length (models may predict different lengths)
+            if model_predictions:
+                min_len = min(len(p) for p in model_predictions.values())
+                model_predictions = {
+                    m: p[:min_len] for m, p in model_predictions.items()
+                }
+                if y_true is not None:
+                    y_true = y_true[:min_len]
+
+            # Compute blended ensemble prediction with default weights
+            if model_predictions and y_true is not None:
+                blended = sum(
+                    default_weights[m] * model_predictions[m]
+                    for m in model_predictions
+                )
+                ensemble_metrics = compute_all(y_true, blended)
+                ensemble_predictions = blended
+            else:
+                # Fallback: metric-level approximation (no raw predictions)
+                logger.warning(
+                    "Split {}: no raw predictions, using metric approximation",
+                    split_idx,
+                )
+                ensemble_mape = sum(
+                    default_weights[m] * model_metrics[m].mape
+                    for m in self._active_models
+                )
+                ensemble_metrics = MetricsResult(
+                    mape=ensemble_mape,
+                    mae=sum(default_weights[m] * model_metrics[m].mae for m in self._active_models),
+                    rmse=sum(default_weights[m] * model_metrics[m].rmse for m in self._active_models),
+                    r2=sum(default_weights[m] * model_metrics[m].r2 for m in self._active_models),
+                    smape=sum(default_weights[m] * model_metrics[m].smape for m in self._active_models),
+                    wmape=sum(default_weights[m] * model_metrics[m].wmape for m in self._active_models),
+                    mbe=sum(default_weights[m] * model_metrics[m].mbe for m in self._active_models),
+                )
+                ensemble_predictions = np.zeros(1, dtype=np.float64)
+                y_true = np.ones(1, dtype=np.float64)
 
             split_results.append(
                 EnsembleSplitResult(
@@ -365,8 +377,8 @@ class EnsembleTrainer:
                     model_metrics=model_metrics,
                     ensemble_metrics=ensemble_metrics,
                     model_predictions=model_predictions,
-                    ensemble_predictions=np.zeros(100, dtype=np.float64),
-                    y_true=np.ones(100, dtype=np.float64),
+                    ensemble_predictions=ensemble_predictions,
+                    y_true=y_true,
                     weights=default_weights.copy(),
                 )
             )
@@ -393,17 +405,33 @@ class EnsembleTrainer:
 
         bounds_cfg = self._ensemble_config.optimization.bounds
 
+        # Check if we have real predictions for blended optimization
+        has_real_predictions = all(
+            len(sr.model_predictions) == len(self._active_models)
+            and all(len(p) > 1 for p in sr.model_predictions.values())
+            for sr in split_results
+        )
+
         def objective(weights: np.ndarray[Any, np.dtype[np.floating[Any]]]) -> float:
-            """Calculate mean validation MAPE for given weights."""
+            """Calculate mean validation MAPE on blended predictions."""
             w_dict = {m: weights[i] for i, m in enumerate(self._active_models)}
             mapes: list[float] = []
 
             for sr in split_results:
-                # Weighted average of MAPEs
-                ensemble_mape = sum(
-                    w_dict[m] * sr.model_metrics[m].mape for m in self._active_models
-                )
-                mapes.append(ensemble_mape)
+                if has_real_predictions:
+                    # Correct: MAPE of blended prediction vs actuals
+                    blended = sum(
+                        w_dict[m] * sr.model_predictions[m]
+                        for m in self._active_models
+                    )
+                    mapes.append(mape_fn(sr.y_true, blended))
+                else:
+                    # Fallback: weighted average of MAPEs (approximation)
+                    ensemble_mape = sum(
+                        w_dict[m] * sr.model_metrics[m].mape
+                        for m in self._active_models
+                    )
+                    mapes.append(ensemble_mape)
 
             return float(np.mean(mapes))
 
@@ -446,10 +474,10 @@ class EnsembleTrainer:
         split_results: list[EnsembleSplitResult],
         weights: dict[str, float],
     ) -> list[EnsembleSplitResult]:
-        """Recompute ensemble metrics with given weights.
+        """Recompute ensemble metrics with given weights using real predictions.
 
         Args:
-            split_results: Original split results.
+            split_results: Original split results with real model predictions.
             weights: Optimized weights.
 
         Returns:
@@ -458,38 +486,31 @@ class EnsembleTrainer:
         updated_results: list[EnsembleSplitResult] = []
 
         for sr in split_results:
-            # Compute weighted ensemble metrics
-            ensemble_mape = sum(
-                weights[m] * sr.model_metrics[m].mape for m in self._active_models
-            )
-            ensemble_mae = sum(
-                weights[m] * sr.model_metrics[m].mae for m in self._active_models
-            )
-            ensemble_rmse = sum(
-                weights[m] * sr.model_metrics[m].rmse for m in self._active_models
-            )
-            ensemble_r2 = sum(
-                weights[m] * sr.model_metrics[m].r2 for m in self._active_models
-            )
-            ensemble_smape = sum(
-                weights[m] * sr.model_metrics[m].smape for m in self._active_models
-            )
-            ensemble_wmape = sum(
-                weights[m] * sr.model_metrics[m].wmape for m in self._active_models
-            )
-            ensemble_mbe = sum(
-                weights[m] * sr.model_metrics[m].mbe for m in self._active_models
+            has_preds = (
+                len(sr.model_predictions) == len(self._active_models)
+                and all(len(p) > 1 for p in sr.model_predictions.values())
             )
 
-            ensemble_metrics = MetricsResult(
-                mape=ensemble_mape,
-                mae=ensemble_mae,
-                rmse=ensemble_rmse,
-                r2=ensemble_r2,
-                smape=ensemble_smape,
-                wmape=ensemble_wmape,
-                mbe=ensemble_mbe,
-            )
+            if has_preds:
+                # Compute blended prediction and real metrics
+                blended = sum(
+                    weights[m] * sr.model_predictions[m]
+                    for m in self._active_models
+                )
+                ensemble_metrics = compute_all(sr.y_true, blended)
+                ensemble_predictions = blended
+            else:
+                # Fallback: metric-level approximation
+                ensemble_metrics = MetricsResult(
+                    mape=sum(weights[m] * sr.model_metrics[m].mape for m in self._active_models),
+                    mae=sum(weights[m] * sr.model_metrics[m].mae for m in self._active_models),
+                    rmse=sum(weights[m] * sr.model_metrics[m].rmse for m in self._active_models),
+                    r2=sum(weights[m] * sr.model_metrics[m].r2 for m in self._active_models),
+                    smape=sum(weights[m] * sr.model_metrics[m].smape for m in self._active_models),
+                    wmape=sum(weights[m] * sr.model_metrics[m].wmape for m in self._active_models),
+                    mbe=sum(weights[m] * sr.model_metrics[m].mbe for m in self._active_models),
+                )
+                ensemble_predictions = sr.ensemble_predictions
 
             updated_results.append(
                 EnsembleSplitResult(
@@ -497,7 +518,7 @@ class EnsembleTrainer:
                     model_metrics=sr.model_metrics,
                     ensemble_metrics=ensemble_metrics,
                     model_predictions=sr.model_predictions,
-                    ensemble_predictions=sr.ensemble_predictions,
+                    ensemble_predictions=ensemble_predictions,
                     y_true=sr.y_true,
                     weights=weights.copy(),
                 )

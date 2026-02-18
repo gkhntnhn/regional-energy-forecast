@@ -20,6 +20,7 @@ training:
 
 optimization:
   fast_epochs: 10  # Reduced epochs for Optuna trials
+  optuna_splits: 2  # Number of CV splits for Optuna objective (balances speed vs bias)
   val_size_hours: 720  # ~1 month (24 * 30) for final model validation
 
 # Features that are known in the future (deterministic or forecast available)
@@ -39,6 +40,22 @@ covariates:
     - temperature_2m
     - relative_humidity_2m
     - apparent_temperature
+
+  # Features NOT known in advance (observed only in past, lagged by >=48h)
+  time_varying_unknown:
+    - consumption_lag_48
+    - consumption_lag_72
+    - consumption_lag_96
+    - consumption_lag_168
+    - consumption_lag_336
+    - consumption_lag_720
+    - consumption_rolling_mean_24
+    - consumption_rolling_mean_168
+    - consumption_ewma_24
+    - consumption_ewma_168
+    - epias_Real_Time_Consumption_lag_48
+    - epias_Real_Time_Consumption_lag_168
+    - epias_DAM_Purchase_lag_48
 
 quantiles:
   - 0.02

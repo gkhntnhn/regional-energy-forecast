@@ -13,7 +13,7 @@ from catboost import CatBoostRegressor
 from loguru import logger
 
 from energy_forecast.config.settings import EnsembleConfig
-from energy_forecast.models.base import BaseForecaster
+from energy_forecast.models.base import PREDICTION_COL, BaseForecaster
 from energy_forecast.models.tft import TFTForecaster
 
 if TYPE_CHECKING:
@@ -208,13 +208,13 @@ class EnsembleForecaster(BaseForecaster):
                 # Reindex to X's index (drop encoder context timestamps)
                 tft_aligned = tft_result.reindex(X.index)
                 predictions["tft"] = np.asarray(
-                    tft_aligned["yhat"].values, dtype=np.float64
+                    tft_aligned[PREDICTION_COL].values, dtype=np.float64
                 )
             else:
                 # Standard single-window prediction (serving case, ~48 rows)
                 tft_result = self._tft_model.predict(X, target_col=self._target_col)
                 predictions["tft"] = np.asarray(
-                    tft_result["yhat"].values, dtype=np.float64
+                    tft_result[PREDICTION_COL].values, dtype=np.float64
                 )
 
         if not predictions:
@@ -239,7 +239,7 @@ class EnsembleForecaster(BaseForecaster):
 
         # Build output DataFrame
         result = pd.DataFrame(index=X.index)
-        result["prediction"] = ensemble_pred
+        result[PREDICTION_COL] = ensemble_pred
         for model_name, pred in predictions.items():
             result[f"{model_name}_prediction"] = pred
 

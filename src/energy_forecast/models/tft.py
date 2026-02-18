@@ -21,7 +21,7 @@ from pytorch_forecasting.data import GroupNormalizer
 from pytorch_forecasting.metrics import QuantileLoss
 
 from energy_forecast.config.settings import TFTConfig
-from energy_forecast.models.base import BaseForecaster
+from energy_forecast.models.base import PREDICTION_COL, BaseForecaster
 
 if TYPE_CHECKING:
     import lightning.pytorch as pl
@@ -130,8 +130,10 @@ class TFTForecaster(BaseForecaster):
             col for col in cov_cfg.time_varying_known if col in data.columns
         ]
 
-        # Unknown reals: target + any lagged/rolling features
-        time_varying_unknown = [target_col]
+        # Unknown reals: target + configured consumption/EPIAS lag features
+        time_varying_unknown = [target_col] + [
+            col for col in cov_cfg.time_varying_unknown if col in data.columns
+        ]
 
         # Store params for serialization
         self._dataset_params = {
@@ -340,7 +342,7 @@ class TFTForecaster(BaseForecaster):
             target_col: Target column name (default: from config).
 
         Returns:
-            DataFrame with 'yhat' (median prediction) column.
+            DataFrame with PREDICTION_COL (median prediction) column.
         """
         if target_col is None:
             target_col = self._target_col
@@ -404,7 +406,7 @@ class TFTForecaster(BaseForecaster):
         result_index = X.index[-n_preds:] if n_preds <= len(X) else X.index
 
         result = pd.DataFrame(
-            {"yhat": median_pred[-len(result_index):]},
+            {PREDICTION_COL: median_pred[-len(result_index):]},
             index=result_index,
         )
 
@@ -432,7 +434,7 @@ class TFTForecaster(BaseForecaster):
                   (non-overlapping predictions).
 
         Returns:
-            DataFrame with 'yhat' column covering the prediction region of X.
+            DataFrame with PREDICTION_COL column covering the prediction region of X.
         """
         if target_col is None:
             target_col = self._target_col
@@ -475,7 +477,7 @@ class TFTForecaster(BaseForecaster):
             try:
                 preds = self.predict(window_df, target_col)
                 for ts, row in preds.iterrows():
-                    all_preds[ts].append(float(row["yhat"]))
+                    all_preds[ts].append(float(row[PREDICTION_COL]))
                 n_windows += 1
             except Exception:
                 n_failed += 1
@@ -503,7 +505,7 @@ class TFTForecaster(BaseForecaster):
         averaged = [np.mean(all_preds[ts]) for ts in sorted_ts]
 
         result = pd.DataFrame(
-            {"yhat": averaged},
+            {PREDICTION_COL: averaged},
             index=pd.DatetimeIndex(sorted_ts),
         )
 
@@ -687,6 +689,7 @@ class TFTForecaster(BaseForecaster):
             ),
             covariates=TFTCovariatesConfig(
                 time_varying_known=dataset_params.get("time_varying_known_reals", []),
+                time_varying_unknown=dataset_params.get("time_varying_unknown_reals", []),
             ),
             quantiles=quantiles,
         )

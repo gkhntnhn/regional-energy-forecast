@@ -97,7 +97,7 @@ class ForecastConfig(BaseModel, frozen=True):
 
     horizon_hours: int = Field(default=48, ge=1)
     frequency: str = "1h"
-    min_lag: int = Field(default=48, ge=1)
+    min_lag: int = Field(default=48, ge=48)
 
 
 class TrainingPathsConfig(BaseModel, frozen=True):
@@ -721,12 +721,30 @@ class TFTCovariatesConfig(BaseModel, frozen=True):
             "apparent_temperature",
         ]
     )
+    time_varying_unknown: list[str] = Field(
+        default_factory=lambda: [
+            "consumption_lag_48",
+            "consumption_lag_72",
+            "consumption_lag_96",
+            "consumption_lag_168",
+            "consumption_lag_336",
+            "consumption_lag_720",
+            "consumption_rolling_mean_24",
+            "consumption_rolling_mean_168",
+            "consumption_ewma_24",
+            "consumption_ewma_168",
+            "epias_Real_Time_Consumption_lag_48",
+            "epias_Real_Time_Consumption_lag_168",
+            "epias_DAM_Purchase_lag_48",
+        ]
+    )
 
 
 class TFTOptimizationConfig(BaseModel, frozen=True):
     """TFT optimization settings."""
 
     fast_epochs: int = Field(default=10, ge=1)
+    optuna_splits: int = Field(default=2, ge=1)
     val_size_hours: int = Field(default=720, ge=24)  # ~1 month (24 * 30)
 
 

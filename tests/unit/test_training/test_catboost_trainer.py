@@ -108,15 +108,15 @@ class TestPrepareCategoricals:
         df = _make_feature_df(6)
         x, _ = trainer._split_xy(df)
 
-        cat_idx = trainer._prepare_categoricals(x)
+        x_prepared, cat_idx = trainer._prepare_categoricals(x)
 
         # Only columns present in x should be processed
         expected_cats = [c for c in settings.catboost.categorical_features if c in x.columns]
         assert len(cat_idx) == len(expected_cats)
 
-        # All categorical columns should be string dtype
+        # All categorical columns should be string dtype (on the returned copy)
         for col in expected_cats:
-            assert x[col].dtype == object  # str in pandas
+            assert x_prepared[col].dtype == object  # str in pandas
 
     def test_categoricals_nan_filled(self) -> None:
         settings = _get_test_settings()
@@ -127,9 +127,9 @@ class TestPrepareCategoricals:
         # Inject NaN into a categorical column
         x.loc[x.index[:10], "is_holiday"] = np.nan
 
-        trainer._prepare_categoricals(x)
-        assert x["is_holiday"].isna().sum() == 0
-        assert (x["is_holiday"].iloc[:10] == "missing").all()
+        x_prepared, _ = trainer._prepare_categoricals(x)
+        assert x_prepared["is_holiday"].isna().sum() == 0
+        assert (x_prepared["is_holiday"].iloc[:10] == "missing").all()
 
     def test_categoricals_returns_indices(self) -> None:
         settings = _get_test_settings()
@@ -137,7 +137,7 @@ class TestPrepareCategoricals:
         df = _make_feature_df(6)
         x, _ = trainer._split_xy(df)
 
-        cat_idx = trainer._prepare_categoricals(x)
+        _, cat_idx = trainer._prepare_categoricals(x)
         for idx in cat_idx:
             assert isinstance(idx, int)
             assert 0 <= idx < len(x.columns)

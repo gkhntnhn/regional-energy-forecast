@@ -274,8 +274,7 @@ class PredictionService:
         last_data_point: pd.Timestamp,
     ) -> pd.DataFrame:
         """Prepare final output DataFrame with period labels."""
-        result = predictions[["prediction"]].copy()
-        result = result.rename(columns={"prediction": "consumption_mwh"})
+        result = predictions[["consumption_mwh"]].copy()
 
         # Add period labels (intraday = T, day_ahead = T+1)
         tomorrow_start = (last_data_point + pd.Timedelta(days=1)).normalize()

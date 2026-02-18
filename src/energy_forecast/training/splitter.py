@@ -73,6 +73,13 @@ class TimeSeriesSplitter:
             msg = f"Expected CrossValidationConfig, got {type(cv_config).__name__}"
             raise TypeError(msg)
 
+        if cv_config.shuffle:
+            msg = (
+                "shuffle=True is forbidden for time series cross-validation. "
+                "Set shuffle=false in cross_validation config."
+            )
+            raise ValueError(msg)
+
         return cls(
             n_splits=cv_config.n_splits,
             val_months=cv_config.val_months,
