@@ -171,24 +171,27 @@ class ProphetTrainer:
 
         model = Prophet(**model_params)
 
+        # Resolve seasonality mode: Optuna may override config default
+        season_mode: str = params.get("seasonality_mode", cfg.seasonality.mode)
+
         # Add seasonalities with config-specified Fourier orders
         model.add_seasonality(
             name="daily",
             period=1,
             fourier_order=cfg.seasonality.daily.fourier_order,
-            mode=cfg.seasonality.mode,
+            mode=season_mode,
         )
         model.add_seasonality(
             name="weekly",
             period=7,
             fourier_order=cfg.seasonality.weekly.fourier_order,
-            mode=cfg.seasonality.mode,
+            mode=season_mode,
         )
         model.add_seasonality(
             name="yearly",
             period=365.25,
             fourier_order=cfg.seasonality.yearly.fourier_order,
-            mode=cfg.seasonality.mode,
+            mode=season_mode,
         )
 
         # Add only regressors confirmed present in data
@@ -203,10 +206,14 @@ class ProphetTrainer:
     # -- Holidays loading --
 
     def _load_holidays(self) -> pd.DataFrame | None:
-        """Load holidays from parquet file.
+        """Load holidays from parquet file with window parameters.
+
+        Bayram (religious holiday) days get lower/upper windows to capture
+        the eve and day-after effects on electricity consumption.
 
         Returns:
-            DataFrame with 'ds' and 'holiday' columns, or None if not found.
+            DataFrame with 'ds', 'holiday', 'lower_window', 'upper_window'
+            columns, or None if not found.
         """
         holidays_path = Path(self._settings.data_loader.paths.holidays)
         if not holidays_path.exists():
@@ -227,8 +234,12 @@ class ProphetTrainer:
 
         df["ds"] = pd.to_datetime(df["ds"])
 
-        # Keep only required columns
-        cols = ["ds", "holiday"]
+        # Add holiday windows: bayram days get eve/aftermath effect
+        is_bayram = df["holiday"].str.contains("Bayrami", na=False)
+        df["lower_window"] = np.where(is_bayram, -1, 0)
+        df["upper_window"] = np.where(is_bayram, 1, 0)
+
+        cols = ["ds", "holiday", "lower_window", "upper_window"]
         available = [c for c in cols if c in df.columns]
         return df[available]
 

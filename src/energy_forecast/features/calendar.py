@@ -159,6 +159,9 @@ class CalendarFeatureEngineer(BaseFeatureEngineer):
             idx = cast(pd.DatetimeIndex, df.index)
             df["is_holiday_x_hour"] = df["is_holiday"] * idx.hour
 
+            # Ramadan × hour interaction (captures shifted eating/activity patterns)
+            df["is_ramadan_x_hour"] = df["is_ramadan"] * idx.hour
+
             # Bridge days (extended detection for holiday+weekend adjacency)
             if h_cfg.get("bridge_days", True):
                 df = self._detect_bridge_days(df)
@@ -172,6 +175,7 @@ class CalendarFeatureEngineer(BaseFeatureEngineer):
             df["bayrama_kalan_gun"] = -1
             df["tatil_tipi"] = 0
             df["is_holiday_x_hour"] = 0
+            df["is_ramadan_x_hour"] = 0
             df["is_bridge_day"] = 0
             df["days_until_holiday"] = -1
             df["days_since_holiday"] = -1
@@ -332,10 +336,18 @@ class CalendarFeatureEngineer(BaseFeatureEngineer):
         month = idx.month
 
         df["is_weekend"] = (dow >= 5).astype(int)
+        df["is_sunday"] = (dow == 6).astype(int)
         df["is_monday"] = (dow == 0).astype(int)
         df["is_friday"] = (dow == 4).astype(int)
         df["is_business_hours"] = ((hour >= bh_start) & (hour < bh_end)).astype(int)
         df["is_peak"] = ((hour >= peak_start) & (hour < peak_end)).astype(int)
+
+        # Interaction: weekend-specific hourly pattern
+        df["is_weekend_x_hour"] = df["is_weekend"] * hour
+
+        # Ramp periods: morning/evening demand transition windows
+        df["is_ramp_morning"] = hour.isin([6, 7, 8, 9]).astype(int)
+        df["is_ramp_evening"] = hour.isin([18, 19, 20, 21]).astype(int)
 
         # Meteorological seasons: 0=winter, 1=spring, 2=summer, 3=autumn
         df["season"] = np.select(

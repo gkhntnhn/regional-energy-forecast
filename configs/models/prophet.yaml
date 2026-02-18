@@ -2,11 +2,11 @@
 seasonality:
   mode: "multiplicative"
   daily:
-    fourier_order: 12
+    fourier_order: 15
   weekly:
-    fourier_order: 6
+    fourier_order: 8
   yearly:
-    fourier_order: 10
+    fourier_order: 12
 
 holidays:
   country: "TR"
@@ -14,9 +14,23 @@ holidays:
 
 regressors:
   - name: "temperature_2m"
-    mode: "additive"
+    mode: "multiplicative"
+  - name: "apparent_temperature"
+    mode: "multiplicative"
   - name: "relative_humidity_2m"
     mode: "additive"
+  - name: "wind_speed_10m"
+    mode: "additive"
+  - name: "shortwave_radiation"
+    mode: "multiplicative"
+  - name: "wth_cdd"
+    mode: "multiplicative"
+  - name: "wth_hdd"
+    mode: "multiplicative"
+  - name: "is_weekend"
+    mode: "multiplicative"
+  - name: "is_holiday"
+    mode: "multiplicative"
 
 changepoint:
   prior_scale: 0.05

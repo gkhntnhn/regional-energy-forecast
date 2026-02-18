@@ -53,6 +53,12 @@ checkpoints/
 reports/*.html
 reports/*.xlsx
 
+# Code reviews (generated)
+docs/reviews/
+
+# Ad-hoc debug/analysis scripts (CLI session artifacts)
+scripts/adhoc/
+
 # OS
 .DS_Store
 Thumbs.db

@@ -18,27 +18,40 @@ catboost:
       high: 500
     learning_rate:
       type: float
-      low: 0.05
-      high: 0.05
+      low: 0.01
+      high: 0.15
+      log: true           # Log-uniform: düşük lr'ler daha sık denensin
     depth:
       type: int
       low: 6
       high: 6
     l2_leaf_reg:
       type: float
-      low: 3.0
-      high: 3.0
+      low: 1.0
+      high: 10.0
     min_child_samples:
       type: int
-      low: 10
-      high: 10
+      low: 5
+      high: 50
     subsample:
       type: float
-      low: 1.0
+      low: 0.7
       high: 1.0
     loss_function:
       type: categorical
-      choices: ["RMSE"]
+      choices: ["RMSE", "MAE", "MAPE"]
+    random_strength:       # Zaman serisi için önemli — split randomness
+      type: float
+      low: 0.5
+      high: 5.0
+    bagging_temperature:   # Bayesian bootstrap — temporal variance'a karşı
+      type: float
+      low: 0.0
+      high: 3.0
+    grow_policy:           # SymmetricTree vs Depthwise vs Lossguide
+      type: categorical
+      choices: ["SymmetricTree", "Depthwise", "Lossguide"]
+
 
 # Minimal Prophet - fixed values
 prophet:
@@ -58,7 +71,7 @@ prophet:
       high: 1.0
     seasonality_mode:
       type: categorical
-      choices: ["additive"]
+      choices: ["multiplicative"]
 
 # Minimal TFT - very small network, few epochs
 tft:
@@ -103,7 +116,7 @@ validation:
 
 # Cross validation
 cross_validation:
-  n_splits: 2
+  n_splits: 6
   val_months: 1
   test_months: 1
   gap_hours: 0

@@ -198,3 +198,88 @@ class TestWeatherFeatureEngineer:
         result = engineer.fit_transform(df)
         assert "wth_extreme_wind" in result.columns
         assert result["wth_extreme_wind"].iloc[0] == 1
+
+
+# ---------------------------------------------------------------------------
+# P0 feature: cdd_x_is_peak
+# ---------------------------------------------------------------------------
+
+
+class TestCddPeakInteraction:
+    """CDD × is_peak cross-feature interaction (calendar × weather)."""
+
+    def test_cdd_x_is_peak_hot_peak(self, engineer: WeatherFeatureEngineer) -> None:
+        """Hot temperature during peak hours produces positive cdd_x_is_peak."""
+        idx = pd.date_range("2024-07-01", periods=168, freq="h")
+        df = pd.DataFrame(
+            {
+                "temperature_2m": [30.0] * 168,
+                "weather_code": [0.0] * 168,
+                "wind_speed_10m": [5.0] * 168,
+                "precipitation": [0.0] * 168,
+                "is_peak": [0] * 168,  # will set specific hours
+            },
+            index=idx,
+        )
+        # Set peak hours (17-21) to 1
+        df.loc[df.index.hour.isin([17, 18, 19, 20, 21]), "is_peak"] = 1
+
+        result = engineer.fit_transform(df)
+
+        assert "cdd_x_is_peak" in result.columns
+        # CDD = 30 - 24 = 6.0
+        peak_rows = result[result["is_peak"] == 1]
+        np.testing.assert_allclose(peak_rows["cdd_x_is_peak"].values, 6.0)
+
+    def test_cdd_x_is_peak_hot_off_peak(self, engineer: WeatherFeatureEngineer) -> None:
+        """Hot temperature outside peak hours gives cdd_x_is_peak=0."""
+        idx = pd.date_range("2024-07-01", periods=168, freq="h")
+        df = pd.DataFrame(
+            {
+                "temperature_2m": [30.0] * 168,
+                "weather_code": [0.0] * 168,
+                "wind_speed_10m": [5.0] * 168,
+                "precipitation": [0.0] * 168,
+                "is_peak": [0] * 168,
+            },
+            index=idx,
+        )
+        result = engineer.fit_transform(df)
+
+        assert "cdd_x_is_peak" in result.columns
+        assert (result["cdd_x_is_peak"] == 0.0).all()
+
+    def test_cdd_x_is_peak_cold_peak(self, engineer: WeatherFeatureEngineer) -> None:
+        """Cold temperature during peak hours gives cdd_x_is_peak=0 (CDD=0)."""
+        idx = pd.date_range("2024-01-01", periods=168, freq="h")
+        df = pd.DataFrame(
+            {
+                "temperature_2m": [5.0] * 168,
+                "weather_code": [0.0] * 168,
+                "wind_speed_10m": [5.0] * 168,
+                "precipitation": [0.0] * 168,
+                "is_peak": [1] * 168,
+            },
+            index=idx,
+        )
+        result = engineer.fit_transform(df)
+
+        assert "cdd_x_is_peak" in result.columns
+        assert (result["cdd_x_is_peak"] == 0.0).all()
+
+    def test_cdd_x_is_peak_missing_is_peak(
+        self, engineer: WeatherFeatureEngineer
+    ) -> None:
+        """Without is_peak column, cdd_x_is_peak is not created (graceful skip)."""
+        idx = pd.date_range("2024-07-01", periods=168, freq="h")
+        df = pd.DataFrame(
+            {
+                "temperature_2m": [30.0] * 168,
+                "weather_code": [0.0] * 168,
+                "wind_speed_10m": [5.0] * 168,
+                "precipitation": [0.0] * 168,
+            },
+            index=idx,
+        )
+        result = engineer.fit_transform(df)
+        assert "cdd_x_is_peak" not in result.columns

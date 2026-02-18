@@ -457,5 +457,103 @@ class TestHolidayInteractionFeatures:
 
         assert "tatil_tipi" in result.columns
         assert "is_holiday_x_hour" in result.columns
+        assert "is_ramadan_x_hour" in result.columns
         assert (result["tatil_tipi"] == 0).all()
         assert (result["is_holiday_x_hour"] == 0).all()
+        assert (result["is_ramadan_x_hour"] == 0).all()
+
+
+# ---------------------------------------------------------------------------
+# 8. P0 features: weekend interaction, ramp, sunday
+# ---------------------------------------------------------------------------
+
+
+class TestP0CalendarFeatures:
+    """P0 features targeting residual hot-spots."""
+
+    def test_is_sunday_on_sunday(self, transformed_df: pd.DataFrame) -> None:
+        """Sunday (2024-01-07) has is_sunday=1."""
+        sun_rows = transformed_df.loc["2024-01-07"]
+        assert (sun_rows["is_sunday"] == 1).all()
+
+    def test_is_sunday_on_weekday(self, transformed_df: pd.DataFrame) -> None:
+        """Monday (2024-01-01) has is_sunday=0."""
+        mon_rows = transformed_df.loc["2024-01-01"]
+        assert (mon_rows["is_sunday"] == 0).all()
+
+    def test_is_sunday_on_saturday(self, transformed_df: pd.DataFrame) -> None:
+        """Saturday (2024-01-06) has is_sunday=0."""
+        sat_rows = transformed_df.loc["2024-01-06"]
+        assert (sat_rows["is_sunday"] == 0).all()
+
+    def test_is_weekend_x_hour_on_saturday(self, transformed_df: pd.DataFrame) -> None:
+        """On Saturday, is_weekend_x_hour equals the hour value."""
+        sat_rows = transformed_df.loc["2024-01-06"]
+        expected = sat_rows.index.hour
+        np.testing.assert_array_equal(sat_rows["is_weekend_x_hour"].values, expected)
+
+    def test_is_weekend_x_hour_on_weekday(self, transformed_df: pd.DataFrame) -> None:
+        """On weekdays, is_weekend_x_hour is always 0."""
+        mon_rows = transformed_df.loc["2024-01-01"]
+        assert (mon_rows["is_weekend_x_hour"] == 0).all()
+
+    def test_is_ramp_morning(self, transformed_df: pd.DataFrame) -> None:
+        """Hours 6-9 have is_ramp_morning=1, others 0."""
+        ramp = transformed_df["is_ramp_morning"]
+        hours = transformed_df.index.hour
+        for h in [6, 7, 8, 9]:
+            assert (ramp[hours == h] == 1).all(), f"Hour {h} should be ramp_morning"
+        for h in [0, 5, 10, 12, 23]:
+            assert (ramp[hours == h] == 0).all(), f"Hour {h} should NOT be ramp_morning"
+
+    def test_is_ramp_evening(self, transformed_df: pd.DataFrame) -> None:
+        """Hours 18-21 have is_ramp_evening=1, others 0."""
+        ramp = transformed_df["is_ramp_evening"]
+        hours = transformed_df.index.hour
+        for h in [18, 19, 20, 21]:
+            assert (ramp[hours == h] == 1).all(), f"Hour {h} should be ramp_evening"
+        for h in [0, 12, 17, 22, 23]:
+            assert (ramp[hours == h] == 0).all(), f"Hour {h} should NOT be ramp_evening"
+
+
+# ---------------------------------------------------------------------------
+# 9. P0 feature: is_ramadan_x_hour
+# ---------------------------------------------------------------------------
+
+
+class TestRamadanInteraction:
+    """Ramadan × hour interaction feature."""
+
+    def test_is_ramadan_x_hour_during_ramadan(self, tmp_path: Path) -> None:
+        """During Ramadan, is_ramadan_x_hour equals the hour value."""
+        holidays = pd.DataFrame(
+            {
+                "date": pd.to_datetime(["2024-03-12", "2024-03-13"]),
+                "holiday_name": ["Ramadan Day", "Ramadan Day"],
+                "is_ramadan": [1, 1],
+                "bayram_gun_no": [0, 0],
+            }
+        )
+        p = tmp_path / "h.parquet"
+        holidays.to_parquet(p, index=False)
+
+        cfg = CalendarConfig().model_dump()
+        cfg["holidays"]["path"] = str(p)
+        eng = CalendarFeatureEngineer(config=cfg)
+
+        idx = pd.date_range("2024-03-12", periods=48, freq="h")
+        df = pd.DataFrame({"consumption": 1000.0}, index=idx).rename_axis("datetime")
+        result = eng.transform(df)
+
+        mar12 = result.loc["2024-03-12"]
+        expected = mar12.index.hour
+        np.testing.assert_array_equal(mar12["is_ramadan_x_hour"].values, expected)
+
+    def test_is_ramadan_x_hour_outside_ramadan(
+        self,
+        holiday_engineer: CalendarFeatureEngineer,
+        calendar_df: pd.DataFrame,
+    ) -> None:
+        """Outside Ramadan, is_ramadan_x_hour is 0."""
+        result = holiday_engineer.transform(calendar_df)
+        assert (result["is_ramadan_x_hour"] == 0).all()

@@ -33,6 +33,7 @@ class WeatherFeatureEngineer(BaseFeatureEngineer):
         """
         df = X.copy()
         df = self._add_degree_days(df)
+        df = self._add_interactions(df)
         df = self._add_rolling(df)
         df = self._add_extreme_flags(df)
         df = self._add_severity(df)
@@ -52,6 +53,20 @@ class WeatherFeatureEngineer(BaseFeatureEngineer):
         )
         result: pd.DataFrame = dd_tf.fit_transform(df)
         return result
+
+    # ------------------------------------------------------------------
+    # Custom: cross-feature interactions
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _add_interactions(df: pd.DataFrame) -> pd.DataFrame:
+        """Add weather × calendar interaction features.
+
+        Requires ``is_peak`` from CalendarFeatureEngineer (runs first in pipeline).
+        """
+        if "wth_cdd" in df.columns and "is_peak" in df.columns:
+            df["cdd_x_is_peak"] = df["wth_cdd"] * df["is_peak"]
+        return df
 
     # ------------------------------------------------------------------
     # feature-engine: rolling
