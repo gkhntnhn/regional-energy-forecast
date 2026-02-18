@@ -53,25 +53,25 @@ catboost:
       choices: ["SymmetricTree", "Depthwise", "Lossguide"]
 
 
-# Minimal Prophet - fixed values
+# Prophet - 5 trials (Prophet is fast enough, more trials help quality)
 prophet:
-  n_trials: 1
+  n_trials: 5
   search_space:
     changepoint_prior_scale:
       type: float
-      low: 0.05
-      high: 0.05
+      low: 0.01
+      high: 0.5
+      log: true
     seasonality_prior_scale:
       type: float
-      low: 1.0
-      high: 1.0
+      low: 0.1
+      high: 20.0
+      log: true
     holidays_prior_scale:
       type: float
-      low: 1.0
-      high: 1.0
-    seasonality_mode:
-      type: categorical
-      choices: ["multiplicative"]
+      low: 0.1
+      high: 20.0
+      log: true
 
 # Minimal TFT - very small network, few epochs
 tft:

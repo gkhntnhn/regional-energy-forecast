@@ -59,11 +59,13 @@ def sample_df() -> pd.DataFrame:
 
 @pytest.fixture
 def mock_holidays_df() -> pd.DataFrame:
-    """Create mock holidays DataFrame."""
+    """Create mock holidays DataFrame with window parameters."""
     return pd.DataFrame(
         {
             "ds": pd.to_datetime(["2023-01-01", "2023-04-23", "2023-05-01"]),
             "holiday": ["New Year", "National Sovereignty", "Labour Day"],
+            "lower_window": [0, 0, 0],
+            "upper_window": [1, 1, 1],
         }
     )
 
@@ -187,12 +189,16 @@ class TestToProphetFormat:
 class TestCreateProphet:
     """Tests for _create_prophet method."""
 
-    def test_default_params(self, trainer: ProphetTrainer) -> None:
+    def test_default_params(
+        self, trainer: ProphetTrainer, sample_df: pd.DataFrame
+    ) -> None:
         """Test Prophet creation with default parameters."""
+        # _to_prophet_format must run first to populate _regressor_names
+        trainer._to_prophet_format(sample_df, include_target=True)
         model = trainer._create_prophet({})
 
         assert model is not None
-        # Check that regressors were added
+        # Check that regressors were added (temperature + humidity from fixture)
         assert len(model.extra_regressors) == 2
 
     def test_with_optuna_params(self, trainer: ProphetTrainer) -> None:
@@ -222,7 +228,22 @@ class TestLoadHolidays:
         assert holidays is not None
         assert "ds" in holidays.columns
         assert "holiday" in holidays.columns
+        assert "lower_window" in holidays.columns
+        assert "upper_window" in holidays.columns
         assert len(holidays) > 0
+
+    def test_holidays_cached_in_init(self, trainer: ProphetTrainer) -> None:
+        """Test that holidays are cached during __init__."""
+        assert trainer._holidays_df is not None
+        assert "ds" in trainer._holidays_df.columns
+
+    def test_holiday_windows_resmi(self, trainer: ProphetTrainer) -> None:
+        """Test that resmi tatiller get upper_window=1 (day-after effect)."""
+        holidays = trainer._load_holidays()
+        assert holidays is not None
+        # Fixture holidays are "New Year" and "National Sovereignty" — both resmi
+        assert (holidays["lower_window"] == 0).all()
+        assert (holidays["upper_window"] == 1).all()
 
     def test_holidays_missing_file(self, settings_with_prophet: Settings) -> None:
         """Test graceful handling of missing holidays file."""
@@ -240,6 +261,7 @@ class TestLoadHolidays:
         holidays = trainer._load_holidays()
 
         assert holidays is None
+        assert trainer._holidays_df is None
 
 
 # ---------------------------------------------------------------------------

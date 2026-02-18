@@ -42,7 +42,7 @@ prophet:
     changepoint_prior_scale:
       type: float
       low: 0.001
-      high: 0.5
+      high: 1.0              # expanded from 0.5 — allow more aggressive trend shifts
       log: true
     seasonality_prior_scale:
       type: float
@@ -54,9 +54,13 @@ prophet:
       low: 0.01
       high: 50.0
       log: true
-    seasonality_mode:
-      type: categorical
-      choices: ["additive", "multiplicative"]
+    n_changepoints:
+      type: int
+      low: 15
+      high: 50
+    # seasonality_mode removed from search space — energy consumption is
+    # inherently multiplicative (seasonal effects scale with load level).
+    # Fixed in configs/models/prophet.yaml → seasonality.mode: "multiplicative"
 
 tft:
   n_trials: 20

@@ -102,6 +102,7 @@ class ProphetTrainer:
         self._target_col = settings.hyperparameters.target_col
         self._skip_validation = settings.hyperparameters.skip_validation_after_optuna
         self._regressor_names: list[str] = []
+        self._holidays_df = self._load_holidays()  # load once, reuse across splits
 
     # -- Prophet format conversion --
 
@@ -173,7 +174,8 @@ class ProphetTrainer:
 
         model = Prophet(**model_params)
 
-        # Resolve seasonality mode: Optuna may override config default
+        # Seasonality mode fixed from config (energy data is multiplicative).
+        # Not part of Optuna search space, but kept defensive for manual overrides.
         season_mode: str = params.get("seasonality_mode", cfg.seasonality.mode)
 
         # Add seasonalities with config-specified Fourier orders
@@ -236,10 +238,18 @@ class ProphetTrainer:
 
         df["ds"] = pd.to_datetime(df["ds"])
 
-        # Add holiday windows: bayram days get eve/aftermath effect
+        # Holiday windows: different holidays have different spill-over effects
+        # on electricity consumption patterns.
         is_bayram = df["holiday"].str.contains("Bayrami", na=False)
+        is_ramazan = df["holiday"] == "Ramazan"
+        # Resmi tatiller: not bayram, not fasting days
+        is_resmi = ~is_bayram & ~is_ramazan
+
+        # Bayram: eve effect (lower=-1) + day-after (upper=1)
+        # Resmi tatiller: day-after effect only (upper=1)
+        # Ramazan fasting: no spill-over (0, 0)
         df["lower_window"] = np.where(is_bayram, -1, 0)
-        df["upper_window"] = np.where(is_bayram, 1, 0)
+        df["upper_window"] = np.where(is_bayram, 1, np.where(is_resmi, 1, 0))
 
         cols = ["ds", "holiday", "lower_window", "upper_window"]
         available = [c for c in cols if c in df.columns]
@@ -275,10 +285,8 @@ class ProphetTrainer:
         # Create and fit model
         model = self._create_prophet(params)
 
-        # Add holidays
-        holidays = self._load_holidays()
-        if holidays is not None:
-            model.holidays = holidays
+        if self._holidays_df is not None:
+            model.holidays = self._holidays_df
 
         model.fit(train_prophet)
 
@@ -425,9 +433,8 @@ class ProphetTrainer:
         train_prophet = self._to_prophet_format(df, include_target=True)
         model = self._create_prophet(params)
 
-        holidays = self._load_holidays()
-        if holidays is not None:
-            model.holidays = holidays
+        if self._holidays_df is not None:
+            model.holidays = self._holidays_df
 
         model.fit(train_prophet)
         logger.info("Final Prophet model trained on {} samples", len(df))
