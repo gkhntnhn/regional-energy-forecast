@@ -607,6 +607,7 @@ class CatBoostConfig(BaseModel, frozen=True):
             "is_monday",
             "is_sunday",
             # Weather
+            "weather_code",
             "weather_group",
             "wth_extreme_cold",
             "wth_extreme_hot",
