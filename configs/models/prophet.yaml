@@ -13,9 +13,15 @@ holidays:
   include_ramadan: true
 
 regressors:
-  - name: "temperature_2m"
+  # --- Consumption lags (autoregressive signal) ---
+  - name: "consumption_lag_168"
     mode: "multiplicative"
-  - name: "apparent_temperature"
+  - name: "consumption_lag_48"
+    mode: "multiplicative"
+  - name: "consumption_lag_720"
+    mode: "multiplicative"
+  # --- Weather ---
+  - name: "temperature_2m"
     mode: "multiplicative"
   - name: "relative_humidity_2m"
     mode: "additive"
@@ -27,11 +33,16 @@ regressors:
     mode: "multiplicative"
   - name: "wth_hdd"
     mode: "multiplicative"
+  # --- Deterministic (calendar/solar) ---
   - name: "is_weekend"
     mode: "multiplicative"
   - name: "is_holiday"
     mode: "multiplicative"
-  - name: "consumption_lag_168"
+  - name: "is_business_hours"
+    mode: "multiplicative"
+  - name: "is_peak"
+    mode: "multiplicative"
+  - name: "sol_elevation"
     mode: "multiplicative"
 
 changepoint:

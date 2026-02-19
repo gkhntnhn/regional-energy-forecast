@@ -695,15 +695,23 @@ class ProphetConfig(BaseModel, frozen=True):
     holidays: ProphetHolidaysConfig = Field(default_factory=ProphetHolidaysConfig)
     regressors: list[ProphetRegressorConfig] = Field(
         default_factory=lambda: [
+            # Consumption lags (autoregressive signal)
+            ProphetRegressorConfig(name="consumption_lag_168", mode="multiplicative"),
+            ProphetRegressorConfig(name="consumption_lag_48", mode="multiplicative"),
+            ProphetRegressorConfig(name="consumption_lag_720", mode="multiplicative"),
+            # Weather
             ProphetRegressorConfig(name="temperature_2m", mode="multiplicative"),
-            ProphetRegressorConfig(name="apparent_temperature", mode="multiplicative"),
             ProphetRegressorConfig(name="relative_humidity_2m", mode="additive"),
             ProphetRegressorConfig(name="wind_speed_10m", mode="additive"),
             ProphetRegressorConfig(name="shortwave_radiation", mode="multiplicative"),
             ProphetRegressorConfig(name="wth_cdd", mode="multiplicative"),
             ProphetRegressorConfig(name="wth_hdd", mode="multiplicative"),
+            # Deterministic (calendar/solar)
             ProphetRegressorConfig(name="is_weekend", mode="multiplicative"),
             ProphetRegressorConfig(name="is_holiday", mode="multiplicative"),
+            ProphetRegressorConfig(name="is_business_hours", mode="multiplicative"),
+            ProphetRegressorConfig(name="is_peak", mode="multiplicative"),
+            ProphetRegressorConfig(name="sol_elevation", mode="multiplicative"),
         ]
     )
     changepoint: ProphetChangepointConfig = Field(
