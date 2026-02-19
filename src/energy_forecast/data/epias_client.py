@@ -67,13 +67,12 @@ class EpiasClient:
         password: str,
         config: EpiasApiConfig | None = None,
         variables: list[str] | None = None,
-        file_pattern: str = "epias_market_{year}.parquet",
     ) -> None:
         self.username = username
         self.password = password
         self.config = config or EpiasApiConfig()
         self.cache_dir = Path(self.config.cache_dir)
-        self.file_pattern = file_pattern
+        self.file_pattern = self.config.file_pattern
         self.rate_limit_seconds = self.config.rate_limit_seconds
         self.variables = variables or list(_VARIABLE_MAP.keys())
         self._token: str | None = None

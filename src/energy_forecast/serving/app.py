@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import secrets
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import datetime
@@ -20,11 +21,9 @@ from slowapi.util import get_remote_address
 
 from energy_forecast.config.settings import load_config
 from energy_forecast.serving.exceptions import APIError, JobNotFoundError, JobQueueFullError
-from energy_forecast.utils import TZ_ISTANBUL
 from energy_forecast.serving.job_manager import JobManager
 from energy_forecast.serving.schemas import (
     ErrorResponse,
-    ForecastType,
     HealthResponse,
     JobResponse,
     JobStatusResponse,
@@ -35,6 +34,7 @@ from energy_forecast.serving.services.prediction_service import (
     PredictionService,
     PredictionServiceConfig,
 )
+from energy_forecast.utils import TZ_ISTANBUL
 
 if TYPE_CHECKING:
     pass
@@ -55,13 +55,12 @@ async def verify_api_key(
     Raises:
         HTTPException: 401 if token is missing, empty, or invalid.
     """
-    expected_key: str = getattr(getattr(request.app.state, "_api_key_ref", None), "key", "")
-    if not expected_key:
-        # Try loading from settings stored in app state
-        expected_key = getattr(request.app.state, "api_key", "")
+    expected_key: str = getattr(request.app.state, "api_key", "")
     if not expected_key:
         raise HTTPException(status_code=401, detail="API key not configured on server")
-    if credentials is None or credentials.credentials != expected_key:
+    if credentials is None or not secrets.compare_digest(
+        credentials.credentials, expected_key
+    ):
         raise HTTPException(status_code=401, detail="Invalid or missing API key")
     return credentials
 
@@ -165,6 +164,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Config loaded at module level for CORS middleware; reloaded in lifespan for model paths
 # Load CORS origins from config (fallback to ["*"] if config unavailable)
 try:
     _cors_settings = load_config()
@@ -239,7 +239,6 @@ async def predict(
     background_tasks: BackgroundTasks,
     file: UploadFile,
     email: Annotated[EmailStr, Form()],
-    forecast_type: Annotated[ForecastType, Form()] = ForecastType.DAY_AHEAD_AND_INTRADAY,
     _auth: HTTPAuthorizationCredentials = Depends(verify_api_key),
 ) -> JobResponse:
     """Submit a prediction job.
@@ -256,6 +255,7 @@ async def predict(
     Returns:
         Job creation response with job_id.
     """
+    # TODO: forecast_type parameter will be implemented (day_ahead vs day_ahead_and_intraday)
     # Get services from app state
     file_service: FileService = request.app.state.file_service
     job_manager: JobManager = request.app.state.job_manager
@@ -320,8 +320,8 @@ async def get_status(
 
     try:
         job = job_manager.get_job(job_id)
-    except JobNotFoundError:
-        raise HTTPException(status_code=404, detail="Job not found")
+    except JobNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as e:
         logger.error("Unexpected error fetching job {}: {}", job_id, e)
         raise HTTPException(status_code=500, detail="Internal server error") from e

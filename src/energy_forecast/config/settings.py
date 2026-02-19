@@ -117,6 +117,7 @@ class EpiasApiConfig(BaseModel, frozen=True):
     auth_url: str = "https://giris.epias.com.tr/cas/v1/tickets"
     base_url: str = "https://seffaflik.epias.com.tr/electricity-service/v1"
     cache_dir: str = "data/external/epias"
+    file_pattern: str = "epias_market_{year}.parquet"
     rate_limit_seconds: float = Field(default=10.0, ge=0.0)
     token_ttl_seconds: float = Field(default=3600.0, ge=0.0)
     timeout_seconds: float = Field(default=60.0, ge=1.0)

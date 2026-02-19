@@ -18,7 +18,7 @@ catboost:
       high: 500
     learning_rate:
       type: float
-      low: 0.01
+      low: 0.15
       high: 0.15
       log: true           # Log-uniform: düşük lr'ler daha sık denensin
     depth:
@@ -27,50 +27,50 @@ catboost:
       high: 6
     l2_leaf_reg:
       type: float
-      low: 1.0
-      high: 10.0
+      low: 5.0
+      high: 5.0
     min_child_samples:
       type: int
-      low: 5
-      high: 50
+      low: 25
+      high: 25
     subsample:
       type: float
-      low: 0.7
+      low: 1.0
       high: 1.0
     loss_function:
       type: categorical
-      choices: ["RMSE", "MAE", "MAPE"]
+      choices: ["RMSE"]
     random_strength:       # Zaman serisi için önemli — split randomness
       type: float
-      low: 0.5
-      high: 5.0
+      low: 2.5
+      high: 2.5
     bagging_temperature:   # Bayesian bootstrap — temporal variance'a karşı
       type: float
-      low: 0.0
+      low: 3.0
       high: 3.0
     grow_policy:           # SymmetricTree vs Depthwise vs Lossguide
       type: categorical
-      choices: ["SymmetricTree", "Depthwise", "Lossguide"]
+      choices: ["SymmetricTree"]
 
 
-# Prophet - 5 trials (Prophet is fast enough, more trials help quality)
+# Prophet - single trial for smoke test (production uses 5+)
 prophet:
-  n_trials: 5
+  n_trials: 1  # Prophet is fast enough for more trials, but 1 suffices for smoke test
   search_space:
     changepoint_prior_scale:
       type: float
-      low: 0.01
+      low: 0.5
       high: 0.5
       log: true
     seasonality_prior_scale:
       type: float
-      low: 0.1
-      high: 20.0
+      low: 10.0
+      high: 10.0
       log: true
     holidays_prior_scale:
       type: float
-      low: 0.1
-      high: 20.0
+      low: 10.0
+      high: 10.0
       log: true
 
 # Minimal TFT - very small network, few epochs

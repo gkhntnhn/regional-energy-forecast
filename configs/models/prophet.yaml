@@ -31,6 +31,8 @@ regressors:
     mode: "multiplicative"
   - name: "is_holiday"
     mode: "multiplicative"
+  - name: "consumption_lag_168"
+    mode: "multiplicative"
 
 changepoint:
   prior_scale: 0.05

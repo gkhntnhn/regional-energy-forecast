@@ -149,6 +149,18 @@ class ProphetTrainer:
                     "Regressor '{}' configured but not in DataFrame columns", reg.name
                 )
 
+        # Drop rows with NaN in regressor columns (e.g. consumption_lag_168
+        # has 168 NaN rows at the dataset start where the lag window exceeds
+        # available history).  Prophet raises ValueError on NaN regressors.
+        n_before = len(prophet_df)
+        prophet_df = prophet_df.dropna(subset=self._regressor_names).reset_index(drop=True)
+        n_dropped = n_before - len(prophet_df)
+        if n_dropped > 0:
+            logger.info(
+                "Dropped {} rows with NaN regressors ({:.1f}% of {})",
+                n_dropped, n_dropped / n_before * 100, n_before,
+            )
+
         return prophet_df
 
     # -- Prophet model creation --

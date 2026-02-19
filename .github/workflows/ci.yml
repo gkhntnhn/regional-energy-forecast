@@ -16,6 +16,9 @@ jobs:
           python-version: "3.11"
       - run: pip install ruff
       - run: ruff check src/
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --all-extras
+      - run: uv run mypy src/
 
   test:
     runs-on: ubuntu-latest

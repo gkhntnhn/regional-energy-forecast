@@ -7,7 +7,7 @@ Usage::
 
     python scripts/fetch_profile_coefficients.py [--start-year 2020] [--end-year 2025]
 
-Output: ``data/external/profile/{year}.parquet``
+Output: ``data/external/profile/profile_coef_{year}.parquet``
 """
 
 from __future__ import annotations
@@ -448,7 +448,7 @@ def main(start_year: int = 2020, end_year: int | None = None) -> None:
     failed = 0
 
     for year in range(start_year, end_year + 1):
-        output_path = OUTPUT_DIR / f"{year}.parquet"
+        output_path = OUTPUT_DIR / f"profile_coef_{year}.parquet"
         if output_path.exists():
             logger.info("Year {} already cached: {}", year, output_path)
             continue

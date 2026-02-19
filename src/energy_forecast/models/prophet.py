@@ -141,11 +141,18 @@ class ProphetForecaster(BaseForecaster):
     def load(self, path: Path) -> None:
         """Load Prophet model from .pkl file.
 
+        Verifies model file integrity via SHA256 hash before deserialization.
+
+        Note: Hash check detects post-save tampering but does not prevent pickle
+        deserialization attacks (CWE-502). Safe in this project because model
+        files are self-generated. Consider safetensors for untrusted sources.
+
         Args:
             path: Directory path containing model files.
 
         Raises:
             FileNotFoundError: If model file not found.
+            ModelIntegrityError: If hash verification fails.
         """
         model_path = path / "prophet_model.pkl"
         if not model_path.exists():
