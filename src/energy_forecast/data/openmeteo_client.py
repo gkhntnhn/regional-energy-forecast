@@ -310,6 +310,9 @@ class OpenMeteoClient:
     # Weighted average
     # ------------------------------------------------------------------
 
+    # Columns that are categorical WMO codes — must NOT be averaged numerically.
+    _CATEGORICAL_WEATHER_COLS: frozenset[str] = frozenset({"weather_code"})
+
     def _compute_weighted_average(
         self,
         city_dfs: list[tuple[CityConfig, pd.DataFrame]],
@@ -319,6 +322,9 @@ class OpenMeteoClient:
         NaN-safe: when a city has missing data for a timestep, its weight
         is excluded and the remaining weights are re-normalized.  If all
         cities are NaN for a timestep, the result stays NaN.
+
+        Categorical weather columns (e.g. ``weather_code``) are handled
+        separately using the dominant-city strategy instead of averaging.
 
         Args:
             city_dfs: List of (CityConfig, DataFrame) pairs.
@@ -333,11 +339,14 @@ class OpenMeteoClient:
         base_index = city_dfs[0][1].index
         variables = list(city_dfs[0][1].columns)
 
+        numeric_vars = [v for v in variables if v not in self._CATEGORICAL_WEATHER_COLS]
+        categorical_vars = [v for v in variables if v in self._CATEGORICAL_WEATHER_COLS]
+
         result = pd.DataFrame(np.nan, index=base_index, columns=variables)
         result.index.name = "datetime"
 
-        for var in variables:
-            # Build a matrix: rows=timestamps, cols=cities
+        # --- Numeric variables: NaN-safe weighted average ---
+        for var in numeric_vars:
             city_values = pd.DataFrame(index=base_index)
             city_weights = pd.DataFrame(index=base_index)
 
@@ -347,13 +356,45 @@ class OpenMeteoClient:
                     city_values[city.name] = aligned[var]
                     city_weights[city.name] = city.weight
 
-            # Mask weights where values are NaN
             valid_mask = city_values.notna()
             adj_weights = city_weights * valid_mask
 
-            # Normalize weights so they sum to 1 for each row
             weight_sum = adj_weights.sum(axis=1).replace(0.0, np.nan)
             weighted_vals = (city_values.fillna(0.0) * adj_weights).sum(axis=1)
             result[var] = weighted_vals / weight_sum
 
+        # --- Categorical variables: dominant city (highest weight, NaN fallback) ---
+        for var in categorical_vars:
+            result[var] = self._dominant_city_value(city_dfs, base_index, var)
+
+        return result
+
+    @staticmethod
+    def _dominant_city_value(
+        city_dfs: list[tuple[CityConfig, pd.DataFrame]],
+        base_index: pd.DatetimeIndex,
+        var: str,
+    ) -> pd.Series:  # type: ignore[type-arg]
+        """Pick the value from the highest-weight city, with NaN fallback.
+
+        Iterates cities in descending weight order.  For each timestep the
+        first non-NaN value is used.  Result dtype is float (WMO codes are
+        stored as float by OpenMeteo SDK).
+
+        Args:
+            city_dfs: City config + DataFrame pairs.
+            base_index: Common datetime index.
+            var: Column name to extract.
+
+        Returns:
+            Series with dominant-city values.
+        """
+        # Sort cities by weight descending
+        sorted_pairs = sorted(city_dfs, key=lambda pair: pair[0].weight, reverse=True)
+
+        result = pd.Series(np.nan, index=base_index, name=var)
+        for city, df in sorted_pairs:
+            aligned = df.reindex(base_index)
+            if var in aligned.columns:
+                result = result.fillna(aligned[var])
         return result

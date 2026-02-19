@@ -578,15 +578,47 @@ class CatBoostConfig(BaseModel, frozen=True):
     training: CatBoostTrainingConfig = Field(default_factory=CatBoostTrainingConfig)
     categorical_features: list[str] = Field(
         default_factory=lambda: [
+            # Time
             "hour",
             "day_of_week",
+            "day_of_month",
+            "week_of_year",
             "month",
+            "quarter",
+            "season",
+            "year",
+            # Holiday / special days
             "is_holiday",
             "is_weekend",
             "is_ramadan",
+            "is_bridge_day",
+            "tatil_tipi",
             "bayram_gun_no",
-            "weather_code",
-            "season",
+            # Interaction (flag x hour)
+            "is_holiday_x_hour",
+            "is_ramadan_x_hour",
+            "is_weekend_x_hour",
+            # Time-period flags
+            "is_business_hours",
+            "is_peak",
+            "is_ramp_morning",
+            "is_ramp_evening",
+            "is_friday",
+            "is_monday",
+            "is_sunday",
+            # Weather
+            "weather_group",
+            "wth_extreme_cold",
+            "wth_extreme_hot",
+            "wth_extreme_wind",
+            "wth_heavy_precip",
+            "wth_is_severe",
+            "wth_severity",
+            # Season / solar
+            "is_cooling_season",
+            "is_heating_season",
+            "sol_is_daylight",
+            "sol_daylight_hours",
         ]
     )
     nan_handling: CatBoostNanHandling = Field(default_factory=CatBoostNanHandling)

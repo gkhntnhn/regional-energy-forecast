@@ -9,7 +9,7 @@ import pandas as pd
 import pytest
 
 from energy_forecast.config.settings import WeatherFeaturesConfig
-from energy_forecast.features.weather import WeatherFeatureEngineer
+from energy_forecast.features.weather import WeatherFeatureEngineer, map_wmo_group
 
 
 @pytest.fixture()
@@ -283,3 +283,115 @@ class TestCddPeakInteraction:
         )
         result = engineer.fit_transform(df)
         assert "cdd_x_is_peak" not in result.columns
+
+
+# ---------------------------------------------------------------------------
+# Tests: WMO weather_group categorical feature
+# ---------------------------------------------------------------------------
+
+
+class TestMapWmoGroup:
+    """Tests for map_wmo_group() function."""
+
+    @pytest.mark.parametrize(
+        ("code", "expected"),
+        [
+            (0, "clear"),
+            (1, "cloudy"),
+            (2, "cloudy"),
+            (3, "cloudy"),
+            (45, "fog"),
+            (48, "fog"),
+            (51, "drizzle"),
+            (55, "drizzle"),
+            (61, "rain"),
+            (63, "rain"),
+            (65, "rain"),
+            (71, "snow"),
+            (75, "snow"),
+            (77, "snow"),
+            (80, "showers"),
+            (82, "showers"),
+            (95, "thunderstorm"),
+            (96, "thunderstorm"),
+            (99, "thunderstorm"),
+        ],
+    )
+    def test_known_codes(self, code: int, expected: str) -> None:
+        """Known WMO codes map to the correct group."""
+        assert map_wmo_group(float(code)) == expected
+
+    def test_unknown_code(self) -> None:
+        """Unknown WMO code maps to 'unknown'."""
+        assert map_wmo_group(42.0) == "unknown"
+        assert map_wmo_group(100.0) == "unknown"
+
+    def test_nan_code(self) -> None:
+        """NaN code maps to 'unknown'."""
+        assert map_wmo_group(float("nan")) == "unknown"
+
+
+class TestWeatherGroup:
+    """Tests for weather_group feature in WeatherFeatureEngineer."""
+
+    def test_weather_group_created(self, engineer: WeatherFeatureEngineer) -> None:
+        """weather_group column is created from weather_code."""
+        idx = pd.date_range("2024-01-01", periods=168, freq="h")
+        df = pd.DataFrame(
+            {
+                "temperature_2m": [15.0] * 168,
+                "weather_code": [61.0] * 168,  # rain
+                "wind_speed_10m": [5.0] * 168,
+                "precipitation": [0.0] * 168,
+            },
+            index=idx,
+        )
+        result = engineer.fit_transform(df)
+        assert "weather_group" in result.columns
+        assert result["weather_group"].iloc[0] == "rain"
+
+    def test_weather_group_is_string(self, engineer: WeatherFeatureEngineer) -> None:
+        """weather_group column has string (object) dtype."""
+        idx = pd.date_range("2024-01-01", periods=168, freq="h")
+        df = pd.DataFrame(
+            {
+                "temperature_2m": [15.0] * 168,
+                "weather_code": [0.0] * 168,
+                "wind_speed_10m": [5.0] * 168,
+                "precipitation": [0.0] * 168,
+            },
+            index=idx,
+        )
+        result = engineer.fit_transform(df)
+        assert result["weather_group"].dtype == object
+
+    def test_weather_group_mixed_codes(self, engineer: WeatherFeatureEngineer) -> None:
+        """Different weather_code values produce correct group labels."""
+        idx = pd.date_range("2024-01-01", periods=4, freq="h")
+        df = pd.DataFrame(
+            {
+                "temperature_2m": [15.0] * 4,
+                "weather_code": [0.0, 61.0, 71.0, 95.0],
+                "wind_speed_10m": [5.0] * 4,
+                "precipitation": [0.0] * 4,
+            },
+            index=idx,
+        )
+        result = engineer.fit_transform(df)
+        assert result["weather_group"].tolist() == ["clear", "rain", "snow", "thunderstorm"]
+
+    def test_weather_group_skipped_without_weather_code(
+        self, engineer: WeatherFeatureEngineer
+    ) -> None:
+        """Without weather_code column, weather_group is not created."""
+        idx = pd.date_range("2024-01-01", periods=168, freq="h")
+        df = pd.DataFrame(
+            {
+                "temperature_2m": [15.0] * 168,
+                "wind_speed_10m": [5.0] * 168,
+                "precipitation": [0.0] * 168,
+            },
+            index=idx,
+        )
+        result = engineer.fit_transform(df)
+        assert "weather_group" not in result.columns

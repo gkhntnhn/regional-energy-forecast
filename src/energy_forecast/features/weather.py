@@ -12,6 +12,50 @@ from energy_forecast.features.base import BaseFeatureEngineer
 from energy_forecast.features.custom import DegreeDayFeatures
 
 
+# WMO 4677 code → 8-group mapping for categorical feature
+WMO_GROUP_MAP: dict[int, str] = {
+    0: "clear",
+    1: "cloudy",
+    2: "cloudy",
+    3: "cloudy",
+    45: "fog",
+    48: "fog",
+    51: "drizzle",
+    53: "drizzle",
+    55: "drizzle",
+    56: "drizzle",
+    57: "drizzle",
+    61: "rain",
+    63: "rain",
+    65: "rain",
+    66: "rain",
+    67: "rain",
+    71: "snow",
+    73: "snow",
+    75: "snow",
+    77: "snow",
+    80: "showers",
+    81: "showers",
+    82: "showers",
+    85: "showers",
+    86: "showers",
+    95: "thunderstorm",
+    96: "thunderstorm",
+    99: "thunderstorm",
+}
+
+
+def map_wmo_group(code: float) -> str:
+    """Map WMO 4677 weather code to one of 8 weather groups.
+
+    Groups: clear, cloudy, fog, drizzle, rain, snow, showers, thunderstorm.
+    Unknown or NaN codes map to ``"unknown"``.
+    """
+    if pd.isna(code):
+        return "unknown"
+    return WMO_GROUP_MAP.get(int(code), "unknown")
+
+
 class WeatherFeatureEngineer(BaseFeatureEngineer):
     """Generates HDD/CDD, rolling, extreme flags, and severity features.
 
@@ -37,6 +81,7 @@ class WeatherFeatureEngineer(BaseFeatureEngineer):
         df = self._add_rolling(df)
         df = self._add_extreme_flags(df)
         df = self._add_severity(df)
+        df = self._add_weather_group(df)
         df = self._add_temp_change(df)
         return df
 
@@ -129,6 +174,18 @@ class WeatherFeatureEngineer(BaseFeatureEngineer):
 
         df["wth_severity"] = df["weather_code"].apply(_map_wmo_severity)
         df["wth_is_severe"] = (df["wth_severity"] >= 2).astype(int)
+        return df
+
+    # ------------------------------------------------------------------
+    # Custom: WMO weather group (string categorical)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _add_weather_group(df: pd.DataFrame) -> pd.DataFrame:
+        """Map WMO weather_code to a categorical weather_group label."""
+        if "weather_code" not in df.columns:
+            return df
+        df["weather_group"] = df["weather_code"].map(map_wmo_group)
         return df
 
     # ------------------------------------------------------------------

@@ -335,6 +335,176 @@ class TestWeightedAverage:
 
 
 # ---------------------------------------------------------------------------
+# Tests: weather_code dominant city strategy
+# ---------------------------------------------------------------------------
+
+
+class TestWeatherCodeDominantCity:
+    """weather_code must use dominant city, not weighted average."""
+
+    def test_weather_code_uses_dominant_city(self, tmp_path: Path) -> None:
+        """weather_code takes the highest-weight city's value, not average."""
+        config = OpenMeteoConfig(
+            variables=["temperature_2m", "weather_code"],
+            cache=WeatherCacheConfig(path=str(tmp_path / "wc_cache.db")),
+        )
+        region = RegionConfig(
+            name="Test",
+            cities=[
+                CityConfig(name="Bursa", weight=0.6, latitude=40.0, longitude=29.0),
+                CityConfig(name="Balikesir", weight=0.4, latitude=39.0, longitude=28.0),
+            ],
+        )
+        client = OpenMeteoClient(config=config, region=region)
+
+        hours = 24
+        time_start = 1704067200 - 10800
+        time_end = time_start + hours * 3600
+
+        # Bursa: rain (61), Balikesir: clear (0)
+        resp_bursa = MockWeatherResponse(
+            hourly=MockHourly(
+                variables=[
+                    np.full(hours, 10.0, dtype=np.float32),
+                    np.full(hours, 61.0, dtype=np.float32),  # rain
+                ],
+                time_start=time_start,
+                time_end=time_end,
+            )
+        )
+        resp_balikesir = MockWeatherResponse(
+            hourly=MockHourly(
+                variables=[
+                    np.full(hours, 20.0, dtype=np.float32),
+                    np.full(hours, 0.0, dtype=np.float32),  # clear
+                ],
+                time_start=time_start,
+                time_end=time_end,
+            )
+        )
+
+        with patch.object(
+            client._client,
+            "weather_api",
+            side_effect=[[resp_bursa], [resp_balikesir]],
+        ):
+            df = client.fetch_historical("2024-01-01", "2024-01-01")
+
+        # weather_code should be Bursa's 61 (dominant), NOT 0.6*61 + 0.4*0 = 36.6
+        assert df["weather_code"].iloc[0] == 61.0
+        # temperature should still be weighted average
+        expected_temp = 0.6 * 10.0 + 0.4 * 20.0
+        assert abs(df["temperature_2m"].iloc[0] - expected_temp) < 0.01
+
+    def test_weather_code_nan_fallback(self, tmp_path: Path) -> None:
+        """When dominant city has NaN, falls back to next-highest-weight city."""
+        config = OpenMeteoConfig(
+            variables=["temperature_2m", "weather_code"],
+            cache=WeatherCacheConfig(path=str(tmp_path / "wc_cache.db")),
+        )
+        region = RegionConfig(
+            name="Test",
+            cities=[
+                CityConfig(name="Bursa", weight=0.6, latitude=40.0, longitude=29.0),
+                CityConfig(name="Balikesir", weight=0.4, latitude=39.0, longitude=28.0),
+            ],
+        )
+        client = OpenMeteoClient(config=config, region=region)
+
+        hours = 24
+        time_start = 1704067200 - 10800
+        time_end = time_start + hours * 3600
+
+        # Bursa: NaN weather_code for first 3 hours
+        wc_bursa = np.full(hours, 61.0, dtype=np.float32)
+        wc_bursa[:3] = np.nan
+
+        resp_bursa = MockWeatherResponse(
+            hourly=MockHourly(
+                variables=[
+                    np.full(hours, 10.0, dtype=np.float32),
+                    wc_bursa,
+                ],
+                time_start=time_start,
+                time_end=time_end,
+            )
+        )
+        resp_balikesir = MockWeatherResponse(
+            hourly=MockHourly(
+                variables=[
+                    np.full(hours, 20.0, dtype=np.float32),
+                    np.full(hours, 3.0, dtype=np.float32),  # overcast
+                ],
+                time_start=time_start,
+                time_end=time_end,
+            )
+        )
+
+        with patch.object(
+            client._client,
+            "weather_api",
+            side_effect=[[resp_bursa], [resp_balikesir]],
+        ):
+            df = client.fetch_historical("2024-01-01", "2024-01-01")
+
+        # Hours 0-2: Bursa NaN → fallback to Balikesir (3)
+        assert df["weather_code"].iloc[0] == 3.0
+        assert df["weather_code"].iloc[1] == 3.0
+        assert df["weather_code"].iloc[2] == 3.0
+        # Hour 3+: Bursa valid → use Bursa (61)
+        assert df["weather_code"].iloc[3] == 61.0
+
+    def test_weather_code_all_nan(self, tmp_path: Path) -> None:
+        """When all cities have NaN weather_code, result is NaN."""
+        config = OpenMeteoConfig(
+            variables=["temperature_2m", "weather_code"],
+            cache=WeatherCacheConfig(path=str(tmp_path / "wc_cache.db")),
+        )
+        region = RegionConfig(
+            name="Test",
+            cities=[
+                CityConfig(name="A", weight=0.6, latitude=40.0, longitude=29.0),
+                CityConfig(name="B", weight=0.4, latitude=39.0, longitude=28.0),
+            ],
+        )
+        client = OpenMeteoClient(config=config, region=region)
+
+        hours = 24
+        time_start = 1704067200 - 10800
+        time_end = time_start + hours * 3600
+
+        wc_a = np.full(hours, 61.0, dtype=np.float32)
+        wc_a[0] = np.nan
+        wc_b = np.full(hours, 3.0, dtype=np.float32)
+        wc_b[0] = np.nan
+
+        resp_a = MockWeatherResponse(
+            hourly=MockHourly(
+                variables=[np.full(hours, 10.0, dtype=np.float32), wc_a],
+                time_start=time_start,
+                time_end=time_end,
+            )
+        )
+        resp_b = MockWeatherResponse(
+            hourly=MockHourly(
+                variables=[np.full(hours, 20.0, dtype=np.float32), wc_b],
+                time_start=time_start,
+                time_end=time_end,
+            )
+        )
+
+        with patch.object(
+            client._client,
+            "weather_api",
+            side_effect=[[resp_a], [resp_b]],
+        ):
+            df = client.fetch_historical("2024-01-01", "2024-01-01")
+
+        assert pd.isna(df["weather_code"].iloc[0])
+        assert df["weather_code"].iloc[1] == 61.0  # A is dominant
+
+
+# ---------------------------------------------------------------------------
 # Tests: error handling
 # ---------------------------------------------------------------------------
 
