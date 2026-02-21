@@ -81,10 +81,31 @@ class SolarFeatureEngineer(BaseFeatureEngineer):
         daily_daylight = df["sol_is_daylight"].resample("D").sum()
         df["sol_daylight_hours"] = daily_daylight.reindex(df.index, method="ffill").values
 
-        # 6. Lead features (NOT leakage — deterministic)
+        # 6. Lead features — basic GHI leads (NOT leakage — deterministic)
         lead_cfg: dict[str, Any] = self.config.get("lead", {})
         if lead_cfg.get("enabled", False):
             for h in lead_cfg.get("hours", []):
                 df[f"sol_ghi_lead_{h}"] = df["sol_ghi"].shift(-h)
+
+            # 7. Extended lead/lag range for GHI, DNI, DHI
+            lag_range_cfg: dict[str, int] = lead_cfg.get("lag_range", {})
+            lag_cols: list[str] = lead_cfg.get("lag_columns", [])
+            if lag_range_cfg and lag_cols:
+                rng_min: int = lag_range_cfg.get("min", -10)
+                rng_max: int = lag_range_cfg.get("max", 10)
+                for col in lag_cols:
+                    if col not in df.columns:
+                        continue
+                    for shift_val in range(rng_min, rng_max + 1):
+                        if shift_val == 0:
+                            continue  # original column already present
+                        # Negative shift = lead (future), positive = lag (past)
+                        # Check if already created by basic lead above
+                        if shift_val < 0 and col == "sol_ghi":
+                            existing = f"sol_ghi_lead_{abs(shift_val)}"
+                            if existing in df.columns:
+                                continue
+                        prefix = "lead" if shift_val < 0 else "lag"
+                        df[f"{col}_{prefix}_{abs(shift_val)}"] = df[col].shift(shift_val)
 
         return df

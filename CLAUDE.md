@@ -38,6 +38,9 @@ make lint                 # ruff check + mypy --strict
 make format               # ruff format
 make prepare-data         # Dataset hazırla (historical + forecast parquets)
 make serve                # FastAPI başlat (uvicorn)
+make generate-holidays    # Tatil verisi üret
+make backfill-epias       # EPIAS cache güncelle
+make help                 # Tüm target'ları listele
 
 # Training
 make train-catboost       # CatBoost eğitimi (production)
@@ -87,6 +90,11 @@ uv run python -m energy_forecast.training.run --model catboost --config configs/
 - Config değişikliği = configs/*.yaml güncelle, KOD DEĞİŞMESİN
 - Feature pipeline tüm modlarda aynı feature'ları üretir
 - Ham EPIAS değerleri pipeline çıkışında her zaman DROP
+- PREDICTION_COL = "consumption_mwh" — tüm modellerin standart output kolon ismi
+- CatBoost categorical_features: 36 adet (catboost.yaml'da tanımlı, 6 grup: Time, Holiday, Interaction, Time-period, Weather, Season/Solar)
+- Prophet regressors: 14 adet (prophet.yaml'da tanımlı, her biri mode bilgisiyle)
+- Ensemble ağırlık optimizasyonu: MAPE(y, Σwᵢ·predᵢ) — blended predictions üzerinden
+- TimeSeriesSplitter: shuffle=True → ValueError (zaman serisi CV'de shuffle yasak)
 
 ## Dataset Hazırlama Kuralı (KRİTİK)
 ```
@@ -96,20 +104,22 @@ uv run python -m energy_forecast.training.run --model catboost --config configs/
 Akış:
 1. Excel yükle (consumption, son satır T-1 23:00)
 2. 48 boş satır ekle (T + T+1 günleri, consumption=NaN)
-3. EPIAS + Weather merge et
+3. EPIAS + Weather merge et (historical + forecast weather birleşik)
 4. Feature pipeline TEK SEFERDE çalıştır
 5. Split: df[:-48] → historical, df[-48:] → forecast
-6. Kaydet: features_historical.parquet, features_forecast.parquet
+6. Pandera schema validation uygula (ConsumptionSchema, EpiasSchema, WeatherSchema)
+7. Kaydet: features_historical.parquet, features_forecast.parquet
 
 Bu sayede consumption_lag_720 gibi uzun lag'ler forecast'ta doğru hesaplanır.
 ```
 
 ## Data Leakage Kuralları (ASLA İHLAL ETME)
-- Consumption/EPIAS lag feature'larda min_lag=48 saat
+- Consumption/EPIAS lag feature'larda min_lag=48 saat (config + Pydantic validator ile enforce)
 - Ham EPIAS değerleri (Real_Time_Consumption, DAM_Purchase, Bilateral, Load_Forecast) training'den önce DROP
 - Rolling/expanding window: .shift(1) SONRA .rolling()
 - Expanding min_periods >= 48
 - TimeSeriesSplit: ASLA random shuffle, has_time=true
+- Forward-fill (ffill/bfill) SADECE weather kolonlarına — consumption/EPIAS'a dokunma
 
 ## Leakage OLMAYAN Durumlar (Karıştırma)
 - Solar feature'lar (lead dahil): Astronomik hesaplama, deterministik — her modda OK
@@ -121,7 +131,22 @@ Bu sayede consumption_lag_720 gibi uzun lag'ler forecast'ta doğru hesaplanır.
 - Birim: MWh (saatlik)
 - Zaman dilimi: Europe/Istanbul (UTC+3)
 - Frekans: Saatlik (24 değer/gün)
-- Hava durumu: 4 şehir ağırlıklı ortalama (Bursa %60, Balıkesir %24, Yalova %10, Çanakkale %6)
+- Hava durumu ağırlıklandırma:
+  - Sayısal kolonlar (temperature, humidity, wind...): 4 şehir ağırlıklı ortalama (Bursa %60, Balıkesir %24, Yalova %10, Çanakkale %6), NaN-safe renormalize
+  - weather_code (WMO 4677): Ağırlıklı ortalama YAPILMAZ → dominant city (en yüksek ağırlıklı şehir, NaN fallback)
+  - weather_group: WMO kodlarından türetilen 8-grup string categorical (clear, cloudy, fog, drizzle, rain, snow, showers, thunderstorm)
+
+## Güvenlik
+- API: Bearer token authentication (tüm endpoint'ler, /health hariç)
+- API key karşılaştırma: secrets.compare_digest() (timing-safe)
+- Prophet model: pickle SHA256 hash verification (save/load)
+- CORS: config-driven origins (settings.api.cors_origins), wildcard + credentials uyarı logu
+- Timezone: Tüm datetime.now() → datetime.now(tz=TZ_ISTANBUL)
+
+## CI/CD
+- GitHub Actions (.github/workflows/ci.yml)
+- Push/PR → ruff check + mypy + pytest (-m "not slow")
+- Optuna persistence: n_trials > 3 → SQLite storage, ≤3 → in-memory
 
 ## Dosya Yapısı
 ```
@@ -129,13 +154,13 @@ data/
 ├── raw/
 │   └── Consumption_Input_Format.xlsx    # Ham tüketim verisi
 ├── processed/
-│   ├── features_historical.parquet      # Training için (~48K satır, ~152 feature)
+│   ├── features_historical.parquet      # Training için (~48K satır, ~162 feature)
 │   └── features_forecast.parquet        # Prediction için (48 satır)
 ├── static/
 │   └── turkish_holidays.parquet         # Tatil verileri
 └── external/
-    ├── epias/{year}.parquet             # EPIAS cache (yıllık)
-    ├── profile/{year}.parquet           # Profil katsayıları (yıllık)
+    ├── epias/epias_market_{year}.parquet # EPIAS cache (yıllık, config-driven pattern)
+    ├── profile/profile_coef_{year}.parquet # Profil katsayıları (yıllık)
     └── weather_cache.sqlite             # OpenMeteo cache
 
 configs/
@@ -146,8 +171,8 @@ configs/
 ├── api.yaml                # API config (CORS, rate limit)
 ├── smoke_test.yaml         # Smoke test override
 ├── models/
-│   ├── catboost.yaml       # CatBoost model config
-│   ├── prophet.yaml        # Prophet model config
+│   ├── catboost.yaml       # CatBoost model config (36 kategorik feature)
+│   ├── prophet.yaml        # Prophet model config (14 regressor)
 │   ├── tft.yaml            # TFT model config
 │   ├── ensemble.yaml       # Ensemble config
 │   └── hyperparameters.yaml # Optuna arama uzayı
@@ -157,7 +182,20 @@ configs/
     ├── epias.yaml
     ├── solar.yaml
     └── weather.yaml
+
+.github/workflows/ci.yml    # CI pipeline (ruff + mypy + pytest)
+.mailmap                     # Git author normalization
+src/energy_forecast/utils/prophet_utils.py  # Shared to_prophet_format (DRY)
 ```
+
+## Mevcut Model Performansı
+
+| Model | Val MAPE | Test MAPE | Durum |
+|-------|----------|-----------|-------|
+| CatBoost | 3.01% | 3.37% | ✅ Production-ready (603 trees, early stopping) |
+| Prophet | 4.23% | 4.67% | ✅ Production-ready (14 regressors, multiplicative) |
+| TFT | — | — | Debug bekleniyor |
+| Ensemble | — | — | Eğitim bekleniyor, hedef < %3 |
 
 ## Bilinen Sorunlar
 
@@ -167,6 +205,9 @@ configs/
 | EPIAS duplicate timestamps | Cache'te duplicate satırlar olabiliyor | `~df.index.duplicated(keep='first')` ile temizle |
 | Windows cp1254 codec | Unicode box-drawing karakterler çalışmaz | ASCII karakterler kullan |
 | Prophet cmdstanpy | Bazı ortamlarda kurulum sorunu | `pip install cmdstanpy` sonra `cmdstanpy.install_cmdstan()` |
+| Prophet stale model | ~~Kayıtlı model eski config ile eğitilmiş~~ | ✅ Retrained (14 regressor, Val 4.23%) |
+| CatBoost feature pruning | 85/161 feature near-zero importance | Opsiyonel prune, ensemble'da farklı modeller farklı feature kullanabilir |
+| Sistematik under-prediction | Gündüz +24 MWh (CatBoost), +21 MWh (Prophet) | Bias correction veya trend ratio feature |
 
 ## Detaylı Bilgi
 @SPEC.md — Proje spesifikasyonu (forecast akışı, model mimarisi, API tasarımı)

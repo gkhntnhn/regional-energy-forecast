@@ -4,12 +4,12 @@ training:
   iterations: 2000
   learning_rate: 0.05
   depth: 6
-  loss_function: "RMSE"
+  loss_function: "MAE"
   eval_metric: "MAPE"
-  early_stopping_rounds: 200
+  early_stopping_rounds: 250
   has_time: true
   random_seed: 42
-  verbose: 100
+  verbose: 250
 
 categorical_features:
   # Time

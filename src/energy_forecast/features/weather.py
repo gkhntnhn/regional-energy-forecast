@@ -11,7 +11,6 @@ from feature_engine.timeseries.forecasting import WindowFeatures
 from energy_forecast.features.base import BaseFeatureEngineer
 from energy_forecast.features.custom import DegreeDayFeatures
 
-
 # WMO 4677 code → 8-group mapping for categorical feature
 WMO_GROUP_MAP: dict[int, str] = {
     0: "clear",
@@ -79,6 +78,8 @@ class WeatherFeatureEngineer(BaseFeatureEngineer):
         df = self._add_degree_days(df)
         df = self._add_interactions(df)
         df = self._add_rolling(df)
+        df = self._add_weather_lags(df)
+        df = self._add_quadratic_temperature(df)
         df = self._add_extreme_flags(df)
         df = self._add_severity(df)
         df = self._add_weather_group(df)
@@ -138,6 +139,53 @@ class WeatherFeatureEngineer(BaseFeatureEngineer):
                 drop_na=False,
             )
             df = win_tf.fit_transform(df)
+        return df
+
+    # ------------------------------------------------------------------
+    # Custom: weather lags (thermal inertia)
+    # ------------------------------------------------------------------
+
+    def _add_weather_lags(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Add lagged weather features for thermal inertia modeling.
+
+        Buildings have thermal mass — yesterday's temperature still affects
+        today's heating/cooling demand. Not leakage since weather is a
+        known external variable.
+        """
+        lag_cfg: dict[str, Any] = self.config.get("weather_lags", {})
+        if not lag_cfg.get("enabled", False):
+            return df
+
+        hours: list[int] = lag_cfg.get("hours", [6, 12, 18, 24, 30, 36, 42, 48])
+        columns: list[str] = lag_cfg.get(
+            "columns", ["temperature_2m", "relative_humidity_2m", "wind_speed_10m"]
+        )
+
+        for col in columns:
+            if col not in df.columns:
+                continue
+            for lag in hours:
+                df[f"wth_{col}_lag_{lag}"] = df[col].shift(lag)
+
+        return df
+
+    # ------------------------------------------------------------------
+    # Custom: quadratic temperature (U-shaped energy relationship)
+    # ------------------------------------------------------------------
+
+    def _add_quadratic_temperature(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Add temperature squared to capture non-linear energy relationship.
+
+        Energy demand vs temperature is U-shaped: both very cold (heating)
+        and very hot (cooling) extremes increase consumption.
+        """
+        qt_cfg: dict[str, Any] = self.config.get("quadratic_temperature", {})
+        if not qt_cfg.get("enabled", False):
+            return df
+        if "temperature_2m" not in df.columns:
+            return df
+
+        df["wth_temperature_squared"] = df["temperature_2m"] ** 2
         return df
 
     # ------------------------------------------------------------------

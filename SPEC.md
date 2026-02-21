@@ -1,7 +1,7 @@
 # SPEC.md — Energy Forecast
 
 > Proje anayasası. Claude Code ve geliştirici bu dosyayı tek kaynak olarak referans alır.
-> Son güncelleme: 2025-02-09
+> Son güncelleme: 2026-02-21
 
 ---
 
@@ -48,6 +48,7 @@ Geçmiş tüketim:                          T günü   00:00 → 23:00  (24 saat
 | T + T+1 | 48 değer (bugün + yarın) | GOP + GİP — Gün Öncesi + Gün İçi |
 
 Model her zaman 48 saat üretir. Kullanıcıya gösterilecek kısım toggle ile belirlenir.
+> Not: forecast_type parametresi şu an devre dışı (TODO). Filtreleme ileride implement edilecek.
 
 ### 2.4 Güncelleme Senaryosu
 
@@ -102,7 +103,8 @@ son veri noktasından 48 saat sonradır.
 |---------|-------|
 | Kaynak | EPİAŞ Transparency Platform REST API |
 | Authentication | Username/password → JWT token |
-| Cache | Yıllık parquet dosyaları: `data/external/epias/{year}.parquet` |
+| Cache | Yıllık parquet dosyaları: `data/external/epias/epias_market_{year}.parquet` |
+| File pattern | Config-driven (EpiasApiConfig.file_pattern) |
 | Retry | 3 deneme, exponential backoff (tenacity) |
 | Rate limit | 10 saniye delay (configurable) |
 
@@ -124,9 +126,10 @@ Sadece türetilmiş versiyonları (lag, rolling) kullanılır. Ham değerler pip
 | Özellik | Değer |
 |---------|-------|
 | Kaynak | Open-Meteo API (ücretsiz) |
-| Yaklaşım | 4 şehir ağırlıklı ortalama |
+| Yaklaşım | 4 şehir ağırlıklı ortalama (sayısal kolonlar) |
 | Authentication | Yok (açık API) |
 | Cache | SQLite backend: `data/external/weather_cache.sqlite` |
+| Validation | Pandera WeatherSchema |
 
 **Lokasyon Ağırlıkları:**
 
@@ -136,6 +139,11 @@ Sadece türetilmiş versiyonları (lag, rolling) kullanılır. Ham değerler pip
 | Balıkesir | %24 | 39.653 | 27.886 |
 | Yalova | %10 | 40.655 | 29.272 |
 | Çanakkale | %6 | 40.146 | 26.402 |
+
+**Ağırlıklandırma kuralı:**
+- Sayısal değişkenler (temperature, humidity, wind...): Ağırlıklı ortalama, NaN-safe renormalize (eksik şehir ağırlığı dışlanır, kalanlar normalize edilir)
+- weather_code (WMO 4677 kategorik): Ağırlıklı ortalama YAPILMAZ → dominant city stratejisi (en yüksek ağırlıklı şehrin kodu, NaN fallback)
+- weather_group: weather_code'dan türetilen 8-grup string categorical (clear, cloudy, fog, drizzle, rain, snow, showers, thunderstorm)
 
 **Değişkenler:**
 temperature_2m, relative_humidity_2m, dew_point_2m, apparent_temperature,
@@ -148,6 +156,7 @@ wind_speed_10m, wind_direction_10m, shortwave_radiation
 |-------|-----------|--------|
 | Training (geçmiş) | Historical weather | OpenMeteo Archive API |
 | Prediction (gelecek) | Weather forecast | OpenMeteo Forecast API |
+| Dataset hazırlama | Historical + Forecast concat | Her ikisi birlikte çekilir |
 
 Weather forecast ve solar hesaplamaları (lead dahil) data leakage DEĞİLDİR:
 - **Solar:** Astronomik hesaplama, deterministik — kesin bilinir
@@ -158,7 +167,7 @@ Weather forecast ve solar hesaplamaları (lead dahil) data leakage DEĞİLDİR:
 | Dosya | İçerik | Format | Zorunlu |
 |-------|--------|--------|---------|
 | `data/static/turkish_holidays.parquet` | Türk resmi tatilleri | Parquet | Evet |
-| `data/external/profile/{year}.parquet` | EPİAŞ profil katsayıları | Parquet | Evet |
+| `data/external/profile/profile_coef_{year}.parquet` | EPİAŞ profil katsayıları | Parquet | Evet |
 
 ---
 
@@ -172,11 +181,11 @@ Weather forecast ve solar hesaplamaları (lead dahil) data leakage DEĞİLDİR:
 |-------|-------------|---------------------|
 | Calendar | `date` kolonu | Datetime, cyclical, holiday, Ramazan, business hours, solar position |
 | Consumption | `consumption` kolonu | Lag, rolling, EWMA, momentum, volatilite, quantile, interaction |
-| Weather | OpenMeteo verileri | HDD/CDD, comfort index, extremes, rolling, severity |
+| Weather | OpenMeteo verileri | HDD/CDD, comfort index, extremes, rolling, severity, weather_group |
 | Solar | pvlib hesaplamaları | GHI/DNI/DHI, POA, clearness index, cloud proxy |
 | EPIAS | EPİAŞ piyasa verileri | Lag, rolling, expanding (türetilmiş değerler) |
 
-**Toplam feature sayısı:** ~152
+**Toplam feature sayısı:** ~162
 
 ### 4.2 Data Leakage Kuralları
 
@@ -185,12 +194,13 @@ ama production'da başarısız olur. KESİNLİKLE UYULMALIDIR:
 
 | # | Kural | Uygulama |
 |---|-------|----------|
-| 1 | min_lag = 48 saat | Tüm consumption ve EPİAŞ lag feature'larında |
+| 1 | min_lag = 48 saat | Tüm consumption ve EPİAŞ lag feature'larında (config + Pydantic ge=48 validator) |
 | 2 | Shift before roll | `.shift(1).rolling()` — önce kaydır, sonra pencerele |
 | 3 | Expanding min_periods | `min_periods >= 48` |
 | 4 | Ham EPİAŞ değerleri | Feature pipeline çıkışında DROP edilir |
-| 5 | Temporal split | ASLA random shuffle — `has_time=true`, zaman sırası korunur |
+| 5 | Temporal split | ASLA random shuffle — `has_time=true`, shuffle=True → ValueError |
 | 6 | consumption duplicate | Pipeline merge sonrası duplicate kolon kontrolü |
+| 7 | Selective forward-fill | ffill/bfill SADECE weather kolonları — consumption/EPIAS'a dokunma |
 
 **Leakage OLMAYAN durumlar (known future inputs):**
 
@@ -210,11 +220,12 @@ Feature pipeline training ve prediction için AYNI şekilde çalışır. Ayrı "
 ```
 1. Excel yükle (son satır T-1 23:00)
 2. 48 boş satır ekle (T + T+1, consumption=NaN)
-3. EPIAS + Weather merge et
+3. EPIAS + Weather merge et (historical + forecast weather birleşik)
 4. Feature pipeline TEK SEFERDE çalıştır
 5. Split:
    - historical = df[:-48] → training için
    - forecast = df[-48:] → prediction için
+6. Pandera schema validation (ConsumptionSchema, EpiasSchema, WeatherSchema)
 ```
 
 Bu sayede uzun lag'ler (consumption_lag_720 gibi) forecast satırlarında da doğru hesaplanır.
@@ -241,7 +252,7 @@ Input (feature-engineered DataFrame)
         prediction = w₁·CB + w₂·P + w₃·TFT
                 │
                 ▼
-        48 saatlik final tahmin
+        48 saatlik final tahmin (PREDICTION_COL = "consumption_mwh")
         ├── T   00:00-23:00 (Gün İçi)
         └── T+1 00:00-23:00 (Gün Öncesi)
 ```
@@ -257,7 +268,7 @@ Input (feature-engineered DataFrame)
 | Loss function | RMSE / MAE / MAPE | Optuna ile seç |
 | Early stopping | 50 rounds | Validation metric'e göre |
 | has_time | true | Zaman sırası korunur |
-| Kategorik kolonlar | configs/models/catboost.yaml'da tanımlı | NaN → "missing" |
+| Kategorik kolonlar | 36 adet, configs/models/catboost.yaml'da tanımlı | 6 grup: Time, Holiday, Interaction, Time-period, Weather, Season/Solar |
 
 **Güçlü yanı:** Feature etkileşimleri (tatil × saat × mevsim), tabular data'da en iyi performans.
 
@@ -265,13 +276,33 @@ Input (feature-engineered DataFrame)
 
 | Parametre | Değer |
 |-----------|-------|
-| Seasonality mode | multiplicative |
-| Daily Fourier order | 12 |
-| Weekly Fourier order | 6 |
-| Yearly Fourier order | 10 |
-| Holidays | TR resmi tatilleri + Ramazan |
-| Regressors | temperature, humidity (additive) |
-| Changepoint prior scale | 0.05 |
+| Seasonality mode | multiplicative (sabit, Optuna'dan çıkarıldı) |
+| Daily Fourier order | 15 |
+| Weekly Fourier order | 8 |
+| Yearly Fourier order | 12 |
+| Holidays | TR resmi tatilleri + Ramazan (3-tier: bayram -1/+1, resmi 0/+1, ramazan 0/0) |
+| Regressors | 14 adet (aşağıda) |
+| Changepoint prior scale | 0.001-1.0 (Optuna ile optimize) |
+| n_changepoints | 15-50 (Optuna ile optimize) |
+
+**Prophet Regressors (14 adet):**
+
+| # | Regressor | Mode |
+|---|-----------|------|
+| 1 | consumption_lag_168 | multiplicative |
+| 2 | consumption_lag_48 | multiplicative |
+| 3 | consumption_lag_720 | multiplicative |
+| 4 | is_business_hours | multiplicative |
+| 5 | shortwave_radiation | multiplicative |
+| 6 | wth_cdd | multiplicative |
+| 7 | relative_humidity_2m | additive |
+| 8 | wind_speed_10m | additive |
+| 9 | is_peak | multiplicative |
+| 10 | temperature_2m | multiplicative |
+| 11 | is_weekend | multiplicative |
+| 12 | is_holiday | multiplicative |
+| 13 | wth_hdd | multiplicative |
+| 14 | sol_elevation | multiplicative |
 
 **Güçlü yanı:** Trend + mevsimsellik yapısal ayrıştırma, tatil etkilerini doğal modelleme.
 
@@ -287,6 +318,7 @@ Input (feature-engineered DataFrame)
 | Prediction length | 48 saat |
 | Quantiles | [0.02, 0.1, 0.25, 0.5, 0.75, 0.9, 0.98] |
 | Loss | Quantile Loss |
+| time_varying_unknown_reals | Config'den okunur (consumption lag + EPIAS lag feature'ları) |
 
 **Güçlü yanı:** Uncertainty quantification (P10-P90), attention-based interpretability,
 hangi feature'ın hangi saatte önemli olduğunu gösterir.
@@ -295,6 +327,8 @@ hangi feature'ın hangi saatte önemli olduğunu gösterir.
 
 - Ağırlıklar (w₁, w₂, w₃) validation seti üzerinde optimize edilir
 - Optimizasyon: `scipy.optimize.minimize` (constraint: Σwᵢ = 1, wᵢ ≥ 0)
+- Metrik: MAPE(y, Σwᵢ·predᵢ) — blended predictions üzerinden
+- NOT: MAPE(blended) ≠ Σwᵢ·MAPE(predᵢ). Ağırlıklar prediction seviyesinde optimize edilir.
 - Graceful degradation: Bir model başarısız olursa kalanlarla devam eder
 
 **Faz Planı:**
@@ -325,16 +359,17 @@ Split N: [█████████████████ train ████
 | n_splits | 12 | 2 |
 | val_period | 1 ay | 1 ay |
 | test_period | 1 ay | 1 ay |
-| Shuffle | HAYIR | HAYIR |
+| Shuffle | HAYIR (ValueError ile enforce) | HAYIR |
 
 ### 6.2 Hyperparameter Tuning
 
 - Optuna ile parametreler optimize edilir
 - Objective: Validation MAPE ortalaması (tüm split'ler üzerinden)
+- Storage: n_trials > 3 → SQLite (crash recovery), n_trials ≤ 3 → in-memory
 
 | Ayar | Production | Smoke Test |
 |------|------------|------------|
-| n_trials | 50+ | 2 |
+| n_trials | 50+ | 2-5 |
 | iterations | 1000-3000 | 10-50 |
 
 ### 6.3 Evaluation Metrikleri
@@ -383,7 +418,10 @@ make smoke-test
 - **Framework:** FastAPI
 - **Deploy:** AWS (Docker container)
 - **Tetik:** Web UI'dan kullanıcı talebi (on-demand)
-- **Authentication:** API key
+- **Authentication:** Bearer token (API_KEY), /health hariç tüm endpoint'ler
+- **Timing-safe:** secrets.compare_digest() ile key karşılaştırma
+- **CORS:** Config-driven origins (settings.api.cors_origins)
+- **Timezone:** Tüm datetime UTC+3 (Europe/Istanbul)
 - **Pattern:** Async job processing
 
 ### 7.2 Kullanıcı Akışı
@@ -391,44 +429,40 @@ make smoke-test
 ```
 1. Kullanıcı web UI'ya girer
 2. Excel dosyası upload eder (tüketim verisi → T-1 23:00'a kadar)
-3. Toggle seçer: ☐ Sadece T+1  /  ☑ T + T+1
-4. "Tahmin Üret" butonuna tıklar
-5. Backend (async):
+3. "Tahmin Üret" butonuna tıklar
+4. Backend (async):
    a. Job oluştur → job_id döndür
    b. Background'da:
       - Excel'i parse et → DataFrame
       - EPİAŞ verisini çek (cache veya API)
-      - OpenMeteo hava durumu tahminini çek
+      - OpenMeteo hava durumu tahminini çek (historical + forecast)
       - Feature pipeline çalıştır
       - Ensemble prediction üret (48 saat)
-      - Toggle'a göre filtrele
    c. Job tamamlanınca sonucu sakla
-6. Frontend job_id ile status polling yapar
-7. Tamamlanınca sonuç döner (JSON + Excel download)
+5. Frontend job_id ile status polling yapar
+6. Tamamlanınca sonuç döner (JSON + Excel download)
 ```
 
 ### 7.3 API Endpoints
 
-| Method | Path | Açıklama |
-|--------|------|----------|
-| GET | `/health` | Sağlık kontrolü |
-| GET | `/models` | Aktif model bilgileri |
-| POST | `/jobs` | Yeni tahmin job'ı oluştur |
-| GET | `/jobs/{job_id}` | Job durumunu sorgula |
-| GET | `/jobs/{job_id}/result` | Tamamlanan job sonucunu al |
-| DELETE | `/jobs/{job_id}` | Job'ı iptal et |
-| GET | `/docs` | OpenAPI dokümantasyonu |
+| Method | Path | Auth | Açıklama |
+|--------|------|------|----------|
+| GET | `/health` | Hayır | Sağlık kontrolü |
+| GET | `/models` | Evet | Aktif model bilgileri |
+| POST | `/predict` | Evet | Yeni tahmin job'ı oluştur |
+| GET | `/jobs/{job_id}` | Evet | Job durumunu sorgula |
+| GET | `/jobs/{job_id}/result` | Evet | Tamamlanan job sonucunu al |
+| DELETE | `/jobs/{job_id}` | Evet | Job'ı iptal et |
+| GET | `/docs` | Hayır | OpenAPI dokümantasyonu |
 
 ### 7.4 Job Oluşturma
 
 ```
-POST /jobs
+POST /predict
 Content-Type: multipart/form-data
 Authorization: Bearer {API_KEY}
 
 file: consumption.xlsx
-forecast_type: "day_ahead" | "day_ahead_and_intraday"
-email: (opsiyonel) results@company.com
 ```
 
 **Response:**
@@ -444,13 +478,14 @@ email: (opsiyonel) results@company.com
 
 ```
 GET /jobs/{job_id}
+Authorization: Bearer {API_KEY}
 ```
 
 **Response:**
 ```json
 {
   "job_id": "abc123",
-  "status": "completed",  // pending | processing | completed | failed
+  "status": "completed",
   "created_at": "2025-01-01T10:00:00+03:00",
   "completed_at": "2025-01-01T10:00:25+03:00",
   "progress": 100
@@ -461,25 +496,24 @@ GET /jobs/{job_id}
 
 ```
 GET /jobs/{job_id}/result
+Authorization: Bearer {API_KEY}
 ```
 
 **Response:**
 ```json
 {
   "success": true,
-  "forecast_type": "day_ahead_and_intraday",
   "predictions": [
     {"datetime": "2025-01-01T00:00:00+03:00", "consumption_mwh": 1245.3, "period": "intraday"},
     {"datetime": "2025-01-01T01:00:00+03:00", "consumption_mwh": 1198.7, "period": "intraday"},
-    ...
-    {"datetime": "2025-01-02T00:00:00+03:00", "consumption_mwh": 1267.1, "period": "day_ahead"},
-    ...
+    {"datetime": "2025-01-02T00:00:00+03:00", "consumption_mwh": 1267.1, "period": "day_ahead"}
   ],
   "metadata": {
     "model": "ensemble_v1",
     "weights": {"catboost": 0.55, "prophet": 0.25, "tft": 0.20},
     "last_data_point": "2024-12-31T23:00:00+03:00",
-    "weather_updated_at": "2025-01-01T10:00:00+03:00"
+    "weather_updated_at": "2025-01-01T10:00:00+03:00",
+    "latency_ms": 12450
   },
   "statistics": {
     "count": 48,
@@ -505,7 +539,7 @@ GET /jobs/{job_id}/result
 │                                          │
 │   ECS / App Runner                       │
 │       └── FastAPI container              │
-│           ├── /jobs endpoint             │
+│           ├── /predict endpoint          │
 │           ├── /health endpoint           │
 │           └── Model files (S3'den yükle) │
 │                                          │
@@ -529,8 +563,8 @@ GET /jobs/{job_id}/result
 
 ### 8.3 CI/CD
 
-GitHub Actions:
-- Push → lint + test
+GitHub Actions (.github/workflows/ci.yml):
+- Push/PR → ruff check + mypy + pytest (-m "not slow")
 - Tag → build Docker image → push ECR → deploy
 
 ---
@@ -548,8 +582,8 @@ configs/
 ├── api.yaml                # API: CORS, rate limit
 ├── smoke_test.yaml         # Smoke test override (minimal params)
 ├── models/
-│   ├── catboost.yaml       # CatBoost: kategorik kolonlar, eğitim parametreleri
-│   ├── prophet.yaml        # Prophet: seasonality, holidays, regressors
+│   ├── catboost.yaml       # CatBoost: 36 kategorik kolon, eğitim parametreleri
+│   ├── prophet.yaml        # Prophet: seasonality, holidays, 14 regressor
 │   ├── tft.yaml            # TFT: architecture, training, quantiles
 │   ├── ensemble.yaml       # Ensemble: ağırlıklar, aktif modeller
 │   └── hyperparameters.yaml # Optuna arama uzayı (tüm modeller)
@@ -604,6 +638,7 @@ DATABASE_URL=postgresql+asyncpg://user:pass@host:5432/db
 | Type checker | MyPy strict mode |
 | Commit format | Conventional Commits (commitizen) |
 | Pre-commit | Ruff + MyPy + commitizen + trailing whitespace |
+| CI | GitHub Actions (ruff + mypy + pytest) |
 
 ### 10.2 Test Gereksinimleri
 
@@ -614,6 +649,7 @@ DATABASE_URL=postgresql+asyncpg://user:pass@host:5432/db
 | Smoke tests | Hızlı E2E validation (smoke_test.py) |
 | Coverage hedefi | %80+ (eski projedeki %5'ten büyük iyileşme) |
 | Mock kuralı | Sadece external API'ler mock'lanır (EPİAŞ, OpenMeteo) |
+| Test sayısı | 480+ (aktif) |
 
 ### 10.3 Git Workflow
 
@@ -632,18 +668,21 @@ Commit format: `feat(scope): description` / `fix(scope): description`
 
 ### 11.1 Performans
 
-| Metrik | Hedef |
-|--------|-------|
-| Tahmin üretme süresi | < 30 saniye (web UI'da tolere edilebilir) |
-| API response time | < 60 saniye (dosya upload + tahmin dahil) |
-| Model MAPE | < %10 (CatBoost baseline), < %8 (ensemble hedef) |
+| Metrik | Hedef | Mevcut |
+|--------|-------|--------|
+| Tahmin üretme süresi | < 30 saniye | Ölçülüyor (latency_ms metadata'da) |
+| API response time | < 60 saniye | — |
+| CatBoost Val MAPE | < %5 | %3.01 ✅ |
+| Prophet Val MAPE | < %6 | %4.23 ✅ |
+| Ensemble Val MAPE | < %3 (hedef) | Eğitim bekleniyor |
 
 ### 11.2 Güvenilirlik
 
 - Graceful degradation: Ensemble'da bir model fail ederse kalanlarla devam
 - API rate limiting: Aynı kullanıcıdan 1 talep/dakika
-- Input validation: Pandera schema ile Excel doğrulama
-- Error handling: Structured error responses (JSON)
+- Input validation: Pandera schema ile Excel doğrulama (ConsumptionSchema, EpiasSchema, WeatherSchema)
+- Error handling: Structured error responses (JSON), JobNotFoundError → 404, Exception → 500
+- Model integrity: Prophet pickle SHA256 hash verification
 
 ---
 
@@ -651,10 +690,13 @@ Commit format: `feat(scope): description` / `fix(scope): description`
 
 | Sorun | Açıklama | Workaround |
 |-------|----------|------------|
-| FDPP deprecated | EPIAS API'den artık çekilemiyor | Diğer 4 değişken (Real_Time_Consumption, DAM_Purchase, Bilateral, Load_Forecast) kullanılıyor |
-| EPIAS duplicate timestamps | Yıllık cache dosyalarında duplicate satırlar olabiliyor | `df[~df.index.duplicated(keep='first')]` ile temizle |
-| Windows cp1254 codec | Unicode box-drawing karakterler encode edilemiyor | ASCII karakterler kullan (print summary'de) |
-| Prophet cmdstanpy | Bazı ortamlarda kurulum sorunu olabiliyor | `pip install cmdstanpy` sonra `cmdstanpy.install_cmdstan()` |
+| FDPP deprecated | EPIAS API'den artık çekilemiyor | Diğer 4 değişken kullanılıyor |
+| EPIAS duplicate timestamps | Yıllık cache dosyalarında duplicate satırlar | `df[~df.index.duplicated(keep='first')]` ile temizle |
+| Windows cp1254 codec | Unicode box-drawing karakterler encode edilemiyor | ASCII karakterler kullan |
+| Prophet cmdstanpy | Bazı ortamlarda kurulum sorunu | `pip install cmdstanpy` sonra `cmdstanpy.install_cmdstan()` |
+| Prophet stale model | Kayıtlı model eski config ile eğitilmiş (2 regressor) | Retrain gerekli (14 regressor ile) |
+| Sistematik under-prediction | Gündüz +24 MWh (CatBoost), +21 MWh (Prophet) | Bias correction veya trend ratio feature |
+| CatBoost feature pruning | 85/161 feature near-zero importance | Opsiyonel prune |
 
 ---
 
@@ -673,6 +715,7 @@ Commit format: `feat(scope): description` / `fix(scope): description`
 | DNI | Direct Normal Irradiance |
 | DHI | Diffuse Horizontal Irradiance |
 | POA | Plane of Array (güneş paneli yüzeyi ışınımı) |
+| WMO 4677 | World Meteorological Organization hava durumu kod standardı |
 | FDPP | Final Daily Production Plan (DEPRECATED) |
 | Uludağ Bölgesi | Bursa + Balıkesir + Yalova + Çanakkale dağıtım bölgesi |
 

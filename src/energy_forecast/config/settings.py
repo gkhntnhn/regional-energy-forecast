@@ -273,6 +273,20 @@ class HolidaysConfig(BaseModel, frozen=True):
     bridge_days: bool = True
 
 
+class AnticipationConfig(BaseModel, frozen=True):
+    """Holiday anticipation feature settings."""
+
+    enabled: bool = False
+    windows: list[int] = Field(default_factory=lambda: [3, 7, 15])
+
+
+class SplineSeasonalityConfig(BaseModel, frozen=True):
+    """Periodic spline encoding settings."""
+
+    enabled: bool = False
+    n_splines: int = Field(default=12, ge=2)
+
+
 class CalendarConfig(BaseModel, frozen=True):
     """Calendar feature engineering parameters."""
 
@@ -299,6 +313,10 @@ class CalendarConfig(BaseModel, frozen=True):
         }
     )
     holidays: HolidaysConfig = Field(default_factory=HolidaysConfig)
+    anticipation: AnticipationConfig = Field(default_factory=AnticipationConfig)
+    spline_seasonality: SplineSeasonalityConfig = Field(
+        default_factory=SplineSeasonalityConfig,
+    )
     business_hours: BusinessHoursConfig = Field(default_factory=BusinessHoursConfig)
 
 
@@ -362,6 +380,27 @@ class QuantileConfig(BaseModel, frozen=True):
     window: int = Field(default=168, ge=1)
 
 
+class TrendRatioPairConfig(BaseModel, frozen=True):
+    """Single trend ratio pair (numerator_lag / denominator_lag)."""
+
+    numerator_lag: int = Field(ge=48)
+    denominator_lag: int = Field(ge=48)
+
+
+class TrendRatioConfig(BaseModel, frozen=True):
+    """Trend ratio feature parameters."""
+
+    pairs: list[TrendRatioPairConfig] = Field(
+        default_factory=lambda: [TrendRatioPairConfig(numerator_lag=168, denominator_lag=336)]
+    )
+
+
+class TargetEncodingConfig(BaseModel, frozen=True):
+    """Hour×DayOfWeek target encoding feature parameters."""
+
+    enabled: bool = False
+
+
 class ConsumptionConfig(BaseModel, frozen=True):
     """Consumption feature engineering parameters."""
 
@@ -371,6 +410,8 @@ class ConsumptionConfig(BaseModel, frozen=True):
     expanding: ExpandingConfig = Field(default_factory=ExpandingConfig)
     momentum: MomentumConfig = Field(default_factory=MomentumConfig)
     quantile: QuantileConfig = Field(default_factory=QuantileConfig)
+    trend_ratio: TrendRatioConfig = Field(default_factory=TrendRatioConfig)
+    target_encoding: TargetEncodingConfig = Field(default_factory=TargetEncodingConfig)
 
 
 # -- Weather features --
@@ -407,6 +448,22 @@ class WeatherRollingConfig(BaseModel, frozen=True):
     functions: list[str] = Field(default_factory=lambda: ["mean", "min", "max"])
 
 
+class WeatherLagsConfig(BaseModel, frozen=True):
+    """Weather lag feature settings."""
+
+    enabled: bool = False
+    hours: list[int] = Field(default_factory=lambda: [6, 12, 18, 24, 30, 36, 42, 48])
+    columns: list[str] = Field(
+        default_factory=lambda: ["temperature_2m", "relative_humidity_2m", "wind_speed_10m"]
+    )
+
+
+class QuadraticTemperatureConfig(BaseModel, frozen=True):
+    """Quadratic temperature feature settings."""
+
+    enabled: bool = False
+
+
 class WeatherFeaturesConfig(BaseModel, frozen=True):
     """Weather feature engineering parameters."""
 
@@ -415,6 +472,10 @@ class WeatherFeaturesConfig(BaseModel, frozen=True):
     )
     comfort_index: ComfortIndexConfig = Field(default_factory=ComfortIndexConfig)
     rolling: WeatherRollingConfig = Field(default_factory=WeatherRollingConfig)
+    weather_lags: WeatherLagsConfig = Field(default_factory=WeatherLagsConfig)
+    quadratic_temperature: QuadraticTemperatureConfig = Field(
+        default_factory=QuadraticTemperatureConfig,
+    )
     severity: WeatherSeverityConfig = Field(default_factory=WeatherSeverityConfig)
 
 
@@ -437,11 +498,22 @@ class SolarPanelConfig(BaseModel, frozen=True):
     azimuth: int = 180
 
 
+class SolarLagRangeConfig(BaseModel, frozen=True):
+    """Solar lag range for lead/lag features."""
+
+    min: int = -10
+    max: int = 10
+
+
 class SolarLeadConfig(BaseModel, frozen=True):
     """Solar lead feature settings."""
 
     enabled: bool = True
     hours: list[int] = Field(default_factory=lambda: [1, 2, 3])
+    lag_range: SolarLagRangeConfig = Field(default_factory=SolarLagRangeConfig)
+    lag_columns: list[str] = Field(
+        default_factory=lambda: ["sol_ghi", "sol_dni", "sol_dhi"]
+    )
 
 
 class SolarConfig(BaseModel, frozen=True):
@@ -558,7 +630,7 @@ class CatBoostTrainingConfig(BaseModel, frozen=True):
     iterations: int = Field(default=2000, ge=100)
     learning_rate: float = Field(default=0.05, gt=0.0, lt=1.0)
     depth: int = Field(default=6, ge=1, le=16)
-    loss_function: str = "RMSE"
+    loss_function: str = "MAPE"
     eval_metric: str = "MAPE"
     early_stopping_rounds: int = Field(default=200, ge=1)
     has_time: bool = True

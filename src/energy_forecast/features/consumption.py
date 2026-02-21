@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 import pandas as pd
 from feature_engine.timeseries.forecasting import (
@@ -47,6 +47,8 @@ class ConsumptionFeatureEngineer(BaseFeatureEngineer):
         df = self._add_ewma(df, min_lag)
         df = self._add_momentum(df, min_lag)
         df = self._add_quantile(df, min_lag)
+        df = self._add_trend_ratio(df)
+        df = self._add_target_encoding(df, min_lag)
         return df
 
     # ------------------------------------------------------------------
@@ -140,3 +142,47 @@ class ConsumptionFeatureEngineer(BaseFeatureEngineer):
         )
         result: pd.DataFrame = q_tf.fit_transform(df)
         return result
+
+    # ------------------------------------------------------------------
+    # Trend ratio: lag_short / lag_long → weekly trend proxy
+    # ------------------------------------------------------------------
+
+    def _add_trend_ratio(self, df: pd.DataFrame) -> pd.DataFrame:
+        trend_cfg: dict[str, Any] | None = self.config.get("trend_ratio")
+        if not trend_cfg:
+            return df
+        for pair in trend_cfg["pairs"]:
+            num_lag: int = pair["numerator_lag"]
+            den_lag: int = pair["denominator_lag"]
+            num_col = f"consumption_lag_{num_lag}"
+            den_col = f"consumption_lag_{den_lag}"
+            out_col = f"consumption_trend_ratio_{num_lag}_{den_lag}"
+            if num_col in df.columns and den_col in df.columns:
+                df[out_col] = df[num_col] / df[den_col].replace(0, float("nan"))
+        return df
+
+    # ------------------------------------------------------------------
+    # Target encoding: hour x dow expanding mean (leakage-safe)
+    # ------------------------------------------------------------------
+
+    def _add_target_encoding(self, df: pd.DataFrame, min_lag: int) -> pd.DataFrame:
+        """Hour×DayOfWeek target encoding via expanding mean.
+
+        168 unique bins (Mon 00:00 ... Sun 23:00). Expanding mean with
+        min_lag shift prevents leakage. Gives CatBoost an explicit
+        representation of the most important interaction.
+        """
+        te_cfg: dict[str, Any] = self.config.get("target_encoding", {})
+        if not te_cfg.get("enabled", False):
+            return df
+        if "consumption" not in df.columns:
+            return df
+
+        idx = cast(pd.DatetimeIndex, df.index)
+        group_key = pd.Series(idx.dayofweek * 24 + idx.hour, index=df.index)
+
+        profile = df["consumption"].groupby(group_key).transform(
+            lambda g: g.expanding().mean().shift(min_lag)
+        )
+        df["consumption_hourly_profile"] = profile
+        return df

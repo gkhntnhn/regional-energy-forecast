@@ -23,8 +23,17 @@ features:
   - sol_daylight_hours
 
 lead:
+  # Solar lead/lag features (NOT leakage — deterministic astronomical calculation)
+  # Range [-10, +10]: negative = lead (future), positive = lag (past)
   enabled: true
   hours:
     - 1
     - 2
     - 3
+  lag_range:
+    min: -10
+    max: 10
+  lag_columns:
+    - sol_ghi
+    - sol_dni
+    - sol_dhi

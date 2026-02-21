@@ -10,6 +10,7 @@ import pandas as pd
 from feature_engine.creation import CyclicalFeatures
 from feature_engine.datetime import DatetimeFeatures
 from loguru import logger
+from sklearn.preprocessing import SplineTransformer
 
 from energy_forecast.features.base import BaseFeatureEngineer
 
@@ -37,7 +38,9 @@ class CalendarFeatureEngineer(BaseFeatureEngineer):
         df = X.copy()
         df = self._extract_datetime(df)
         df = self._add_cyclical(df)
+        df = self._add_spline_seasonality(df)
         df = self._add_holiday_features(df)
+        df = self._add_holiday_anticipation(df)
         df = self._add_business_features(df)
         return df
 
@@ -316,6 +319,71 @@ class CalendarFeatureEngineer(BaseFeatureEngineer):
         df["bayrama_kalan_gun"] = np.array(
             [countdown_map.get(d, -1) for d in date_arr]
         )
+        return df
+
+    # ------------------------------------------------------------------
+    # Custom: holiday anticipation (forward-looking, NOT leakage)
+    # ------------------------------------------------------------------
+
+    def _add_holiday_anticipation(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Add forward-looking holiday features.
+
+        For each window N, counts holidays in the next N days.
+        NOT leakage — calendar is deterministic (known future).
+        Captures pre-holiday demand changes (stocking, production shifts).
+        """
+        ant_cfg: dict[str, Any] = self.config.get("anticipation", {})
+        if not ant_cfg.get("enabled", False):
+            return df
+
+        windows: list[int] = ant_cfg.get("windows", [3, 7, 15])
+        holiday_cols = ["is_holiday", "is_ramadan"]
+
+        for col in holiday_cols:
+            if col not in df.columns:
+                continue
+            series = df[col]
+            for n_days in windows:
+                n_hours = n_days * 24
+                # Forward rolling sum: how many holiday hours in next N days
+                # shift(-n_hours) + rolling(n_hours) = forward window
+                fwd = series.shift(-n_hours).rolling(n_hours, min_periods=1).sum()
+                # Normalize to daily count
+                df[f"{col}_next_{n_days}d"] = fwd / 24.0
+
+        return df
+
+    # ------------------------------------------------------------------
+    # Custom: periodic spline seasonality
+    # ------------------------------------------------------------------
+
+    def _add_spline_seasonality(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Add periodic spline encoding for hour-of-day.
+
+        More flexible than sin/cos (which captures only one harmonic).
+        Splines can model asymmetric and multi-modal daily patterns.
+        """
+        sp_cfg: dict[str, Any] = self.config.get("spline_seasonality", {})
+        if not sp_cfg.get("enabled", False):
+            return df
+
+        n_splines: int = sp_cfg.get("n_splines", 12)
+        if "hour" not in df.columns:
+            return df
+
+        n_knots = n_splines + 1
+        spline_tf = SplineTransformer(
+            degree=3,
+            n_knots=n_knots,
+            knots=np.linspace(0, 24, n_knots).reshape(-1, 1),
+            extrapolation="periodic",
+            include_bias=True,
+        )
+        hour_arr: np.ndarray[Any, Any] = np.asarray(df["hour"].values, dtype=float).reshape(-1, 1)
+        spline_feats = spline_tf.fit_transform(hour_arr)
+        for i in range(spline_feats.shape[1]):
+            df[f"spline_hour_{i}"] = spline_feats[:, i]
+
         return df
 
     # ------------------------------------------------------------------

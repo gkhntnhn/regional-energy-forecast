@@ -47,3 +47,15 @@ quantile:
     - 0.50
     - 0.75
   window: 168
+
+trend_ratio:
+  # Weekly trend proxy: lag_168 / lag_336 → "this week vs 2 weeks ago"
+  # Captures trend direction that CatBoost can't extrapolate natively
+  pairs:
+    - numerator_lag: 168
+      denominator_lag: 336
+
+target_encoding:
+  # Hour×DayOfWeek expanding mean (168 unique patterns: Mon 00:00 ... Sun 23:00)
+  # Explicit profile gives CatBoost a head start on the most important interaction
+  enabled: true

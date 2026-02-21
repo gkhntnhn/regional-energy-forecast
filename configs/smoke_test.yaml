@@ -14,12 +14,12 @@ catboost:
   search_space:
     iterations:
       type: int
-      low: 500
-      high: 500
+      low: 1000
+      high: 1000
     learning_rate:
       type: float
-      low: 0.15
-      high: 0.15
+      low: 0.03
+      high: 0.03
       log: true           # Log-uniform: düşük lr'ler daha sık denensin
     depth:
       type: int
@@ -27,27 +27,27 @@ catboost:
       high: 6
     l2_leaf_reg:
       type: float
-      low: 5.0
-      high: 5.0
+      low: 1.0
+      high: 1.0
     min_child_samples:
       type: int
-      low: 25
-      high: 25
+      low: 10
+      high: 10
     subsample:
       type: float
       low: 1.0
       high: 1.0
     loss_function:
       type: categorical
-      choices: ["RMSE"]
+      choices: ["MAE"]
     random_strength:       # Zaman serisi için önemli — split randomness
       type: float
-      low: 2.5
-      high: 2.5
+      low: 0.5
+      high: 0.5
     bagging_temperature:   # Bayesian bootstrap — temporal variance'a karşı
       type: float
-      low: 3.0
-      high: 3.0
+      low: 1.0
+      high: 1.0
     grow_policy:           # SymmetricTree vs Depthwise vs Lossguide
       type: categorical
       choices: ["SymmetricTree"]
@@ -116,7 +116,7 @@ validation:
 
 # Cross validation
 cross_validation:
-  n_splits: 6
+  n_splits: 12
   val_months: 1
   test_months: 1
   gap_hours: 0

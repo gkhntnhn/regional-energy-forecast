@@ -20,6 +20,20 @@ rolling:
     - min
     - max
 
+weather_lags:
+  # Thermal inertia: yesterday's temperature still affects today's consumption
+  # Building heat capacity means 6-48h delayed response
+  enabled: true
+  hours: [6, 12, 18, 24, 30, 36, 42, 48]
+  columns:
+    - temperature_2m
+    - relative_humidity_2m
+    - wind_speed_10m
+
+quadratic_temperature:
+  # Energy-temperature is U-shaped: both cold and hot extremes increase demand
+  enabled: true
+
 severity:
   enabled: true
   wind_threshold: 25.0
