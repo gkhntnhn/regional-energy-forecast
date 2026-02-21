@@ -118,6 +118,7 @@ class EpiasApiConfig(BaseModel, frozen=True):
     base_url: str = "https://seffaflik.epias.com.tr/electricity-service/v1"
     cache_dir: str = "data/external/epias"
     file_pattern: str = "epias_market_{year}.parquet"
+    generation_file_pattern: str = "epias_generation_{year}.parquet"
     rate_limit_seconds: float = Field(default=10.0, ge=0.0)
     token_ttl_seconds: float = Field(default=3600.0, ge=0.0)
     timeout_seconds: float = Field(default=60.0, ge=1.0)
@@ -586,6 +587,74 @@ class EpiasExpandingConfig(BaseModel, frozen=True):
         return v
 
 
+class GenerationLagConfig(BaseModel, frozen=True):
+    """Generation lag feature parameters. min_lag >= 48 enforced."""
+
+    min_lag: int = Field(default=48, ge=48)
+    values: list[int] = Field(default_factory=lambda: [48, 168])
+
+    @field_validator("values")
+    @classmethod
+    def _all_lags_ge_min(cls, v: list[int]) -> list[int]:
+        for lag in v:
+            if lag < 48:
+                msg = f"Generation lag {lag} < 48 — data leakage risk!"
+                raise ValueError(msg)
+        return v
+
+
+class GenerationRollingConfig(BaseModel, frozen=True):
+    """Generation rolling window parameters."""
+
+    windows: list[int] = Field(default_factory=lambda: [24, 168])
+    functions: list[str] = Field(default_factory=lambda: ["mean"])
+
+
+class GenerationExpandingConfig(BaseModel, frozen=True):
+    """Generation expanding window parameters."""
+
+    min_periods: int = Field(default=48, ge=48)
+    functions: list[str] = Field(default_factory=lambda: ["mean"])
+
+    @field_validator("min_periods")
+    @classmethod
+    def _min_periods_ge_48(cls, v: int) -> int:
+        if v < 48:
+            msg = f"Generation expanding min_periods {v} < 48 — data leakage risk!"
+            raise ValueError(msg)
+        return v
+
+
+class GenerationConfig(BaseModel, frozen=True):
+    """Generation feature engineering parameters."""
+
+    variables: list[str] = Field(
+        default_factory=lambda: [
+            "gen_asphaltite_coal",
+            "gen_biomass",
+            "gen_black_coal",
+            "gen_dammed_hydro",
+            "gen_fueloil",
+            "gen_geothermal",
+            "gen_import_coal",
+            "gen_import_export",
+            "gen_lignite",
+            "gen_lng",
+            "gen_naphta",
+            "gen_natural_gas",
+            "gen_river",
+            "gen_sun",
+            "gen_total",
+            "gen_wasteheat",
+            "gen_wind",
+        ]
+    )
+    lags: GenerationLagConfig = Field(default_factory=GenerationLagConfig)
+    rolling: GenerationRollingConfig = Field(default_factory=GenerationRollingConfig)
+    expanding: GenerationExpandingConfig = Field(default_factory=GenerationExpandingConfig)
+    drop_raw: bool = True
+
+
 class EpiasConfig(BaseModel, frozen=True):
     """EPIAS feature engineering parameters."""
 
@@ -603,6 +672,7 @@ class EpiasConfig(BaseModel, frozen=True):
     rolling: EpiasRollingConfig = Field(default_factory=EpiasRollingConfig)
     expanding: EpiasExpandingConfig = Field(default_factory=EpiasExpandingConfig)
     drop_raw: bool = True
+    generation: GenerationConfig = Field(default_factory=GenerationConfig)
 
 
 # -- Combined features --

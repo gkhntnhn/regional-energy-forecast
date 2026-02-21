@@ -183,6 +183,12 @@ class PredictionService:
             epias_df = self._fetch_epias_data(extended_df)
             merged_df = extended_df.join(epias_df, how="left")
 
+            # Step 3.5: Fetch generation data
+            update_progress("Fetching generation data...")
+            generation_df = self._fetch_generation_data(extended_df)
+            if not generation_df.empty:
+                merged_df = merged_df.join(generation_df, how="left")
+
             # Step 4: Fetch weather data (historical + forecast)
             update_progress("Fetching weather data...")
             weather_df = self._fetch_weather_data(extended_df)
@@ -249,6 +255,30 @@ class PredictionService:
             raise  # auth failures are critical — do not swallow
         except Exception as e:
             msg = f"EPIAS fetch failed, predictions will lack market features: {e}"
+            logger.warning(msg)
+            self._warnings.append(msg)
+            return pd.DataFrame(index=df.index)
+
+    def _fetch_generation_data(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Fetch EPIAS generation data for the date range in df.
+
+        Raises:
+            EpiasAuthError: If authentication fails (critical, not recoverable).
+        """
+        start_date = df.index.min().strftime("%Y-%m-%d")
+        end_date = df.index.max().strftime("%Y-%m-%d")
+
+        try:
+            with EpiasClient(
+                username=self._settings.env.epias_username,
+                password=self._settings.env.epias_password,
+                config=self._settings.epias_api,
+            ) as client:
+                return client.fetch_generation(start_date, end_date)
+        except EpiasAuthError:
+            raise  # auth failures are critical — do not swallow
+        except Exception as e:
+            msg = f"Generation fetch failed, predictions will lack supply features: {e}"
             logger.warning(msg)
             self._warnings.append(msg)
             return pd.DataFrame(index=df.index)

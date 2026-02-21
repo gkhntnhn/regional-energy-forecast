@@ -24,6 +24,27 @@ from energy_forecast.data.exceptions import EpiasApiError, EpiasAuthError
 # EPIAS variable definitions
 # ---------------------------------------------------------------------------
 
+# Real-time generation: API field name → DataFrame column name
+_GENERATION_FUEL_MAP: dict[str, str] = {
+    "asphaltiteCoal": "gen_asphaltite_coal",
+    "biomass": "gen_biomass",
+    "blackCoal": "gen_black_coal",
+    "dammedHydro": "gen_dammed_hydro",
+    "fueloil": "gen_fueloil",
+    "geothermal": "gen_geothermal",
+    "importCoal": "gen_import_coal",
+    "importExport": "gen_import_export",
+    "lignite": "gen_lignite",
+    "lng": "gen_lng",
+    "naphta": "gen_naphta",
+    "naturalGas": "gen_natural_gas",
+    "river": "gen_river",
+    "sun": "gen_sun",
+    "total": "gen_total",
+    "wasteheat": "gen_wasteheat",
+    "wind": "gen_wind",
+}
+
 _VARIABLE_MAP: dict[str, dict[str, str]] = {
     "FDPP": {
         "endpoint": "/generation/data/dpp",
@@ -234,13 +255,22 @@ class EpiasClient:
     # Cache
     # ------------------------------------------------------------------
 
-    def load_cache(self, year: int) -> pd.DataFrame | None:
+    def load_cache(
+        self,
+        year: int,
+        file_pattern: str | None = None,
+    ) -> pd.DataFrame | None:
         """Load cached parquet for a year.
+
+        Args:
+            year: Year to load.
+            file_pattern: Override file pattern (default: market pattern).
 
         Returns:
             DataFrame if cache exists, None otherwise.
         """
-        path = self.cache_dir / self.file_pattern.format(year=year)
+        pattern = file_pattern or self.file_pattern
+        path = self.cache_dir / pattern.format(year=year)
         if not path.exists():
             return None
         df = pd.read_parquet(path)
@@ -252,20 +282,195 @@ class EpiasClient:
         df.index.name = "datetime"
         return df
 
-    def save_cache(self, year: int, df: pd.DataFrame) -> None:
+    def save_cache(
+        self,
+        year: int,
+        df: pd.DataFrame,
+        file_pattern: str | None = None,
+    ) -> None:
         """Save year data as parquet file.
 
         Args:
             year: Year being cached.
             df: DataFrame to save.
+            file_pattern: Override file pattern (default: market pattern).
         """
+        pattern = file_pattern or self.file_pattern
         self.cache_dir.mkdir(parents=True, exist_ok=True)
-        path = self.cache_dir / self.file_pattern.format(year=year)
+        path = self.cache_dir / pattern.format(year=year)
         save_df = df.copy()
         save_df.index.name = "datetime"
         save_df = save_df.reset_index()
         save_df.to_parquet(path, engine="pyarrow", compression="snappy")
         logger.info("Cached EPIAS data for year {} → {}", year, path)
+
+    # ------------------------------------------------------------------
+    # Generation data (supply-side)
+    # ------------------------------------------------------------------
+
+    def fetch_generation(self, start_date: str, end_date: str) -> pd.DataFrame:
+        """Fetch real-time generation data for date range.
+
+        Uses year-based caching with a separate file pattern from market data.
+
+        Args:
+            start_date: Start date (YYYY-MM-DD).
+            end_date: End date (YYYY-MM-DD).
+
+        Returns:
+            DataFrame with DatetimeIndex and gen_* fuel-type columns.
+        """
+        gen_pattern = self.config.generation_file_pattern
+        start_dt = pd.Timestamp(start_date)
+        end_dt = pd.Timestamp(end_date)
+        start_year = start_dt.year
+        end_year = end_dt.year
+
+        dfs: list[pd.DataFrame] = []
+        for year in range(start_year, end_year + 1):
+            cached = self.load_cache(year, file_pattern=gen_pattern)
+            if cached is not None:
+                logger.debug("Loaded generation cache for year {}", year)
+                dfs.append(cached)
+            else:
+                logger.info("Fetching generation data for year {} from API", year)
+                year_df = self.fetch_generation_year(year)
+                dfs.append(year_df)
+
+        if not dfs:
+            msg = f"No generation data available for {start_date} to {end_date}"
+            raise EpiasApiError(msg)
+
+        combined = pd.concat(dfs)
+        combined = combined.sort_index()
+        combined = combined[~combined.index.duplicated(keep="first")]
+
+        if not isinstance(combined.index, pd.DatetimeIndex):
+            combined.index = pd.to_datetime(combined.index)
+        if combined.index.tz is not None:
+            combined.index = combined.index.tz_localize(None)
+
+        mask = (combined.index >= start_dt) & (
+            combined.index <= end_dt + pd.Timedelta(hours=23)
+        )
+        return combined.loc[mask]
+
+    def fetch_generation_year(self, year: int) -> pd.DataFrame:
+        """Fetch generation data for a full year from API and cache.
+
+        EPIAS generation endpoint limits response size, so the year
+        is fetched in quarterly chunks and concatenated.
+
+        Args:
+            year: Year to fetch (e.g. 2024).
+
+        Returns:
+            DataFrame with DatetimeIndex and gen_* fuel-type columns.
+        """
+        quarters = [
+            (f"{year}-01-01", f"{year}-03-31"),
+            (f"{year}-04-01", f"{year}-06-30"),
+            (f"{year}-07-01", f"{year}-09-30"),
+            (f"{year}-10-01", f"{year}-12-31"),
+        ]
+
+        dfs: list[pd.DataFrame] = []
+        for q_start, q_end in quarters:
+            logger.info("Fetching generation Q{} {}", quarters.index((q_start, q_end)) + 1, year)
+            try:
+                q_df = self._fetch_generation_data(q_start, q_end)
+                if not q_df.empty:
+                    dfs.append(q_df)
+            except EpiasApiError as exc:
+                logger.warning("Generation Q fetch failed ({} to {}): {}", q_start, q_end, exc)
+
+        if not dfs:
+            msg = f"Failed to fetch any generation data for year {year}"
+            raise EpiasApiError(msg)
+
+        result = pd.concat(dfs).sort_index()
+        result = result[~result.index.duplicated(keep="first")]
+
+        gen_pattern = self.config.generation_file_pattern
+        self.save_cache(year, result, file_pattern=gen_pattern)
+        return result
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=4, max=60),
+        retry=retry_if_exception_type(EpiasApiError),
+        reraise=True,
+    )
+    def _fetch_generation_data(
+        self,
+        start_date: str,
+        end_date: str,
+    ) -> pd.DataFrame:
+        """Fetch real-time generation from EPIAS API.
+
+        Args:
+            start_date: Start date (YYYY-MM-DD).
+            end_date: End date (YYYY-MM-DD).
+
+        Returns:
+            DataFrame with DatetimeIndex and gen_* columns.
+        """
+        token = self.authenticate()
+        self._wait_rate_limit()
+
+        url = f"{self.config.base_url}/generation/data/realtime-generation"
+        start_ts = _to_epias_timestamp(start_date)
+        end_ts = _to_epias_timestamp(end_date, end_of_day=True)
+
+        body: dict[str, Any] = {"startDate": start_ts, "endDate": end_ts}
+        headers = {"TGT": token, "Content-Type": "application/json"}
+
+        logger.debug("Fetching generation data from {} to {}", start_date, end_date)
+
+        try:
+            response = self._client.post(url, json=body, headers=headers)
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            detail = ""
+            try:
+                detail = f" — {exc.response.text[:500]}"
+            except Exception:
+                pass
+            msg = f"EPIAS generation API error: {exc.response.status_code}{detail}"
+            raise EpiasApiError(msg) from exc
+        except httpx.HTTPError as exc:
+            msg = f"EPIAS generation request failed: {exc}"
+            raise EpiasApiError(msg) from exc
+
+        data = response.json()
+        items = data.get("body", {}).get("content", data.get("items", []))
+        if not items:
+            items = data if isinstance(data, list) else []
+
+        if not items:
+            logger.warning("No generation data returned")
+            return pd.DataFrame(columns=list(_GENERATION_FUEL_MAP.values()))
+
+        rows: list[dict[str, Any]] = []
+        for item in items:
+            date_val = item.get("date") or item.get("period") or item.get("time")
+            if date_val is None:
+                continue
+            row: dict[str, Any] = {"datetime": date_val}
+            for api_key, col_name in _GENERATION_FUEL_MAP.items():
+                value = item.get(api_key)
+                if value is not None:
+                    row[col_name] = float(value)
+            rows.append(row)
+
+        if not rows:
+            return pd.DataFrame(columns=list(_GENERATION_FUEL_MAP.values()))
+
+        df = pd.DataFrame(rows)
+        df["datetime"] = pd.to_datetime(df["datetime"]).dt.tz_localize(None)
+        df = df.set_index("datetime").sort_index()
+        df = df[~df.index.duplicated(keep="first")]
+        return df
 
     # ------------------------------------------------------------------
     # Internal

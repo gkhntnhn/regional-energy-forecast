@@ -300,10 +300,76 @@ def fetch_weather_data(
     return None
 
 
+def fetch_generation_data(
+    settings: Settings,
+    start_date: str,
+    end_date: str,
+    *,
+    skip_api: bool = False,
+) -> pd.DataFrame | None:
+    """Fetch EPIAS real-time generation data.
+
+    Args:
+        settings: Application settings.
+        start_date: Start date (YYYY-MM-DD).
+        end_date: End date (YYYY-MM-DD).
+        skip_api: If True, only use cache (no API calls).
+
+    Returns:
+        DataFrame with generation data, or None if unavailable.
+    """
+    username = os.getenv("EPIAS_USERNAME", "")
+    password = os.getenv("EPIAS_PASSWORD", "")
+    gen_pattern = settings.epias_api.generation_file_pattern
+
+    if skip_api or not username or not password:
+        logger.warning("Generation API skipped, using cache only")
+        cache_dir = Path(settings.epias_api.cache_dir)
+        start_year = int(start_date[:4])
+        end_year = int(end_date[:4])
+
+        dfs = []
+        for year in range(start_year, end_year + 1):
+            cache_path = cache_dir / gen_pattern.format(year=year)
+            if cache_path.exists():
+                dfs.append(pd.read_parquet(cache_path))
+                logger.debug("Loaded generation cache: {}", cache_path.name)
+
+        if dfs:
+            gen_df = pd.concat(dfs)
+            if "datetime" in gen_df.columns:
+                gen_df["datetime"] = pd.to_datetime(gen_df["datetime"])
+                gen_df = gen_df.set_index("datetime").sort_index()
+            if gen_df.index.duplicated().any():
+                n_dups = gen_df.index.duplicated().sum()
+                logger.warning("Generation cache: {} duplicate timestamps, keeping first", n_dups)
+                gen_df = gen_df[~gen_df.index.duplicated(keep="first")]
+            logger.info("Generation cache: {} rows, {} columns", len(gen_df), len(gen_df.columns))
+            return gen_df
+
+        logger.warning("No generation cache found")
+        return None
+
+    logger.info("Fetching generation data from API...")
+    try:
+        with EpiasClient(username, password, settings.epias_api) as client:
+            gen_df = client.fetch_generation(start_date, end_date)
+
+        if gen_df is not None and not gen_df.empty:
+            logger.info("Generation API: {} rows, {} columns", len(gen_df), len(gen_df.columns))
+            return gen_df
+    except Exception as e:
+        logger.warning("Generation fetch failed (continuing without): {}", e)
+
+    logger.warning("Generation data unavailable")
+    return None
+
+
 def merge_data_sources(
     consumption_df: pd.DataFrame,
     epias_df: pd.DataFrame | None,
     weather_df: pd.DataFrame | None,
+    generation_df: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     """Merge all data sources on DatetimeIndex.
 
@@ -311,6 +377,7 @@ def merge_data_sources(
         consumption_df: Consumption data with DatetimeIndex.
         epias_df: Optional EPIAS data.
         weather_df: Optional weather data.
+        generation_df: Optional generation data.
 
     Returns:
         Merged DataFrame.
@@ -345,6 +412,20 @@ def merge_data_sources(
             if col not in merged.columns:
                 merged[col] = weather_aligned[col]
         logger.info("After weather merge: {} columns", len(merged.columns))
+
+    if generation_df is not None:
+        # Remove duplicates from generation before reindex
+        if generation_df.index.duplicated().any():
+            n_dups = generation_df.index.duplicated().sum()
+            logger.warning("Generation has {} duplicate timestamps, keeping first", n_dups)
+            generation_df = generation_df[~generation_df.index.duplicated(keep="first")]
+
+        # Align and merge generation
+        gen_aligned = generation_df.reindex(merged.index)
+        for col in generation_df.columns:
+            if col not in merged.columns:
+                merged[col] = gen_aligned[col]
+        logger.info("After generation merge: {} columns", len(merged.columns))
 
     # Safety: remove duplicate timestamps after merge
     if merged.index.duplicated().any():
@@ -474,6 +555,12 @@ def main() -> int:
         except Exception as e:
             logger.warning("EPIAS data validation failed (continuing): {}", e)
 
+    # Step 3.5: Fetch generation data
+    logger.info("[3.5/6] Fetching generation data...")
+    generation_df = fetch_generation_data(
+        settings, start_date, end_date, skip_api=args.skip_epias
+    )
+
     # Step 4: Fetch weather data
     if args.skip_weather:
         logger.info("[4/6] Weather fetch skipped")
@@ -492,7 +579,7 @@ def main() -> int:
 
     # Step 5: Merge all data sources
     logger.info("[5/6] Merging data sources...")
-    merged_df = merge_data_sources(extended_df, epias_df, weather_df)
+    merged_df = merge_data_sources(extended_df, epias_df, weather_df, generation_df)
 
     # Fill missing weather values only (forecast rows may have gaps)
     # EPIAS and consumption columns must NOT be forward-filled — EPIAS

@@ -34,3 +34,41 @@ expanding:
     - mean
 
 drop_raw: true
+
+# Real-time generation data (supply-side features)
+# CRITICAL: min_lag=48, raw gen_ values are DROPPED after feature creation
+generation:
+  variables:
+    - gen_asphaltite_coal
+    - gen_biomass
+    - gen_black_coal
+    - gen_dammed_hydro
+    - gen_fueloil
+    - gen_geothermal
+    - gen_import_coal
+    - gen_import_export
+    - gen_lignite
+    - gen_lng
+    - gen_naphta
+    - gen_natural_gas
+    - gen_river
+    - gen_sun
+    - gen_total
+    - gen_wasteheat
+    - gen_wind
+  lags:
+    min_lag: 48
+    values:
+      - 48
+      - 168
+  rolling:
+    windows:
+      - 24
+      - 168
+    functions:
+      - mean
+  expanding:
+    min_periods: 48
+    functions:
+      - mean
+  drop_raw: true

@@ -88,6 +88,13 @@ class FeaturePipeline:
                 msg = f"Raw EPIAS columns not dropped: {remaining}"
                 raise ValueError(msg)
 
+            # Check raw generation columns are dropped
+            gen_vars = self._settings.features.epias.generation.variables
+            remaining_gen = [v for v in gen_vars if v in df.columns]
+            if remaining_gen:
+                msg = f"Raw generation columns not dropped: {remaining_gen}"
+                raise ValueError(msg)
+
         # Check DatetimeIndex preserved
         if not isinstance(df.index, pd.DatetimeIndex):
             msg = "Pipeline output must have DatetimeIndex"

@@ -26,7 +26,7 @@ class EpiasFeatureEngineer(BaseFeatureEngineer):
     """
 
     def transform(self, X: pd.DataFrame) -> pd.DataFrame:
-        """Generate EPIAS-derived features.
+        """Generate EPIAS-derived features (market + generation).
 
         Args:
             X: DataFrame with raw EPIAS columns and DatetimeIndex.
@@ -35,21 +35,41 @@ class EpiasFeatureEngineer(BaseFeatureEngineer):
             DataFrame with derived features (raw values dropped if configured).
         """
         df = X.copy()
+
+        # --- Market features ---
         raw_vars: list[str] = self.config["variables"]
-        min_lag: int = self.config["lags"]["min_lag"]
-
         available_vars = [v for v in raw_vars if v in df.columns]
-        if not available_vars:
-            logger.warning("No EPIAS columns found in DataFrame, skipping")
-            return df
+        if available_vars:
+            lag_cfg: dict[str, Any] = self.config["lags"]
+            min_lag: int = lag_cfg["min_lag"]
+            df = self._add_lags(df, available_vars, lag_cfg["values"])
+            df = self._add_rolling(df, available_vars, min_lag, self.config["rolling"])
+            df = self._add_expanding(df, available_vars, min_lag, self.config["expanding"])
+            if self.config.get("drop_raw", True):
+                df = df.drop(columns=available_vars, errors="ignore")
+        else:
+            logger.warning("No EPIAS market columns found in DataFrame, skipping")
 
-        df = self._add_lags(df, available_vars)
-        df = self._add_rolling(df, available_vars, min_lag)
-        df = self._add_expanding(df, available_vars, min_lag)
-
-        # Drop raw columns
-        if self.config.get("drop_raw", True):
-            df = df.drop(columns=available_vars, errors="ignore")
+        # --- Generation features ---
+        gen_cfg: dict[str, Any] | None = self.config.get("generation")
+        if gen_cfg:
+            gen_vars: list[str] = gen_cfg["variables"]
+            available_gen = [v for v in gen_vars if v in df.columns]
+            if available_gen:
+                gen_lag_cfg: dict[str, Any] = gen_cfg["lags"]
+                gen_min_lag: int = gen_lag_cfg["min_lag"]
+                df = self._add_lags(df, available_gen, gen_lag_cfg["values"])
+                df = self._add_rolling(
+                    df, available_gen, gen_min_lag, gen_cfg["rolling"]
+                )
+                df = self._add_expanding(
+                    df, available_gen, gen_min_lag, gen_cfg["expanding"]
+                )
+                if gen_cfg.get("drop_raw", True):
+                    df = df.drop(columns=available_gen, errors="ignore")
+                logger.info("Generation features added for {} variables", len(available_gen))
+            else:
+                logger.debug("No generation columns found in DataFrame, skipping")
 
         return df
 
@@ -57,8 +77,12 @@ class EpiasFeatureEngineer(BaseFeatureEngineer):
     # feature-engine: lags
     # ------------------------------------------------------------------
 
-    def _add_lags(self, df: pd.DataFrame, variables: list[str]) -> pd.DataFrame:
-        lag_values: list[int] = self.config["lags"]["values"]
+    def _add_lags(
+        self,
+        df: pd.DataFrame,
+        variables: list[str],
+        lag_values: list[int],
+    ) -> pd.DataFrame:
         lag_tf = LagFeatures(
             variables=variables,  # type: ignore[arg-type]
             periods=lag_values,
@@ -79,8 +103,8 @@ class EpiasFeatureEngineer(BaseFeatureEngineer):
         df: pd.DataFrame,
         variables: list[str],
         min_lag: int,
+        roll_cfg: dict[str, Any],
     ) -> pd.DataFrame:
-        roll_cfg: dict[str, Any] = self.config["rolling"]
         windows: list[int] = roll_cfg["windows"]
         functions: list[str] = roll_cfg["functions"]
 
@@ -107,8 +131,8 @@ class EpiasFeatureEngineer(BaseFeatureEngineer):
         df: pd.DataFrame,
         variables: list[str],
         min_lag: int,
+        exp_cfg: dict[str, Any],
     ) -> pd.DataFrame:
-        exp_cfg: dict[str, Any] = self.config["expanding"]
         exp_tf = ExpandingWindowFeatures(
             variables=variables,  # type: ignore[arg-type]
             min_periods=exp_cfg["min_periods"],
