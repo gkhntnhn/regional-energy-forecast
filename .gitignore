@@ -78,3 +78,6 @@ models/optuna_studies/
 
 # Notebooks
 notebooks/.ipynb_checkpoints/
+
+# Skills results (generated reports)
+skills_results/

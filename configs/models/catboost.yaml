@@ -6,10 +6,10 @@ training:
   depth: 6
   loss_function: "MAE"
   eval_metric: "MAPE"
-  early_stopping_rounds: 250
+  early_stopping_rounds: 500
   has_time: true
   random_seed: 42
-  verbose: 250
+  verbose: 500
 
 categorical_features:
   # Time
