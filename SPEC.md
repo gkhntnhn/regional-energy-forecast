@@ -281,7 +281,7 @@ Input (feature-engineered DataFrame)
 | Weekly Fourier order | 8 |
 | Yearly Fourier order | 12 |
 | Holidays | TR resmi tatilleri + Ramazan (3-tier: bayram -1/+1, resmi 0/+1, ramazan 0/0) |
-| Regressors | 14 adet (aşağıda) |
+| Regressors | 14 adet (asagida) |
 | Changepoint prior scale | 0.001-1.0 (Optuna ile optimize) |
 | n_changepoints | 15-50 (Optuna ile optimize) |
 
@@ -292,16 +292,16 @@ Input (feature-engineered DataFrame)
 | 1 | consumption_lag_168 | multiplicative |
 | 2 | consumption_lag_48 | multiplicative |
 | 3 | consumption_lag_720 | multiplicative |
-| 4 | is_business_hours | multiplicative |
-| 5 | shortwave_radiation | multiplicative |
-| 6 | wth_cdd | multiplicative |
-| 7 | relative_humidity_2m | additive |
-| 8 | wind_speed_10m | additive |
-| 9 | is_peak | multiplicative |
-| 10 | temperature_2m | multiplicative |
-| 11 | is_weekend | multiplicative |
-| 12 | is_holiday | multiplicative |
-| 13 | wth_hdd | multiplicative |
+| 4 | temperature_2m | multiplicative |
+| 5 | relative_humidity_2m | additive |
+| 6 | wind_speed_10m | additive |
+| 7 | shortwave_radiation | multiplicative |
+| 8 | wth_cdd | multiplicative |
+| 9 | wth_hdd | multiplicative |
+| 10 | is_weekend | multiplicative |
+| 11 | is_holiday | multiplicative |
+| 12 | is_business_hours | multiplicative |
+| 13 | is_peak | multiplicative |
 | 14 | sol_elevation | multiplicative |
 
 **Güçlü yanı:** Trend + mevsimsellik yapısal ayrıştırma, tatil etkilerini doğal modelleme.
@@ -673,7 +673,7 @@ Commit format: `feat(scope): description` / `fix(scope): description`
 | Tahmin üretme süresi | < 30 saniye | Ölçülüyor (latency_ms metadata'da) |
 | API response time | < 60 saniye | — |
 | CatBoost Val MAPE | < %5 | %3.01 ✅ |
-| Prophet Val MAPE | < %6 | %4.23 ✅ |
+| Prophet Val MAPE | < %6 | %4.14 ✅ |
 | Ensemble Val MAPE | < %3 (hedef) | Eğitim bekleniyor |
 
 ### 11.2 Güvenilirlik
@@ -694,8 +694,7 @@ Commit format: `feat(scope): description` / `fix(scope): description`
 | EPIAS duplicate timestamps | Yıllık cache dosyalarında duplicate satırlar | `df[~df.index.duplicated(keep='first')]` ile temizle |
 | Windows cp1254 codec | Unicode box-drawing karakterler encode edilemiyor | ASCII karakterler kullan |
 | Prophet cmdstanpy | Bazı ortamlarda kurulum sorunu | `pip install cmdstanpy` sonra `cmdstanpy.install_cmdstan()` |
-| Prophet stale model | Kayıtlı model eski config ile eğitilmiş (2 regressor) | Retrain gerekli (14 regressor ile) |
-| Sistematik under-prediction | Gündüz +24 MWh (CatBoost), +21 MWh (Prophet) | Bias correction veya trend ratio feature |
+| Sistematik under-prediction | Gündüz +24 MWh (CatBoost), -6.5 MWh overpredict (Prophet) | Bias correction veya trend ratio feature |
 | CatBoost feature pruning | 85/161 feature near-zero importance | Opsiyonel prune |
 
 ---

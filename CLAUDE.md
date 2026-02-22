@@ -193,7 +193,7 @@ src/energy_forecast/utils/prophet_utils.py  # Shared to_prophet_format (DRY)
 | Model | Val MAPE | Test MAPE | Durum |
 |-------|----------|-----------|-------|
 | CatBoost | 3.01% | 3.37% | ✅ Production-ready (603 trees, early stopping) |
-| Prophet | 4.23% | 4.67% | ✅ Production-ready (14 regressors, multiplicative) |
+| Prophet | 4.14% | 4.48% | ✅ Production-ready (14 regressor, v2 config, bias -1.8 MWh) |
 | TFT | — | — | Debug bekleniyor |
 | Ensemble | — | — | Eğitim bekleniyor, hedef < %3 |
 
@@ -205,9 +205,8 @@ src/energy_forecast/utils/prophet_utils.py  # Shared to_prophet_format (DRY)
 | EPIAS duplicate timestamps | Cache'te duplicate satırlar olabiliyor | `~df.index.duplicated(keep='first')` ile temizle |
 | Windows cp1254 codec | Unicode box-drawing karakterler çalışmaz | ASCII karakterler kullan |
 | Prophet cmdstanpy | Bazı ortamlarda kurulum sorunu | `pip install cmdstanpy` sonra `cmdstanpy.install_cmdstan()` |
-| Prophet stale model | ~~Kayıtlı model eski config ile eğitilmiş~~ | ✅ Retrained (14 regressor, Val 4.23%) |
+| Sistematik under-prediction | Gündüz +24 MWh (CatBoost), -6.5 MWh overpredict (Prophet) | Bias correction veya trend ratio feature |
 | CatBoost feature pruning | 85/161 feature near-zero importance | Opsiyonel prune, ensemble'da farklı modeller farklı feature kullanabilir |
-| Sistematik under-prediction | Gündüz +24 MWh (CatBoost), +21 MWh (Prophet) | Bias correction veya trend ratio feature |
 
 ## Detaylı Bilgi
 @SPEC.md — Proje spesifikasyonu (forecast akışı, model mimarisi, API tasarımı)
