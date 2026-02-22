@@ -65,6 +65,8 @@ class EpiasFeatureEngineer(BaseFeatureEngineer):
                 df = self._add_expanding(
                     df, available_gen, gen_min_lag, gen_cfg["expanding"]
                 )
+                # Composite ratios BEFORE dropping raw lag columns
+                df = self._add_generation_composites(df, gen_cfg)
                 if gen_cfg.get("drop_raw", True):
                     df = df.drop(columns=available_gen, errors="ignore")
                 logger.info("Generation features added for {} variables", len(available_gen))
@@ -120,6 +122,52 @@ class EpiasFeatureEngineer(BaseFeatureEngineer):
                 drop_na=False,
             )
             df = win_tf.fit_transform(df)
+        return df
+
+    # ------------------------------------------------------------------
+    # Custom: generation composite ratios
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _add_generation_composites(
+        df: pd.DataFrame,
+        gen_cfg: dict[str, Any],
+    ) -> pd.DataFrame:
+        """Add renewable and thermal ratio features from generation lags.
+
+        Computes supply-side mix ratios (renewable/total, thermal/total)
+        using lagged generation data. These capture grid supply composition
+        which correlates with demand patterns.
+        """
+        comp_cfg: dict[str, Any] = gen_cfg.get("composites", {})
+        if not comp_cfg.get("enabled", False):
+            return df
+
+        lag: int = comp_cfg.get("lag", 48)
+        total_col = f"{comp_cfg.get('total_var', 'gen_total')}_lag_{lag}"
+        if total_col not in df.columns:
+            return df
+
+        total = df[total_col].replace(0, float("nan"))
+
+        # Renewable ratio
+        renewable_vars: list[str] = comp_cfg.get(
+            "renewable_vars", ["gen_wind", "gen_sun", "gen_river", "gen_dammed_hydro"]
+        )
+        renewable_cols = [f"{v}_lag_{lag}" for v in renewable_vars]
+        available_ren = [c for c in renewable_cols if c in df.columns]
+        if available_ren:
+            df["renewable_ratio_lag_48"] = df[available_ren].sum(axis=1) / total
+
+        # Thermal ratio
+        thermal_vars: list[str] = comp_cfg.get(
+            "thermal_vars", ["gen_natural_gas", "gen_lignite", "gen_import_coal"]
+        )
+        thermal_cols = [f"{v}_lag_{lag}" for v in thermal_vars]
+        available_th = [c for c in thermal_cols if c in df.columns]
+        if available_th:
+            df["thermal_ratio_lag_48"] = df[available_th].sum(axis=1) / total
+
         return df
 
     # ------------------------------------------------------------------

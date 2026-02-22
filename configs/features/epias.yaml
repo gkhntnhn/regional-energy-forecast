@@ -72,3 +72,17 @@ generation:
     functions:
       - mean
   drop_raw: true
+  composites:
+    # Supply-side mix ratios from lagged generation data
+    enabled: true
+    renewable_vars:
+      - gen_wind
+      - gen_sun
+      - gen_river
+      - gen_dammed_hydro
+    thermal_vars:
+      - gen_natural_gas
+      - gen_lignite
+      - gen_import_coal
+    total_var: gen_total
+    lag: 48

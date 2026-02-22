@@ -38,3 +38,13 @@ severity:
   enabled: true
   wind_threshold: 25.0
   precip_threshold: 5.0
+
+heat_index:
+  # Steadman simplified heat index — captures humidity-amplified heat stress
+  # Only applied when temperature >= threshold (below = raw temperature)
+  enabled: true
+  threshold: 27.0
+
+temp_deviation:
+  # Temperature deviation from expanding mean — "unusually hot/cold" anomaly signal
+  enabled: true

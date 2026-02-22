@@ -32,6 +32,7 @@ data/processed/
 data/external/
 data/uploads/
 data/outputs/
+data/predictions/
 data/static/
 
 # Model artifacts

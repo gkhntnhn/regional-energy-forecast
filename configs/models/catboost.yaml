@@ -28,6 +28,7 @@ categorical_features:
   - is_bridge_day
   - tatil_tipi
   - bayram_gun_no
+  - holiday_duration
   # Interaction (flag x hour)
   - is_holiday_x_hour
   - is_ramadan_x_hour

@@ -41,6 +41,7 @@ class CalendarFeatureEngineer(BaseFeatureEngineer):
         df = self._add_spline_seasonality(df)
         df = self._add_holiday_features(df)
         df = self._add_holiday_anticipation(df)
+        df = self._add_holiday_duration(df)
         df = self._add_business_features(df)
         return df
 
@@ -319,6 +320,45 @@ class CalendarFeatureEngineer(BaseFeatureEngineer):
         df["bayrama_kalan_gun"] = np.array(
             [countdown_map.get(d, -1) for d in date_arr]
         )
+        return df
+
+    # ------------------------------------------------------------------
+    # Custom: holiday duration (consecutive holiday days)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _add_holiday_duration(df: pd.DataFrame) -> pd.DataFrame:
+        """Count consecutive public holiday days including current day.
+
+        Multi-day Bayrams (3-4 days) have different consumption shapes
+        than single-day holidays. Excludes plain Ramadan fasting days
+        (which are not actual public holidays) to avoid 30-day runs.
+        """
+        if "is_holiday" not in df.columns:
+            df["holiday_duration"] = 0
+            return df
+
+        idx = cast(pd.DatetimeIndex, df.index)
+        date_series = pd.Series(idx.date, index=df.index)
+
+        # Exclude plain Ramadan fasting days (is_ramadan=1 AND bayram_gun_no=0)
+        is_ramadan = df.get("is_ramadan", pd.Series(0, index=df.index))
+        bayram_gun = df.get("bayram_gun_no", pd.Series(0, index=df.index))
+        is_plain_ramadan = (is_ramadan == 1) & (bayram_gun == 0)
+        is_public_holiday = (df["is_holiday"] == 1) & ~is_plain_ramadan
+
+        # Build daily series (one value per day)
+        daily = is_public_holiday.groupby(date_series).first()
+
+        # Count consecutive runs using cumsum trick
+        not_holiday = ~daily
+        groups = not_holiday.cumsum()
+        run_lengths = daily.groupby(groups).transform("sum")
+        duration = (run_lengths * daily).astype(int)
+
+        # Map back to hourly
+        duration_map = dict(zip(daily.index, duration, strict=False))
+        df["holiday_duration"] = date_series.map(duration_map).fillna(0).astype(int)
         return df
 
     # ------------------------------------------------------------------

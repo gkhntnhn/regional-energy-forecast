@@ -465,6 +465,19 @@ class QuadraticTemperatureConfig(BaseModel, frozen=True):
     enabled: bool = False
 
 
+class HeatIndexConfig(BaseModel, frozen=True):
+    """Heat index (Steadman) feature settings."""
+
+    enabled: bool = False
+    threshold: float = Field(default=27.0, ge=20.0, le=40.0)
+
+
+class TempDeviationConfig(BaseModel, frozen=True):
+    """Temperature deviation from expanding mean."""
+
+    enabled: bool = False
+
+
 class WeatherFeaturesConfig(BaseModel, frozen=True):
     """Weather feature engineering parameters."""
 
@@ -478,6 +491,8 @@ class WeatherFeaturesConfig(BaseModel, frozen=True):
         default_factory=QuadraticTemperatureConfig,
     )
     severity: WeatherSeverityConfig = Field(default_factory=WeatherSeverityConfig)
+    heat_index: HeatIndexConfig = Field(default_factory=HeatIndexConfig)
+    temp_deviation: TempDeviationConfig = Field(default_factory=TempDeviationConfig)
 
 
 # -- Solar --
@@ -625,6 +640,20 @@ class GenerationExpandingConfig(BaseModel, frozen=True):
         return v
 
 
+class GenerationCompositesConfig(BaseModel, frozen=True):
+    """Generation composite ratio feature settings."""
+
+    enabled: bool = False
+    renewable_vars: list[str] = Field(
+        default_factory=lambda: ["gen_wind", "gen_sun", "gen_river", "gen_dammed_hydro"]
+    )
+    thermal_vars: list[str] = Field(
+        default_factory=lambda: ["gen_natural_gas", "gen_lignite", "gen_import_coal"]
+    )
+    total_var: str = "gen_total"
+    lag: int = Field(default=48, ge=48)
+
+
 class GenerationConfig(BaseModel, frozen=True):
     """Generation feature engineering parameters."""
 
@@ -653,6 +682,9 @@ class GenerationConfig(BaseModel, frozen=True):
     rolling: GenerationRollingConfig = Field(default_factory=GenerationRollingConfig)
     expanding: GenerationExpandingConfig = Field(default_factory=GenerationExpandingConfig)
     drop_raw: bool = True
+    composites: GenerationCompositesConfig = Field(
+        default_factory=GenerationCompositesConfig,
+    )
 
 
 class EpiasConfig(BaseModel, frozen=True):

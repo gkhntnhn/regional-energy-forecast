@@ -54,6 +54,8 @@ trend_ratio:
   pairs:
     - numerator_lag: 168
       denominator_lag: 336
+    - numerator_lag: 48    # 2-day vs 1-week trend
+      denominator_lag: 168
 
 target_encoding:
   # Hour×DayOfWeek expanding mean (168 unique patterns: Mon 00:00 ... Sun 23:00)

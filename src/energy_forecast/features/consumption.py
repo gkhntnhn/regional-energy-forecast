@@ -48,6 +48,7 @@ class ConsumptionFeatureEngineer(BaseFeatureEngineer):
         df = self._add_momentum(df, min_lag)
         df = self._add_quantile(df, min_lag)
         df = self._add_trend_ratio(df)
+        df = self._add_week_ratio(df)
         df = self._add_target_encoding(df, min_lag)
         return df
 
@@ -159,6 +160,23 @@ class ConsumptionFeatureEngineer(BaseFeatureEngineer):
             out_col = f"consumption_trend_ratio_{num_lag}_{den_lag}"
             if num_col in df.columns and den_col in df.columns:
                 df[out_col] = df[num_col] / df[den_col].replace(0, float("nan"))
+        return df
+
+    # ------------------------------------------------------------------
+    # Week ratio: current week vs historical average (normalization)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _add_week_ratio(df: pd.DataFrame) -> pd.DataFrame:
+        """Ratio of 1-week lag to expanding mean for trend normalization.
+
+        Captures whether recent consumption is above/below historical
+        average, helping reduce heteroscedasticity across demand levels.
+        """
+        num = "consumption_lag_168"
+        den = "consumption_expanding_mean"
+        if num in df.columns and den in df.columns:
+            df["consumption_week_ratio"] = df[num] / df[den].replace(0, float("nan"))
         return df
 
     # ------------------------------------------------------------------
