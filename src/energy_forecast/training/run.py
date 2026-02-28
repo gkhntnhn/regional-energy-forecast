@@ -2,7 +2,7 @@
 
 Usage:
     python -m energy_forecast.training.run --model catboost [--n-trials 5] [--data PATH]
-    python -m energy_forecast.training.run --model catboost --config configs/smoke_test.yaml --no-mlflow
+    python -m energy_forecast.training.run --model catboost --no-mlflow
 """
 
 from __future__ import annotations
@@ -68,7 +68,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--config",
         type=Path,
         default=None,
-        help="Path to override config YAML (e.g., configs/smoke_test.yaml).",
+        help="Path to override config YAML.",
     )
     parser.add_argument(
         "--models",
@@ -101,7 +101,7 @@ def load_data(data_path: Path) -> pd.DataFrame:
 
 
 def apply_config_overrides(settings: Settings, config_path: Path) -> None:
-    """Apply override config (e.g., smoke_test.yaml) to settings.
+    """Apply override config to settings.
 
     Modifies settings in-place by overriding hyperparameters and CV config.
 
@@ -327,7 +327,7 @@ def main(argv: list[str] | None = None) -> None:
     logger.info("Loading config from {}", args.configs)
     settings = load_config(args.configs)
 
-    # Apply override config if specified (e.g., smoke_test.yaml)
+    # Apply override config if specified
     if args.config is not None:
         apply_config_overrides(settings, args.config)
 

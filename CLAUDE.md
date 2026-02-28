@@ -17,8 +17,8 @@ make install
 # 2. Dataset hazırla (EPIAS cache'den, ~3 saniye)
 make prepare-data
 
-# 3. Model eğit (smoke test için)
-uv run python -m energy_forecast.training.run --model catboost --config configs/smoke_test.yaml --no-mlflow
+# 3. Model eğit
+uv run python -m energy_forecast.training.run --model catboost --no-mlflow
 
 # 4. API başlat
 make serve
@@ -43,28 +43,24 @@ make backfill-epias       # EPIAS cache güncelle
 make help                 # Tüm target'ları listele
 
 # Training
-make train-catboost       # CatBoost eğitimi (production)
-make train-prophet        # Prophet eğitimi (production)
-make train-tft            # TFT eğitimi (production)
-make train-ensemble       # Ensemble eğitimi (production)
-
-# Smoke Tests (hızlı validation)
-make smoke-test           # Tüm modeller (CatBoost + Prophet + TFT)
-make smoke-test-fast      # Prophet + CatBoost (TFT skip)
-make smoke-test-minimal   # Sadece CatBoost (~10 saniye)
+make train-catboost       # CatBoost eğitimi
+make train-prophet        # Prophet eğitimi
+make train-tft            # TFT eğitimi
+make train-ensemble       # Ensemble eğitimi
 ```
+
+> **Test için:** Model YAML'ında (configs/models/*.yaml veya configs/models/hyperparameters.yaml)
+> `n_splits`, `n_trials`, `max_epochs` değerlerini geçici olarak düşür, çalıştır, sonra geri al.
+> Ayrı smoke/test config dosyası yok — tek YAML, tek pipeline.
 
 ## Training CLI
 ```bash
 # Temel kullanım
 uv run python -m energy_forecast.training.run --model catboost
 
-# Smoke test config ile (hızlı)
-uv run python -m energy_forecast.training.run --model catboost --config configs/smoke_test.yaml --no-mlflow
-
 # Önemli flag'ler:
 #   --model {catboost,prophet,tft,ensemble}  # Zorunlu
-#   --config configs/smoke_test.yaml         # Override config (opsiyonel)
+#   --config path/to/override.yaml           # Override config (opsiyonel)
 #   --no-mlflow                              # MLflow tracking devre dışı
 #   --n-trials 5                             # Optuna trial sayısı override
 #   --models catboost,prophet                # Ensemble için aktif modeller
@@ -169,7 +165,6 @@ configs/
 ├── data_loader.yaml        # Excel yükleme
 ├── openmeteo.yaml          # Hava durumu
 ├── api.yaml                # API config (CORS, rate limit)
-├── smoke_test.yaml         # Smoke test override
 ├── models/
 │   ├── catboost.yaml       # CatBoost model config (36 kategorik feature)
 │   ├── prophet.yaml        # Prophet model config (14 regressor)
@@ -194,7 +189,7 @@ src/energy_forecast/utils/prophet_utils.py  # Shared to_prophet_format (DRY)
 |-------|----------|-----------|-------|
 | CatBoost | 3.01% | 3.37% | ✅ Production-ready (603 trees, early stopping) |
 | Prophet | 4.14% | 4.48% | ✅ Production-ready (14 regressor, v2 config, bias -1.8 MWh) |
-| TFT | 5.94% | 2.57% | Smoke debug tamamlandı (2-fold, 2-epoch, quantile calibration bozuk, production training gerekli) |
+| TFT | 5.94% | 2.57% | Debug tamamlandı (2-fold, 2-epoch, quantile calibration bozuk, production training gerekli) |
 | Ensemble | — | — | Eğitim bekleniyor, hedef < %3 |
 
 ## Bilinen Sorunlar

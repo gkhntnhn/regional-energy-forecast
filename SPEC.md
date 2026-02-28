@@ -354,12 +354,12 @@ Split 3: [██████████ train ██████████][v
 Split N: [█████████████████ train █████████████████][val][test]
 ```
 
-| Parametre | Production | Smoke Test |
-|-----------|------------|------------|
-| n_splits | 12 | 2 |
-| val_period | 1 ay | 1 ay |
-| test_period | 1 ay | 1 ay |
-| Shuffle | HAYIR (ValueError ile enforce) | HAYIR |
+| Parametre | Değer |
+|-----------|-------|
+| n_splits | 12 |
+| val_period | 1 ay |
+| test_period | 1 ay |
+| Shuffle | HAYIR (ValueError ile enforce) |
 
 ### 6.2 Hyperparameter Tuning
 
@@ -367,10 +367,10 @@ Split N: [█████████████████ train ████
 - Objective: Validation MAPE ortalaması (tüm split'ler üzerinden)
 - Storage: n_trials > 3 → SQLite (crash recovery), n_trials ≤ 3 → in-memory
 
-| Ayar | Production | Smoke Test |
-|------|------------|------------|
-| n_trials | 50+ | 2-5 |
-| iterations | 1000-3000 | 10-50 |
+| Ayar | Değer |
+|------|-------|
+| n_trials | 50+ (CatBoost), 30 (Prophet), 20 (TFT) |
+| iterations | 1000-3000 |
 
 ### 6.3 Evaluation Metrikleri
 
@@ -392,22 +392,19 @@ MLflow ile tüm eğitimler izlenir:
 - Model artifact'ları
 - Feature importance
 
-### 6.5 Smoke Testing
+### 6.5 Hızlı Test
 
-Hızlı E2E validation için minimal parametrelerle test:
+Ayrı smoke test config/script yok — tek pipeline, tek YAML. Hızlı validation için
+model YAML'larında (configs/models/hyperparameters.yaml, tft.yaml) değerleri geçici
+olarak düşür, çalıştır, sonra geri al:
 
 ```bash
-# Sadece CatBoost (~10 saniye)
-make smoke-test-minimal
+# hyperparameters.yaml'da n_trials: 1, n_splits: 2 yap, sonra:
+uv run python -m energy_forecast.training.run --model catboost --no-mlflow
 
-# CatBoost + Prophet (~1 dakika)
-make smoke-test-fast
-
-# Tüm modeller (~5 dakika)
-make smoke-test
+# Bitince değerleri production'a geri al (n_trials: 50, n_splits: 12)
+# Veya: git checkout -- configs/  ile tüm config değişikliklerini geri al
 ```
-
-**Smoke test config override:** `configs/smoke_test.yaml`
 
 ---
 
@@ -580,7 +577,6 @@ configs/
 ├── data_loader.yaml        # Veri yükleme: Excel format, validation
 ├── openmeteo.yaml          # Hava durumu: lokasyonlar, ağırlıklar, değişkenler
 ├── api.yaml                # API: CORS, rate limit
-├── smoke_test.yaml         # Smoke test override (minimal params)
 ├── models/
 │   ├── catboost.yaml       # CatBoost: 36 kategorik kolon, eğitim parametreleri
 │   ├── prophet.yaml        # Prophet: seasonality, holidays, 14 regressor
@@ -646,7 +642,7 @@ DATABASE_URL=postgresql+asyncpg://user:pass@host:5432/db
 |--------|-----------|
 | Unit tests | Her public fonksiyon/class test edilmeli |
 | Integration tests | End-to-end pipeline (Excel → prediction) |
-| Smoke tests | Hızlı E2E validation (smoke_test.py) |
+| Hızlı test | YAML'da değer düşür → run.py çalıştır → geri al |
 | Coverage hedefi | %80+ (eski projedeki %5'ten büyük iyileşme) |
 | Mock kuralı | Sadece external API'ler mock'lanır (EPİAŞ, OpenMeteo) |
 | Test sayısı | 480+ (aktif) |

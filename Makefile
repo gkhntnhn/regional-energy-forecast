@@ -1,4 +1,4 @@
-.PHONY: install test lint format serve train-catboost train-prophet train-tft train-ensemble prepare-data clean smoke-test smoke-test-fast smoke-test-minimal generate-holidays backfill-epias help
+.PHONY: install test lint format serve train-catboost train-prophet train-tft train-ensemble prepare-data clean generate-holidays backfill-epias help
 
 install: ## Install dependencies
 	uv sync --all-extras
@@ -44,15 +44,6 @@ clean: ## Remove build/cache artifacts
 	find . -type d -name .mypy_cache -exec rm -rf {} +
 	find . -type d -name .ruff_cache -exec rm -rf {} +
 	rm -rf dist/ build/ *.egg-info
-
-smoke-test: ## Smoke test all models
-	uv run python scripts/smoke_test.py --config configs/smoke_test.yaml
-
-smoke-test-fast: ## Smoke test (skip TFT)
-	uv run python scripts/smoke_test.py --config configs/smoke_test.yaml --skip-tft
-
-smoke-test-minimal: ## Smoke test (CatBoost only)
-	uv run python scripts/smoke_test.py --config configs/smoke_test.yaml --skip-prophet --skip-tft
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
