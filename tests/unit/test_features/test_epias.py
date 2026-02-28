@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from energy_forecast.config.settings import EpiasConfig
+from energy_forecast.config.settings import EpiasConfig, GenerationConfig
 from energy_forecast.features.epias import EpiasFeatureEngineer
 
 EPIAS_VARIABLES: list[str] = [
@@ -17,6 +17,17 @@ EPIAS_VARIABLES: list[str] = [
     "DAM_Purchase",
     "Bilateral_Agreement_Purchase",
     "Load_Forecast",
+]
+
+GENERATION_VARIABLES: list[str] = [
+    "gen_natural_gas",
+    "gen_wind",
+    "gen_sun",
+    "gen_total",
+    "gen_lignite",
+    "gen_dammed_hydro",
+    "gen_import_coal",
+    "gen_river",
 ]
 
 
@@ -160,3 +171,173 @@ class TestEpiasFeatureEngineer:
         assert result[lag_col].iloc[:48].isna().all()
         # Row 48 should have a value
         assert pd.notna(result[lag_col].iloc[48])
+
+
+# ---------------------------------------------------------------------------
+# Generation feature tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture()
+def gen_config() -> dict[str, Any]:
+    """EPIAS config with generation section enabled (composites on)."""
+    cfg = EpiasConfig().model_dump()
+    gen = GenerationConfig(
+        variables=list(GENERATION_VARIABLES),
+        composites=GenerationConfig.model_fields["composites"]
+        .default_factory()  # type: ignore[union-attr]
+        .model_copy(update={"enabled": True}),
+    ).model_dump()
+    cfg["generation"] = gen
+    return cfg
+
+
+@pytest.fixture()
+def gen_engineer(gen_config: dict[str, Any]) -> EpiasFeatureEngineer:
+    """EpiasFeatureEngineer with generation config."""
+    return EpiasFeatureEngineer(gen_config)
+
+
+@pytest.fixture()
+def gen_df() -> pd.DataFrame:
+    """720-row DataFrame with generation columns + market columns."""
+    rng = np.random.default_rng(42)
+    idx = pd.date_range("2024-01-01", periods=720, freq="h")
+    data: dict[str, Any] = {}
+    # Market columns (needed to avoid warnings)
+    for var in EPIAS_VARIABLES:
+        data[var] = 500.0 + rng.random(720) * 1000
+    # Generation columns
+    for var in GENERATION_VARIABLES:
+        data[var] = 100.0 + rng.random(720) * 500
+    # Ensure gen_total > sum of parts to get valid ratios
+    data["gen_total"] = 2000.0 + rng.random(720) * 1000
+    return pd.DataFrame(data, index=idx).rename_axis("datetime")
+
+
+class TestGenerationFeatures:
+    """Tests for generation feature engineering (17 fuel types)."""
+
+    def test_generation_lag_features_created(
+        self,
+        gen_engineer: EpiasFeatureEngineer,
+        gen_df: pd.DataFrame,
+    ) -> None:
+        """gen_natural_gas_lag_48 and gen_wind_lag_48 are created."""
+        result = gen_engineer.fit_transform(gen_df)
+        assert "gen_natural_gas_lag_48" in result.columns
+        assert "gen_wind_lag_48" in result.columns
+        assert "gen_total_lag_48" in result.columns
+
+    def test_generation_lag_168_created(
+        self,
+        gen_engineer: EpiasFeatureEngineer,
+        gen_df: pd.DataFrame,
+    ) -> None:
+        """Generation weekly lag (168h) is created."""
+        result = gen_engineer.fit_transform(gen_df)
+        assert "gen_natural_gas_lag_168" in result.columns
+
+    def test_generation_lag_min_lag_enforced(
+        self,
+        gen_engineer: EpiasFeatureEngineer,
+        gen_df: pd.DataFrame,
+    ) -> None:
+        """All generation lag periods are >= 48."""
+        result = gen_engineer.fit_transform(gen_df)
+        gen_lag_cols = [c for c in result.columns if c.startswith("gen_") and "_lag_" in c]
+        assert len(gen_lag_cols) > 0
+        for col in gen_lag_cols:
+            period_str = col.rsplit("_", maxsplit=1)[-1]
+            period = int(period_str)
+            assert period >= 48, f"Generation lag {col} has period {period} < 48"
+
+    def test_generation_rolling_features_created(
+        self,
+        gen_engineer: EpiasFeatureEngineer,
+        gen_df: pd.DataFrame,
+    ) -> None:
+        """Rolling window features are created for generation variables."""
+        result = gen_engineer.fit_transform(gen_df)
+        window_cols = [c for c in result.columns if c.startswith("gen_") and "_window_" in c]
+        assert len(window_cols) > 0
+
+    def test_generation_expanding_features_created(
+        self,
+        gen_engineer: EpiasFeatureEngineer,
+        gen_df: pd.DataFrame,
+    ) -> None:
+        """Expanding mean features are created for generation variables."""
+        result = gen_engineer.fit_transform(gen_df)
+        expanding_cols = [
+            c for c in result.columns if c.startswith("gen_") and "expanding" in c.lower()
+        ]
+        assert len(expanding_cols) > 0
+
+    def test_generation_raw_dropped(
+        self,
+        gen_engineer: EpiasFeatureEngineer,
+        gen_df: pd.DataFrame,
+    ) -> None:
+        """Raw generation columns are dropped when drop_raw=True (default)."""
+        result = gen_engineer.fit_transform(gen_df)
+        for var in GENERATION_VARIABLES:
+            assert var not in result.columns, f"Raw generation column {var} should be dropped"
+
+    def test_generation_raw_kept_disabled(
+        self,
+        gen_config: dict[str, Any],
+        gen_df: pd.DataFrame,
+    ) -> None:
+        """Raw generation columns kept when drop_raw=False."""
+        gen_config["generation"]["drop_raw"] = False
+        eng = EpiasFeatureEngineer(gen_config)
+        result = eng.fit_transform(gen_df)
+        for var in GENERATION_VARIABLES:
+            assert var in result.columns, f"Raw generation column {var} should be kept"
+
+    def test_composite_renewable_ratio(
+        self,
+        gen_engineer: EpiasFeatureEngineer,
+        gen_df: pd.DataFrame,
+    ) -> None:
+        """renewable_ratio_lag_48 is computed from generation composites."""
+        result = gen_engineer.fit_transform(gen_df)
+        assert "renewable_ratio_lag_48" in result.columns
+        # Values should be between 0 and 1 (where not NaN)
+        valid = result["renewable_ratio_lag_48"].dropna()
+        assert (valid >= 0).all()
+        assert (valid <= 1).all()
+
+    def test_composite_thermal_ratio(
+        self,
+        gen_engineer: EpiasFeatureEngineer,
+        gen_df: pd.DataFrame,
+    ) -> None:
+        """thermal_ratio_lag_48 is computed from generation composites."""
+        result = gen_engineer.fit_transform(gen_df)
+        assert "thermal_ratio_lag_48" in result.columns
+        valid = result["thermal_ratio_lag_48"].dropna()
+        assert (valid >= 0).all()
+        assert (valid <= 1).all()
+
+    def test_composite_nan_first_48_rows(
+        self,
+        gen_engineer: EpiasFeatureEngineer,
+        gen_df: pd.DataFrame,
+    ) -> None:
+        """Composite ratio features have NaN in first 48 rows (from lagged inputs)."""
+        result = gen_engineer.fit_transform(gen_df)
+        assert result["renewable_ratio_lag_48"].iloc[:48].isna().all()
+        assert pd.notna(result["renewable_ratio_lag_48"].iloc[48])
+
+    def test_all_generation_variables_get_lags(
+        self,
+        gen_engineer: EpiasFeatureEngineer,
+        gen_df: pd.DataFrame,
+    ) -> None:
+        """All 8 configured generation variables get lag_48 features."""
+        result = gen_engineer.fit_transform(gen_df)
+        for var in GENERATION_VARIABLES:
+            col = f"{var}_lag_48"
+            assert col in result.columns, f"Missing generation lag feature: {col}"

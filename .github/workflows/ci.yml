@@ -29,4 +29,7 @@ jobs:
           python-version: "3.11"
       - uses: astral-sh/setup-uv@v5
       - run: uv sync --all-extras
-      - run: uv run pytest tests/unit/ -q --timeout=120 -m "not slow"
+      - run: >-
+          uv run pytest tests/unit/ tests/integration/
+          -q --timeout=120 -m "not slow"
+          --cov=energy_forecast --cov-report=term-missing --cov-fail-under=75

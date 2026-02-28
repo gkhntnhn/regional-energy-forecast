@@ -196,6 +196,14 @@ class TestFactory:
         assert sp.test_months == 1
         assert sp.gap_hours == 24
 
+    def test_from_config_shuffle_true_raises(self) -> None:
+        """shuffle=True in CrossValidationConfig raises ValueError."""
+        from energy_forecast.config.settings import CrossValidationConfig
+
+        cv_config = CrossValidationConfig(n_splits=5, shuffle=True)
+        with pytest.raises(ValueError, match="shuffle"):
+            TimeSeriesSplitter.from_config(cv_config)
+
 
 class TestIterSplits:
     """Test iter_splits method."""

@@ -16,6 +16,9 @@ from energy_forecast.config.settings import (
     EpiasExpandingConfig,
     EpiasLagConfig,
     ExpandingConfig,
+    GenerationCompositesConfig,
+    GenerationExpandingConfig,
+    GenerationLagConfig,
     ModelSearchConfig,
     RegionConfig,
     SearchParamConfig,
@@ -198,6 +201,43 @@ class TestLeakageGuards:
         """EPIAS expanding min_periods < 48 raises."""
         with pytest.raises(ValidationError):
             EpiasExpandingConfig(min_periods=24, functions=["mean"])
+
+    # --- Generation leakage guards ---
+
+    def test_generation_lag_min_48(self) -> None:
+        """Generation lags >= 48 pass validation."""
+        cfg = GenerationLagConfig(min_lag=48, values=[48, 168])
+        assert cfg.min_lag == 48
+
+    def test_generation_lag_min_lag_below_48_raises(self) -> None:
+        """Generation min_lag < 48 raises (Field ge=48)."""
+        with pytest.raises(ValidationError):
+            GenerationLagConfig(min_lag=24, values=[48, 168])
+
+    def test_generation_lag_value_below_48_raises(self) -> None:
+        """Generation lag value < 48 raises ValidationError."""
+        with pytest.raises(ValidationError, match="leakage"):
+            GenerationLagConfig(min_lag=48, values=[24, 48])
+
+    def test_generation_expanding_min_periods_ge_48(self) -> None:
+        """Generation expanding min_periods >= 48 passes."""
+        cfg = GenerationExpandingConfig(min_periods=48, functions=["mean"])
+        assert cfg.min_periods == 48
+
+    def test_generation_expanding_min_periods_below_48_raises(self) -> None:
+        """Generation expanding min_periods < 48 raises."""
+        with pytest.raises(ValidationError):
+            GenerationExpandingConfig(min_periods=24, functions=["mean"])
+
+    def test_generation_composites_lag_ge_48(self) -> None:
+        """Generation composites lag >= 48 passes."""
+        cfg = GenerationCompositesConfig(enabled=True, lag=48)
+        assert cfg.lag == 48
+
+    def test_generation_composites_lag_below_48_raises(self) -> None:
+        """Generation composites lag < 48 raises (Field ge=48)."""
+        with pytest.raises(ValidationError):
+            GenerationCompositesConfig(enabled=True, lag=24)
 
 
 # ---------------------------------------------------------------------------
