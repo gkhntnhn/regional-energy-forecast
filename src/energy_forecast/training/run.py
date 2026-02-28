@@ -164,6 +164,13 @@ def apply_config_overrides(settings: Settings, config_path: Path) -> None:
             for key, val in train_ovr.items():
                 if hasattr(train_cfg, key):
                     object.__setattr__(train_cfg, key, val)
+        # Override TFT optimization params (e.g., fast_epochs for Optuna trials)
+        if "optimization" in tft_override:
+            opt_ovr = tft_override["optimization"]
+            opt_cfg = settings.tft.optimization
+            for key, val in opt_ovr.items():
+                if hasattr(opt_cfg, key):
+                    object.__setattr__(opt_cfg, key, val)
         logger.debug("TFT overrides applied")
 
     # Override cross-validation

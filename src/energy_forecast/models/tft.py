@@ -6,6 +6,7 @@ Handles TimeSeriesDataSet conversion and quantile prediction output.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import pickle
 from pathlib import Path
@@ -135,6 +136,22 @@ class TFTForecaster(BaseForecaster):
             col for col in cov_cfg.time_varying_unknown if col in data.columns
         ]
 
+        # Drop rows with NaN/inf in any covariate or target column
+        # (lag features have NaN at the start of the time series)
+        check_cols = time_varying_known + time_varying_unknown
+        n_before = len(data)
+        data = data.dropna(subset=check_cols)
+        n_dropped = n_before - len(data)
+        if n_dropped > 0:
+            logger.info(
+                "Dropped {} rows with NaN in covariates ({:.1f}%)",
+                n_dropped,
+                100.0 * n_dropped / n_before,
+            )
+            # Re-index _time_idx to be contiguous after dropping
+            data = data.copy()
+            data[TIME_IDX_COL] = range(len(data))
+
         # Store params for serialization
         self._dataset_params = {
             "time_idx": TIME_IDX_COL,
@@ -235,8 +252,8 @@ class TFTForecaster(BaseForecaster):
             devices=1,
             gradient_clip_val=cfg.gradient_clip_val,
             callbacks=callbacks,
-            enable_progress_bar=True,
-            enable_model_summary=False,
+            enable_progress_bar=cfg.enable_progress_bar,
+            enable_model_summary=cfg.enable_model_summary,
             logger=False,  # Disable Lightning's logger, we use MLflow
             default_root_dir=str(Path("models") / "tft"),
         )
@@ -358,6 +375,24 @@ class TFTForecaster(BaseForecaster):
 
         # Prepare data
         pred_df = self._prepare_dataframe(X, target_col, include_target=True)
+
+        # Drop rows with NaN in covariates (matching training behaviour).
+        # NOTE: target_col is intentionally EXCLUDED — in forecast mode the
+        # target is NaN by design (not yet observed) and must not be dropped.
+        cov_cfg = self._tft_config.covariates
+        check_cols = [c for c in (
+            list(cov_cfg.time_varying_known)
+            + list(cov_cfg.time_varying_unknown)
+        ) if c in pred_df.columns and c != target_col]
+        n_before = len(pred_df)
+        pred_df = pred_df.dropna(subset=check_cols)
+        n_dropped = n_before - len(pred_df)
+        if n_dropped > 0:
+            logger.debug(
+                "Predict: dropped {} NaN rows ({:.1f}%)", n_dropped, 100.0 * n_dropped / n_before
+            )
+            pred_df = pred_df.copy()
+            pred_df[TIME_IDX_COL] = range(len(pred_df))
 
         # Create prediction dataset
         prediction_dataset = TimeSeriesDataSet.from_dataset(
@@ -591,7 +626,15 @@ class TFTForecaster(BaseForecaster):
             ds_path = path / self.TRAINING_DATASET_FILENAME
             with open(ds_path, "wb") as f:
                 pickle.dump(self._training_dataset, f, protocol=pickle.HIGHEST_PROTOCOL)
-            logger.debug("Saved training dataset to {}", ds_path)
+
+            # SHA256 hash for integrity verification (CWE-502 mitigation,
+            # consistent with Prophet pattern in prophet.py).
+            ds_hash = "sha256:" + hashlib.sha256(ds_path.read_bytes()).hexdigest()
+            metadata["dataset_hash"] = ds_hash
+            # Re-write metadata with hash included
+            with open(metadata_path, "w") as f:
+                json.dump(metadata, f, indent=2)
+            logger.debug("Saved training dataset to {} (hash: {})", ds_path, ds_hash[:24])
 
         logger.info("TFT model saved successfully")
 
@@ -637,6 +680,16 @@ class TFTForecaster(BaseForecaster):
                 "Model was saved with an older format. Please retrain."
             )
             raise FileNotFoundError(msg)
+
+        # Verify dataset integrity via SHA256 hash (if available in metadata)
+        expected_hash = metadata.get("dataset_hash")
+        if expected_hash:
+            actual_hash = "sha256:" + hashlib.sha256(ds_path.read_bytes()).hexdigest()
+            if actual_hash != expected_hash:
+                msg = f"Dataset integrity check failed: {ds_path} (expected {expected_hash[:24]}..., got {actual_hash[:24]}...)"
+                raise ValueError(msg)
+            logger.debug("Dataset hash verified: {}", expected_hash[:24])
+
         with open(ds_path, "rb") as f:
             training_dataset: TimeSeriesDataSet = pickle.load(f)  # noqa: S301
 
@@ -743,6 +796,15 @@ class TFTForecaster(BaseForecaster):
         # Try to load training dataset for full reconstruction
         ds_path = path / self.TRAINING_DATASET_FILENAME
         if ds_path.exists():
+            # Verify dataset integrity via SHA256 hash (if available)
+            expected_hash = metadata.get("dataset_hash") if metadata_path.exists() else None
+            if expected_hash:
+                actual_hash = "sha256:" + hashlib.sha256(ds_path.read_bytes()).hexdigest()
+                if actual_hash != expected_hash:
+                    msg = f"Dataset integrity check failed: {ds_path}"
+                    raise ValueError(msg)
+                logger.debug("Dataset hash verified: {}", expected_hash[:24])
+
             with open(ds_path, "rb") as f:
                 self._training_dataset = pickle.load(f)  # noqa: S301
 

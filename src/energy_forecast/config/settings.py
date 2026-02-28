@@ -732,7 +732,7 @@ class CatBoostTrainingConfig(BaseModel, frozen=True):
     iterations: int = Field(default=2000, ge=100)
     learning_rate: float = Field(default=0.05, gt=0.0, lt=1.0)
     depth: int = Field(default=6, ge=1, le=16)
-    loss_function: str = "MAPE"
+    loss_function: str = "MAE"
     eval_metric: str = "MAPE"
     early_stopping_rounds: int = Field(default=200, ge=1)
     has_time: bool = True
@@ -920,8 +920,10 @@ class TFTTrainingConfig(BaseModel, frozen=True):
     early_stop_patience: int = Field(default=10, ge=1)
     gradient_clip_val: float = Field(default=0.1, gt=0.0)
     random_seed: int = 42
-    accelerator: Literal["cpu", "gpu", "auto"] = "cpu"
+    accelerator: Literal["cpu", "gpu", "auto"] = "auto"
     num_workers: int = Field(default=0, ge=0)
+    enable_progress_bar: bool = True
+    enable_model_summary: bool = False
 
 
 class TFTCovariatesConfig(BaseModel, frozen=True):
@@ -929,37 +931,49 @@ class TFTCovariatesConfig(BaseModel, frozen=True):
 
     time_varying_known: list[str] = Field(
         default_factory=lambda: [
-            "hour_sin",
             "hour_cos",
             "day_of_week_sin",
             "day_of_week_cos",
             "month_sin",
-            "month_cos",
-            "is_holiday",
+            "day_of_year_sin",
+            "day_of_year_cos",
             "is_weekend",
-            "is_ramadan",
-            "sol_elevation",
-            "sol_azimuth",
+            "is_sunday",
+            "is_bridge_day",
+            "tatil_tipi",
+            "holiday_duration",
+            "bayrama_kalan_gun",
+            "bayram_gun_no",
+            "days_since_holiday",
+            "days_until_holiday",
             "temperature_2m",
-            "relative_humidity_2m",
             "apparent_temperature",
+            "shortwave_radiation",
+            "sol_elevation",
         ]
     )
     time_varying_unknown: list[str] = Field(
         default_factory=lambda: [
             "consumption_lag_48",
-            "consumption_lag_72",
-            "consumption_lag_96",
             "consumption_lag_168",
             "consumption_lag_336",
             "consumption_lag_720",
-            "consumption_rolling_mean_24",
-            "consumption_rolling_mean_168",
-            "consumption_ewma_24",
-            "consumption_ewma_168",
-            "epias_Real_Time_Consumption_lag_48",
-            "epias_Real_Time_Consumption_lag_168",
-            "epias_DAM_Purchase_lag_48",
+            "consumption_week_ratio",
+            "consumption_hourly_profile",
+            "consumption_momentum_168",
+            "consumption_pct_change_168",
+            "consumption_trend_ratio_168_336",
+            "consumption_trend_ratio_48_168",
+            "consumption_window_720_std",
+            "consumption_window_48_max",
+            "consumption_window_336_max",
+            "consumption_window_720_mean",
+            "consumption_window_336_min",
+            "consumption_q75_168",
+            "temperature_2m_window_24_max",
+            "temperature_2m_window_12_max",
+            "temperature_2m_window_6_mean",
+            "hdd_x_hour",
         ]
     )
 

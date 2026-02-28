@@ -77,12 +77,14 @@ prophet:
 tft:
   n_trials: 1
   training:
-    max_epochs: 2          # production 100 → smoke 2
+    max_epochs: 5          # production 100 → smoke 5
     early_stop_patience: 1
     gradient_clip_val: 0.1
     accelerator: "auto"
     enable_progress_bar: false
     enable_model_summary: false
+  optimization:
+    fast_epochs: 5         # production 10 → smoke 5 (Optuna trial epochs)
   search_space:
     hidden_size:
       type: int
@@ -104,11 +106,11 @@ tft:
       choices: [1]
     learning_rate:
       type: float
-      low: 0.01
-      high: 0.01
+      low: 0.05
+      high: 0.05
     batch_size:
       type: categorical
-      choices: [256]        # 64 → 256 (daha az step)
+      choices: [128]        # 64 → 256 (daha az step)
 
 # Skip redundant post-Optuna validation (trial already validates)
 validation:

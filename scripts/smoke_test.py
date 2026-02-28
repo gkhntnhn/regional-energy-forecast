@@ -304,7 +304,7 @@ class SmokeTestRunner:
             )
             dfs = []
             for year in years:
-                cache_path = cache_dir / f"{year}.parquet"
+                cache_path = cache_dir / f"epias_market_{year}.parquet"
                 if cache_path.exists():
                     dfs.append(pd.read_parquet(cache_path))
             if dfs:
@@ -359,8 +359,16 @@ class SmokeTestRunner:
         for col in self.weather_df.columns:
             merged[col] = weather_aligned[col]
 
-        # Fill any missing values
-        merged = merged.ffill().bfill()
+        # Forward-fill ONLY weather columns (consumption/EPIAS NaN must be preserved
+        # to avoid data leakage — see CLAUDE.md and prepare_dataset.py:588-596).
+        weather_prefixes = (
+            "temperature", "humidity", "dew_point", "apparent_temperature",
+            "precipitation", "snow_depth", "weather_code", "surface_pressure",
+            "wind_speed", "wind_direction", "shortwave_radiation",
+        )
+        weather_cols = [c for c in merged.columns if c.startswith(weather_prefixes)]
+        if weather_cols:
+            merged[weather_cols] = merged[weather_cols].ffill().bfill()
 
         # Run feature pipeline
         pipeline = FeaturePipeline(self.settings)

@@ -318,6 +318,7 @@ class TFTTrainer:
         def objective(trial: Trial) -> float:
             suggested = suggest_params(trial, search_space)
             val_mapes: list[float] = []
+            test_mapes: list[float] = []
 
             for info, train_df, val_df, test_df in selected_splits:
                 try:
@@ -330,12 +331,14 @@ class TFTTrainer:
                         max_epochs=fast_epochs,
                     )
                     val_mapes.append(result.val_metrics.mape)
+                    test_mapes.append(result.test_metrics.mape)
                 except Exception as e:
                     logger.warning("Trial split {} failed: {}", info.split_idx, e)
                     return float("inf")
 
             avg_mape = float(np.mean(val_mapes))
             trial.set_user_attr("val_mapes", val_mapes)
+            trial.set_user_attr("avg_test_mape", float(np.mean(test_mapes)))
             return avg_mape
 
         return objective
@@ -378,7 +381,7 @@ class TFTTrainer:
                 split_results=[],
                 avg_val_mape=study.best_value,
                 avg_test_mape=float(
-                    study.best_trial.user_attrs.get("test_mape", float("nan"))
+                    study.best_trial.user_attrs.get("avg_test_mape", float("nan"))
                 ),
                 std_val_mape=0.0,
             )
@@ -455,8 +458,13 @@ class TFTTrainer:
         with self._tracker.start_run("tft_final"):
             final_model = self.train_final(df, study.best_params)
 
-            # Save model to local disk (always, regardless of MLflow)
-            model_dir = Path(self._settings.paths.models_dir) / "tft"
+            # Save model to timestamped subdirectory (consistent with CatBoost/Prophet)
+            from datetime import datetime
+
+            from energy_forecast.utils import TZ_ISTANBUL
+
+            run_ts = datetime.now(tz=TZ_ISTANBUL).strftime("%Y-%m-%d_%H-%M")
+            model_dir = Path(self._settings.paths.models_dir) / "tft" / f"tft_{run_ts}"
             model_dir.mkdir(parents=True, exist_ok=True)
             final_model.save(model_dir)
             logger.info("Model saved to {}", model_dir)

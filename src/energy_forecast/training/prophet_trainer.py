@@ -12,9 +12,6 @@ Uses the same shared infrastructure as CatBoostTrainer:
 
 from __future__ import annotations
 
-import hashlib
-import json
-import pickle
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -29,6 +26,7 @@ from optuna.samplers import TPESampler
 from prophet import Prophet
 
 from energy_forecast.config.settings import Settings
+from energy_forecast.models.prophet import ProphetForecaster
 from energy_forecast.training.experiment import ExperimentTracker
 from energy_forecast.training.metrics import MetricsResult, compute_all
 from energy_forecast.training.search import suggest_params
@@ -499,20 +497,14 @@ class ProphetTrainer:
         with self._tracker.start_run("prophet_final"):
             final_model = self.train_final(df, study.best_params)
 
-            # Save model to local disk (always, regardless of MLflow)
+            # Save model via ProphetForecaster.save() for consistent naming
+            # and metadata (regressor_names, config, SHA256 hash).
             model_dir = Path(self._settings.paths.models_dir) / "prophet"
-            model_dir.mkdir(parents=True, exist_ok=True)
-            model_path = model_dir / "model.pkl"
-            with open(model_path, "wb") as f:
-                pickle.dump(final_model, f)
+            forecaster = ProphetForecaster(self._prophet_config.model_dump())
+            forecaster.set_model(final_model, regressor_names=list(self._regressor_names))
+            forecaster.save(model_dir)
 
-            # Write SHA256 hash for integrity verification (CWE-502 mitigation)
-            model_hash = "sha256:" + hashlib.sha256(model_path.read_bytes()).hexdigest()
-            metadata_path = model_dir / "metadata.json"
-            with open(metadata_path, "w", encoding="utf-8") as f:
-                json.dump({"model_hash": model_hash}, f, indent=2)
-
-            logger.info("Model saved to {} (hash: {})", model_path, model_hash[:24])
+            logger.info("Model saved to {}", model_dir)
 
             self._tracker.log_prophet_model(final_model, "prophet_model")
 

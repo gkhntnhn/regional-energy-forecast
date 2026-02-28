@@ -95,6 +95,9 @@ class PredictionService:
                     "tft": self._settings.ensemble.weights.tft,
                 },
                 "target_col": "consumption",
+                "prophet_regressors": [
+                    r.name for r in self._settings.prophet.regressors
+                ],
             }
             self._ensemble = EnsembleForecaster(ensemble_config)
 
@@ -210,7 +213,11 @@ class PredictionService:
 
             # Step 7: Generate ensemble predictions
             update_progress("Generating ensemble predictions...")
-            predictions = self._ensemble.predict(forecast_features)
+            historical_features = features_df.loc[~forecast_mask].copy()
+            predictions = self._ensemble.predict(
+                forecast_features,
+                history=historical_features,
+            )
 
             # Step 8: Prepare output DataFrame
             result = self._prepare_output(predictions, last_timestamp)

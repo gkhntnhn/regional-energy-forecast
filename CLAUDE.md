@@ -194,7 +194,7 @@ src/energy_forecast/utils/prophet_utils.py  # Shared to_prophet_format (DRY)
 |-------|----------|-----------|-------|
 | CatBoost | 3.01% | 3.37% | ✅ Production-ready (603 trees, early stopping) |
 | Prophet | 4.14% | 4.48% | ✅ Production-ready (14 regressor, v2 config, bias -1.8 MWh) |
-| TFT | — | — | Debug bekleniyor |
+| TFT | 5.94% | 2.57% | Smoke debug tamamlandı (2-fold, 2-epoch, quantile calibration bozuk, production training gerekli) |
 | Ensemble | — | — | Eğitim bekleniyor, hedef < %3 |
 
 ## Bilinen Sorunlar

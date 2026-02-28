@@ -39,6 +39,41 @@ from energy_forecast.utils import TZ_ISTANBUL
 if TYPE_CHECKING:
     pass
 
+
+def _find_latest_model(model_dir: Path, pattern: str) -> Path | None:
+    """Find the latest model file matching a glob pattern.
+
+    Scans ``model_dir`` for files matching ``pattern`` and returns the most
+    recent one (sorted by name, so timestamped names sort chronologically).
+
+    Args:
+        model_dir: Directory to search in.
+        pattern: Glob pattern (e.g. ``"*.cbm"``, ``"*.pkl"``).
+
+    Returns:
+        Path to the latest matching file, or None if no match found.
+    """
+    if not model_dir.exists():
+        return None
+    matches = sorted(model_dir.glob(pattern), key=lambda p: p.name)
+    return matches[-1] if matches else None
+
+
+def _find_latest_tft_dir(tft_base: Path) -> Path:
+    """Find the latest timestamped TFT model directory.
+
+    Scans ``tft_base`` for subdirectories matching ``tft_YYYY-MM-DD_HH-MM``
+    and returns the most recent one. Falls back to ``tft_base`` itself if no
+    timestamped subdirectories exist (backward compatibility).
+    """
+    if not tft_base.exists():
+        return tft_base
+    subdirs = sorted(
+        (p for p in tft_base.glob("tft_*") if p.is_dir()),
+        key=lambda p: p.name,
+    )
+    return subdirs[-1] if subdirs else tft_base
+
 # ---------------------------------------------------------------------------
 # Authentication
 # ---------------------------------------------------------------------------
@@ -119,11 +154,20 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.email_service = EmailService(email_config)
 
     # Initialize prediction service
+    models_dir = Path(settings.paths.models_dir)
+    catboost_path = (
+        _find_latest_model(models_dir / "catboost", "*.cbm")
+        or models_dir / "catboost" / "model.cbm"
+    )
+    prophet_path = (
+        _find_latest_model(models_dir / "prophet", "*.pkl")
+        or models_dir / "prophet" / "model.pkl"
+    )
     pred_config = PredictionServiceConfig(
-        models_dir=Path(settings.paths.models_dir),
-        catboost_path=Path(settings.paths.models_dir) / "catboost" / "model.cbm",
-        prophet_path=Path(settings.paths.models_dir) / "prophet" / "model.pkl",
-        tft_path=Path(settings.paths.models_dir) / "tft",
+        models_dir=models_dir,
+        catboost_path=catboost_path,
+        prophet_path=prophet_path,
+        tft_path=_find_latest_tft_dir(models_dir / "tft"),
     )
     app.state.prediction_service = PredictionService(pred_config, settings)
 

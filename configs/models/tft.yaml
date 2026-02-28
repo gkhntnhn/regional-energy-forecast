@@ -23,39 +23,60 @@ optimization:
   optuna_splits: 2  # Number of CV splits for Optuna objective (balances speed vs bias)
   val_size_hours: 720  # ~1 month (24 * 30) for final model validation
 
-# Features that are known in the future (deterministic or forecast available)
+# Covariates pruned via CatBoost feature importance (top-75, >= 0.1%)
+# Total: 39 features (from 358 available, 89% reduction)
 covariates:
+  # Deterministic or forecast-available — enters both encoder AND decoder
   time_varying_known:
-    - hour_sin
-    - hour_cos
-    - day_of_week_sin
-    - day_of_week_cos
-    - month_sin
-    - month_cos
-    - is_holiday
-    - is_weekend
-    - is_ramadan
-    - sol_elevation
-    - sol_azimuth
-    - temperature_2m
-    - relative_humidity_2m
-    - apparent_temperature
+    # Cyclical time encodings
+    - hour_cos              # 0.23% importance
+    - day_of_week_sin       # 0.94%
+    - day_of_week_cos       # 0.22%
+    - month_sin             # 0.17%
+    - day_of_year_sin       # 0.16%
+    - day_of_year_cos       # 0.30%
+    # Weekend/holiday signals
+    - is_weekend            # 0.30%
+    - is_sunday             # 0.36%
+    - is_bridge_day         # 0.13%
+    - tatil_tipi            # 1.44% — holiday type (0/1/2)
+    - holiday_duration      # 2.22% — consecutive holiday length
+    - bayrama_kalan_gun     # 0.62% — days until bayram
+    - bayram_gun_no         # 0.45% — bayram day number
+    - days_since_holiday    # 0.36%
+    - days_until_holiday    # 0.17%
+    # Weather (forecast available at prediction time)
+    - temperature_2m        # 1.10%
+    - apparent_temperature  # 2.24%
+    - shortwave_radiation   # 0.23%
+    # Solar (deterministic, astronomic)
+    - sol_elevation         # 0.11%
 
-  # Features NOT known in advance (observed only in past, lagged by >=48h)
+  # Observed only in past (lagged >= 48h) — enters ONLY encoder
   time_varying_unknown:
-    - consumption_lag_48
-    - consumption_lag_72
-    - consumption_lag_96
-    - consumption_lag_168
-    - consumption_lag_336
-    - consumption_lag_720
-    - consumption_rolling_mean_24
-    - consumption_rolling_mean_168
-    - consumption_ewma_24
-    - consumption_ewma_168
-    - epias_Real_Time_Consumption_lag_48
-    - epias_Real_Time_Consumption_lag_168
-    - epias_DAM_Purchase_lag_48
+    # Consumption lags (core autoregressive signal, 42.5% total)
+    - consumption_lag_48          # 6.09%
+    - consumption_lag_168         # 27.04% — strongest single feature
+    - consumption_lag_336         # 9.24%
+    - consumption_lag_720         # long-term baseline
+    # Consumption derived (momentum, ratios, profile — 22.7% total)
+    - consumption_week_ratio      # 8.02%
+    - consumption_hourly_profile  # 5.59%
+    - consumption_momentum_168    # 2.46%
+    - consumption_pct_change_168  # 1.96%
+    - consumption_trend_ratio_168_336  # 0.80%
+    - consumption_trend_ratio_48_168   # 0.48%
+    - consumption_window_720_std  # 1.15%
+    - consumption_window_48_max   # 0.38%
+    - consumption_window_336_max  # 0.37%
+    - consumption_window_720_mean # 0.13%
+    - consumption_window_336_min  # 0.11%
+    - consumption_q75_168         # 0.14%
+    # Weather windows (observed, not forecast)
+    - temperature_2m_window_24_max   # 2.24%
+    - temperature_2m_window_12_max   # 1.49%
+    - temperature_2m_window_6_mean   # 1.48%
+    - hdd_x_hour                     # 1.28% — heating degree x hour interaction
 
 quantiles:
   - 0.02
