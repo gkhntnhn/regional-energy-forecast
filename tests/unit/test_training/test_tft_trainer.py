@@ -225,6 +225,7 @@ class TestTFTOptunaObjective:
         mock_trial = MagicMock()
         mock_trial.suggest_categorical.side_effect = [16, 32]  # hidden_size, batch_size
         mock_trial.suggest_float.return_value = 0.005  # learning_rate
+        mock_trial.should_prune.return_value = False  # don't prune during test
 
         # Patch suggest_params to return simple params
         with patch(

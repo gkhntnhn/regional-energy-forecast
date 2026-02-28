@@ -12,6 +12,7 @@ Uses the same shared infrastructure as CatBoostTrainer and ProphetTrainer:
 
 from __future__ import annotations
 
+import gc
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -20,8 +21,10 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+import torch
 from loguru import logger
-from optuna import Study, Trial, create_study
+from optuna import Study, Trial, TrialPruned, create_study
+from optuna.pruners import MedianPruner
 from optuna.samplers import TPESampler
 
 from energy_forecast.config.settings import Settings
@@ -221,6 +224,12 @@ class TFTTrainer:
         val_pred_arr = np.asarray(val_pred[PREDICTION_COL].values, dtype=np.float64)
         test_pred_arr = np.asarray(test_pred[PREDICTION_COL].values, dtype=np.float64)
 
+        # Free GPU/CPU memory from this fold's model
+        del model
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
         return TFTSplitResult(
             split_idx=split_info.split_idx,
             train_metrics=compute_all(y_train, train_pred_arr),
@@ -320,7 +329,9 @@ class TFTTrainer:
             val_mapes: list[float] = []
             test_mapes: list[float] = []
 
-            for info, train_df, val_df, test_df in selected_splits:
+            for fold_idx, (info, train_df, val_df, test_df) in enumerate(
+                selected_splits
+            ):
                 try:
                     result = self._train_split(
                         info,
@@ -332,6 +343,12 @@ class TFTTrainer:
                     )
                     val_mapes.append(result.val_metrics.mape)
                     test_mapes.append(result.test_metrics.mape)
+
+                    trial.report(result.val_metrics.mape, fold_idx)
+                    if trial.should_prune():
+                        raise TrialPruned()
+                except TrialPruned:
+                    raise
                 except Exception as e:
                     logger.warning("Trial split {} failed: {}", info.split_idx, e)
                     return float("inf")
@@ -364,6 +381,7 @@ class TFTTrainer:
             storage=storage,
             load_if_exists=True,
             sampler=TPESampler(seed=self._tft_config.training.random_seed),
+            pruner=MedianPruner(n_startup_trials=3, n_warmup_steps=1),
         )
 
         objective = self._create_objective(df)

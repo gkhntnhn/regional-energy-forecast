@@ -16,7 +16,8 @@ import numpy as np
 import pandas as pd
 from catboost import CatBoostRegressor, Pool
 from loguru import logger
-from optuna import Study, Trial, create_study
+from optuna import Study, Trial, TrialPruned, create_study
+from optuna.pruners import MedianPruner
 from optuna.samplers import TPESampler
 
 from energy_forecast.config.settings import Settings
@@ -184,12 +185,15 @@ class CatBoostTrainer:
         self,
         df: pd.DataFrame,
         params: dict[str, Any],
+        trial: Trial | None = None,
     ) -> TrainingResult:
         """Train on all TSCV splits and aggregate results."""
         x_sample, _ = self._split_xy(df.iloc[:1])
         results: list[SplitResult] = []
 
-        for info, train_df, val_df, test_df in self._splitter.iter_splits(df):
+        for fold_idx, (info, train_df, val_df, test_df) in enumerate(
+            self._splitter.iter_splits(df)
+        ):
             result = self._train_split(info, train_df, val_df, test_df, params)
             results.append(result)
             logger.info(
@@ -200,6 +204,11 @@ class CatBoostTrainer:
                 result.test_month,
                 result.test_metrics.mape,
             )
+
+            if trial is not None:
+                trial.report(result.val_metrics.mape, fold_idx)
+                if trial.should_prune():
+                    raise TrialPruned()
 
         val_mapes = [r.val_metrics.mape for r in results]
         test_mapes = [r.test_metrics.mape for r in results]
@@ -214,12 +223,9 @@ class CatBoostTrainer:
             feature_names=list(x_sample.columns),
         )
 
-    # -- Optuna objective (dynamic from YAML) --
-
-    def _create_objective(self, df: pd.DataFrame) -> Callable[[Trial], float]:
-        """Create Optuna objective that uses dynamic YAML search space."""
-        search_space = self._search_config.search_space
-        fixed_params: dict[str, Any] = {
+    def _get_fixed_params(self) -> dict[str, Any]:
+        """Return CatBoost parameters that stay constant across all trials."""
+        return {
             "task_type": self._cb_config.training.task_type,
             "eval_metric": self._cb_config.training.eval_metric,
             "random_seed": self._cb_config.training.random_seed,
@@ -227,10 +233,17 @@ class CatBoostTrainer:
             "use_best_model": True,
         }
 
+    # -- Optuna objective (dynamic from YAML) --
+
+    def _create_objective(self, df: pd.DataFrame) -> Callable[[Trial], float]:
+        """Create Optuna objective that uses dynamic YAML search space."""
+        search_space = self._search_config.search_space
+        fixed_params = self._get_fixed_params()
+
         def objective(trial: Trial) -> float:
             suggested = suggest_params(trial, search_space)
             params = {**fixed_params, **suggested}
-            result = self._train_all_splits(df, params)
+            result = self._train_all_splits(df, params, trial=trial)
             trial.set_user_attr("avg_best_iteration", result.avg_best_iteration)
             trial.set_user_attr("avg_test_mape", result.avg_test_mape)
             return result.avg_val_mape
@@ -255,6 +268,7 @@ class CatBoostTrainer:
                 multivariate=True,
                 seed=self._cb_config.training.random_seed,
             ),
+            pruner=MedianPruner(n_startup_trials=3, n_warmup_steps=2),
         )
 
         objective = self._create_objective(df)
@@ -266,14 +280,7 @@ class CatBoostTrainer:
             study.best_params,
         )
 
-        fixed_params: dict[str, Any] = {
-            "task_type": self._cb_config.training.task_type,
-            "eval_metric": self._cb_config.training.eval_metric,
-            "random_seed": self._cb_config.training.random_seed,
-            "has_time": self._cb_config.training.has_time,
-            "use_best_model": True,
-        }
-        best_params = {**fixed_params, **study.best_params}
+        best_params = {**self._get_fixed_params(), **study.best_params}
 
         if self._skip_validation:
             logger.info("Skipping post-Optuna validation (skip_validation_after_optuna=true)")
@@ -316,14 +323,7 @@ class CatBoostTrainer:
         x, y = self._split_xy(df)
         x, cat_idx = self._prepare_categoricals(x)
 
-        final_params = {
-            **params,
-            "iterations": n_iterations,
-            "task_type": self._cb_config.training.task_type,
-            "eval_metric": self._cb_config.training.eval_metric,
-            "random_seed": self._cb_config.training.random_seed,
-            "has_time": self._cb_config.training.has_time,
-        }
+        final_params = {**self._get_fixed_params(), **params, "iterations": n_iterations}
         model = CatBoostRegressor(**final_params, allow_writing_files=False)
         train_pool = Pool(x, label=y, cat_features=cat_idx)
         model.fit(train_pool, verbose=self._cb_config.training.verbose)

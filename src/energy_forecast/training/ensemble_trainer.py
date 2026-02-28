@@ -561,8 +561,9 @@ class EnsembleTrainer:
         best_single_val = min(d["Val MAPE (%)"] for d in data)
         ens_val = training_result.avg_val_mape
 
-        # Compute ensemble test MAPE (approximate: weighted avg of per-model MAPEs,
-        # not true blended-prediction MAPE — test predictions are not stored)
+        # Ensemble test MAPE: weighted average of per-model test MAPEs.
+        # This is an APPROXIMATION — MAPE(blended) != Σwᵢ·MAPE(predᵢ).
+        # True ensemble test MAPE requires raw test predictions (not stored).
         ens_test = sum(
             training_result.optimized_weights[m]
             * model_results[m].training_result.avg_test_mape
@@ -575,7 +576,7 @@ class EnsembleTrainer:
             {
                 "Model": "Ensemble",
                 "Val MAPE (%)": ens_val,
-                "Test MAPE (%)": ens_test,
+                "Test MAPE (%) ~approx": ens_test,
                 "Weight": 1.0,
                 "Improvement": f"{improvement:+.1f}%",
             }

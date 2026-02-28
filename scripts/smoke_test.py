@@ -37,7 +37,7 @@ PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 from energy_forecast.config import Settings, load_config  # noqa: E402
-from energy_forecast.config.settings import SearchParamConfig  # noqa: E402
+from energy_forecast.training.run import apply_config_overrides  # noqa: E402
 from energy_forecast.data.epias_client import EpiasClient  # noqa: E402
 from energy_forecast.data.loader import DataLoader  # noqa: E402
 from energy_forecast.data.openmeteo_client import OpenMeteoClient  # noqa: E402
@@ -200,70 +200,10 @@ class SmokeTestRunner:
         with open(self.config_path, encoding="utf-8") as f:
             self.smoke_config = yaml.safe_load(f)
 
-        # Apply smoke test overrides to hyperparameters
-        self._apply_hyperparameter_overrides()
+        # Apply smoke test overrides to hyperparameters (shared with training/run.py)
+        apply_config_overrides(self.settings, self.config_path)
 
         return f"Loaded from {configs_dir}"
-
-    def _apply_hyperparameter_overrides(self) -> None:
-        """Apply smoke test config overrides to settings."""
-        if self.settings is None:
-            return
-
-        hp = self.settings.hyperparameters
-
-        # Override CatBoost
-        if "catboost" in self.smoke_config:
-            cb_override = self.smoke_config["catboost"]
-            cb_config = hp.catboost
-            if "n_trials" in cb_override:
-                object.__setattr__(cb_config, "n_trials", cb_override["n_trials"])
-            if "search_space" in cb_override:
-                new_space = {
-                    k: SearchParamConfig(**v) for k, v in cb_override["search_space"].items()
-                }
-                object.__setattr__(cb_config, "search_space", new_space)
-
-        # Override Prophet
-        if "prophet" in self.smoke_config:
-            p_override = self.smoke_config["prophet"]
-            p_config = hp.prophet
-            if "n_trials" in p_override:
-                object.__setattr__(p_config, "n_trials", p_override["n_trials"])
-            if "search_space" in p_override:
-                new_space = {
-                    k: SearchParamConfig(**v) for k, v in p_override["search_space"].items()
-                }
-                object.__setattr__(p_config, "search_space", new_space)
-
-        # Override TFT
-        if "tft" in self.smoke_config:
-            tft_override = self.smoke_config["tft"]
-            tft_config = hp.tft
-            if "n_trials" in tft_override:
-                object.__setattr__(tft_config, "n_trials", tft_override["n_trials"])
-            if "search_space" in tft_override:
-                new_space = {
-                    k: SearchParamConfig(**v) for k, v in tft_override["search_space"].items()
-                }
-                object.__setattr__(tft_config, "search_space", new_space)
-
-            # Override TFT training params
-            if "training" in tft_override:
-                train_ovr = tft_override["training"]
-                tft_model_config = self.settings.tft
-                train_cfg = tft_model_config.training
-                for key, val in train_ovr.items():
-                    if hasattr(train_cfg, key):
-                        object.__setattr__(train_cfg, key, val)
-
-        # Override cross-validation
-        if "cross_validation" in self.smoke_config:
-            cv_override = self.smoke_config["cross_validation"]
-            cv_config = hp.cross_validation
-            for key, val in cv_override.items():
-                if hasattr(cv_config, key):
-                    object.__setattr__(cv_config, key, val)
 
     def _step_load_excel(self) -> str:
         """Load consumption data from Excel."""

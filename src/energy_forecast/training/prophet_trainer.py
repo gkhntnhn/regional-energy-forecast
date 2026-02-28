@@ -21,7 +21,8 @@ from typing import Any
 import numpy as np
 import pandas as pd
 from loguru import logger
-from optuna import Study, Trial, create_study
+from optuna import Study, Trial, TrialPruned, create_study
+from optuna.pruners import MedianPruner
 from optuna.samplers import TPESampler
 from prophet import Prophet
 
@@ -343,19 +344,23 @@ class ProphetTrainer:
         self,
         df: pd.DataFrame,
         params: dict[str, Any],
+        trial: Trial | None = None,
     ) -> ProphetTrainingResult:
         """Train on all TSCV splits and aggregate results.
 
         Args:
             df: Full feature-engineered DataFrame.
             params: Hyperparameters.
+            trial: Optuna trial for pruning (None during final validation).
 
         Returns:
             ProphetTrainingResult with aggregated metrics.
         """
         results: list[ProphetSplitResult] = []
 
-        for info, train_df, val_df, test_df in self._splitter.iter_splits(df):
+        for fold_idx, (info, train_df, val_df, test_df) in enumerate(
+            self._splitter.iter_splits(df)
+        ):
             result = self._train_split(info, train_df, val_df, test_df, params)
             results.append(result)
             logger.info(
@@ -366,6 +371,11 @@ class ProphetTrainer:
                 result.test_month,
                 result.test_metrics.mape,
             )
+
+            if trial is not None:
+                trial.report(result.val_metrics.mape, fold_idx)
+                if trial.should_prune():
+                    raise TrialPruned()
 
         val_mapes = [r.val_metrics.mape for r in results]
         test_mapes = [r.test_metrics.mape for r in results]
@@ -393,7 +403,7 @@ class ProphetTrainer:
 
         def objective(trial: Trial) -> float:
             suggested = suggest_params(trial, search_space)
-            result = self._train_all_splits(df, suggested)
+            result = self._train_all_splits(df, suggested, trial=trial)
             trial.set_user_attr("avg_test_mape", result.avg_test_mape)
             return result.avg_val_mape
 
@@ -417,6 +427,7 @@ class ProphetTrainer:
             storage=storage,
             load_if_exists=True,
             sampler=TPESampler(seed=self._prophet_config.optimization.random_seed),
+            pruner=MedianPruner(n_startup_trials=3, n_warmup_steps=2),
         )
 
         objective = self._create_objective(df)
