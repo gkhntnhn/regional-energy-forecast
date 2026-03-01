@@ -130,10 +130,14 @@ class FileService:
         filename = f"forecast_{job_id}_{timestamp}.xlsx"
         output_path = self._config.output_dir / filename
 
-        # Prepare DataFrame for export
+        # Prepare DataFrame for export — customer-friendly column names
         export_df = predictions.reset_index()
         if "datetime" not in export_df.columns and "index" in export_df.columns:
             export_df = export_df.rename(columns={"index": "datetime"})
+        export_df = export_df.rename(columns={
+            "datetime": "Tarih",
+            "consumption_mwh": "Tahmin (MWh)",
+        })
 
         # Write to Excel
         export_df.to_excel(output_path, index=False, engine="openpyxl")

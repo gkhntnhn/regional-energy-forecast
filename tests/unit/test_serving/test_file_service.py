@@ -124,7 +124,7 @@ class TestFileService:
         # Verify content
         df = pd.read_excel(path)
         assert len(df) == 3
-        assert "consumption_mwh" in df.columns
+        assert "Tahmin (MWh)" in df.columns
 
     def test_delete_file(self, file_service: FileService, tmp_path: Path) -> None:
         """Test file deletion."""
