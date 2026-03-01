@@ -153,7 +153,7 @@ class PredictionService:
             progress_callback: Optional callback for progress updates.
 
         Returns:
-            DataFrame with 48-hour predictions.
+            DataFrame with 24-hour T+1 predictions.
 
         Raises:
             ModelNotLoadedError: If models not loaded.
@@ -210,7 +210,7 @@ class PredictionService:
             except Exception as e:
                 raise FeaturePipelineError(f"Feature pipeline failed: {e}") from e
 
-            # Step 6: Extract forecast rows (last 48 hours with NaN consumption)
+            # Step 6: Extract forecast rows (last 48 hours with NaN consumption, filtered to T+1 in output)
             forecast_mask = features_df.index > last_timestamp
             forecast_features = features_df.loc[forecast_mask].copy()
 
