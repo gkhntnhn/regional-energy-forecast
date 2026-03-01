@@ -1,12 +1,12 @@
 # CatBoost model configuration
 training:
   task_type: "CPU"
-  iterations: 2000
+  iterations: 100
   learning_rate: 0.05
   depth: 6
   loss_function: "MAE"
   eval_metric: "MAPE"
-  early_stopping_rounds: 500
+  early_stopping_rounds: 10
   has_time: true
   random_seed: 42
   verbose: 500

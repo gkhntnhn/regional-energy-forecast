@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enerji Tuketim Tahmin Platformu</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <style>
+        :root {
+            --primary: #4361ee;
+            --primary-light: #4895ef;
+            --secondary: #4cc9f0;
+            --accent: #f72585;
+            --success: #38b000;
+            --light-bg: #DDDAE2;
+            --card-bg: #ffffff;
+            --text-dark: #212529;
+            --text-muted: #6c757d;
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--light-bg);
+            color: var(--text-dark);
+            padding-top: 2rem;
+        }
+        .header-logo {
+            width: 50px;
+            height: 50px;
+            background: linear-gradient(135deg, var(--primary), var(--primary-light));
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 1.5rem;
+            box-shadow: 0 4px 12px rgba(67, 97, 238, 0.2);
+        }
+        .header-title {
+            font-size: 1.8rem;
+            font-weight: 700;
+            color: var(--primary);
+            margin-bottom: 0.2rem;
+            background: linear-gradient(135deg, var(--primary), var(--primary-light));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            display: inline-block;
+        }
+        .card-custom {
+            border: none;
+            border-radius: 16px;
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
+            margin-bottom: 1.5rem;
+            transition: transform 0.3s ease;
+            background-color: var(--card-bg);
+        }
+        .card-custom:hover {
+            transform: translateY(-5px);
+        }
+        .upload-area {
+            border: 2px dashed var(--primary);
+            border-radius: 16px;
+            padding: 2rem;
+            text-align: center;
+            background-color: rgba(67, 97, 238, 0.03);
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        .upload-area:hover {
+            background-color: rgba(67, 97, 238, 0.08);
+        }
+        .file-info {
+            border-left: 3px solid var(--primary);
+            padding-left: 1rem;
+            margin-bottom: 1rem;
+        }
+        .btn-primary-custom {
+            background: linear-gradient(135deg, var(--primary), var(--primary-light));
+            border: none;
+            padding: 0.5rem 1.5rem;
+            font-weight: 600;
+        }
+        .btn-primary-custom:disabled {
+            opacity: 0.6;
+        }
+        .result-card {
+            display: none;
+            margin-top: 1rem;
+        }
+        .result-card.show {
+            display: block;
+        }
+        .result-success {
+            background-color: #d4edda;
+            border-color: #c3e6cb;
+        }
+        .result-error {
+            background-color: #f8d7da;
+            border-color: #f5c6cb;
+        }
+        .result-running {
+            background-color: #fff3cd;
+            border-color: #ffeeba;
+        }
+        .progress-text {
+            font-size: 0.9rem;
+            color: var(--text-muted);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="d-flex align-items-center">
+                    <div class="header-logo me-3">
+                        <i class="fas fa-chart-line"></i>
+                    </div>
+                    <div>
+                        <h1 class="header-title">Enerji Tuketim Tahmin Platformu</h1>
+                        <small class="text-muted">Yapay zeka destekli enerji tuketim tahmini</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Upload & Predict Section -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card card-custom">
+                    <div class="card-body">
+                        <h5 class="card-title mb-4">
+                            <i class="fas fa-cloud-upload-alt me-2"></i>Veri Yukleme & Tahmin
+                        </h5>
+                        <form id="uploadForm" enctype="multipart/form-data">
+                            <div id="dropZone" class="upload-area mb-3">
+                                <i class="fas fa-file-excel fa-3x mb-3" style="color: var(--primary);"></i>
+                                <h5 class="mb-2">Dosyanizi surukleyip birakin veya secin</h5>
+                                <p class="text-muted mb-3">.xlsx formatinda</p>
+                                <input type="file" id="fileInput" name="file" class="d-none" accept=".xlsx" required>
+                                <button type="button" class="btn btn-primary-custom text-white" onclick="fileInput.click()">
+                                    <i class="fas fa-folder-open me-2"></i>Dosya Sec
+                                </button>
+                            </div>
+                            <div id="fileInfo" class="file-info d-none">
+                                <div class="d-flex align-items-center">
+                                    <i class="fas fa-file-excel fa-2x me-3" style="color: var(--primary);"></i>
+                                    <div>
+                                        <h6 id="fileName" class="mb-0">dosya.xlsx</h6>
+                                        <small class="text-muted" id="fileSize">0 MB</small>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <label for="emailInput" class="form-label">E-posta Adresi:</label>
+                                <input type="email" id="emailInput" name="email" class="form-control"
+                                       placeholder="example@domain.com" required>
+                            </div>
+                            <button type="submit" class="btn btn-primary-custom text-white w-100 py-2" id="submitBtn">
+                                <i class="fas fa-rocket me-2"></i>
+                                <span id="btnText">Tahmini Baslat</span>
+                                <i id="btnSpinner" class="fas fa-spinner fa-spin ms-2" style="display:none;"></i>
+                            </button>
+                        </form>
+
+                        <!-- Result Card -->
+                        <div id="resultCard" class="card result-card">
+                            <div class="card-body">
+                                <h6 id="resultTitle" class="card-title"></h6>
+                                <p id="resultMessage" class="card-text"></p>
+                                <div id="progressArea" class="d-none">
+                                    <div class="progress mb-2" style="height: 6px;">
+                                        <div id="progressBar" class="progress-bar bg-primary" role="progressbar"
+                                             style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+                                    </div>
+                                    <small id="progressText" class="progress-text"></small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- API Info -->
+        <div class="row">
+            <div class="col-12">
+                <div class="card card-custom">
+                    <div class="card-body">
+                        <h5 class="card-title mb-3">
+                            <i class="fas fa-code me-2"></i>API Dokumantasyonu
+                        </h5>
+                        <p class="text-muted">
+                            API dokumantasyonuna erisim icin:
+                            <a href="/docs" target="_blank" class="ms-2">
+                                <i class="fas fa-external-link-alt me-1"></i>Swagger UI
+                            </a>
+                            <a href="/redoc" target="_blank" class="ms-2">
+                                <i class="fas fa-external-link-alt me-1"></i>ReDoc
+                            </a>
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ── Config ──────────────────────────────────────────
+        const API_KEY = 'local-dev-secret-key';
+        const POLL_INTERVAL_MS = 2000;
+
+        // ── DOM refs ────────────────────────────────────────
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+        const fileInfo = document.getElementById('fileInfo');
+        const fileNameEl = document.getElementById('fileName');
+        const fileSizeEl = document.getElementById('fileSize');
+        const uploadForm = document.getElementById('uploadForm');
+        const submitBtn = document.getElementById('submitBtn');
+        const btnText = document.getElementById('btnText');
+        const btnSpinner = document.getElementById('btnSpinner');
+        const resultCard = document.getElementById('resultCard');
+        const resultTitle = document.getElementById('resultTitle');
+        const resultMessage = document.getElementById('resultMessage');
+        const progressArea = document.getElementById('progressArea');
+        const progressBar = document.getElementById('progressBar');
+        const progressText = document.getElementById('progressText');
+
+        // ── Drag & Drop ─────────────────────────────────────
+        ['dragenter', 'dragover'].forEach(evt => {
+            dropZone.addEventListener(evt, e => {
+                e.preventDefault();
+                dropZone.style.borderColor = 'var(--accent)';
+                dropZone.style.backgroundColor = 'rgba(247, 37, 133, 0.05)';
+            });
+        });
+        ['dragleave', 'drop'].forEach(evt => {
+            dropZone.addEventListener(evt, e => {
+                e.preventDefault();
+                dropZone.style.borderColor = 'var(--primary)';
+                dropZone.style.backgroundColor = 'rgba(67, 97, 238, 0.03)';
+            });
+        });
+        dropZone.addEventListener('drop', e => {
+            fileInput.files = e.dataTransfer.files;
+            updateFileInfo();
+        });
+        fileInput.addEventListener('change', updateFileInfo);
+
+        function updateFileInfo() {
+            if (fileInput.files.length) {
+                const file = fileInput.files[0];
+                fileNameEl.textContent = file.name;
+                fileSizeEl.textContent = (file.size / 1048576).toFixed(1) + ' MB';
+                fileInfo.classList.remove('d-none');
+            }
+        }
+
+        // ── UI helpers ──────────────────────────────────────
+        function setLoading(loading) {
+            submitBtn.disabled = loading;
+            btnSpinner.style.display = loading ? 'inline-block' : 'none';
+            btnText.textContent = loading ? 'Islem devam ediyor...' : 'Tahmini Baslat';
+        }
+
+        function showResult(type, title, message) {
+            resultCard.classList.add('show');
+            resultCard.classList.remove('result-success', 'result-error', 'result-running');
+            resultCard.classList.add('result-' + type);
+            resultTitle.textContent = title;
+            resultMessage.textContent = message;
+
+            if (type === 'running') {
+                progressArea.classList.remove('d-none');
+            } else {
+                progressArea.classList.add('d-none');
+            }
+        }
+
+        function updateProgress(pct, text) {
+            progressBar.style.width = pct + '%';
+            progressBar.setAttribute('aria-valuenow', pct);
+            progressText.textContent = text || ('Ilerleme: %' + pct);
+        }
+
+        // ── API calls ───────────────────────────────────────
+        function authHeaders() {
+            return { 'Authorization': 'Bearer ' + API_KEY };
+        }
+
+        async function submitPrediction(formData) {
+            const resp = await fetch('/predict', {
+                method: 'POST',
+                headers: authHeaders(),
+                body: formData
+            });
+
+            if (resp.status === 429) {
+                const data = await resp.json();
+                throw new Error(data.detail || 'Baska bir tahmin islemi devam ediyor. Lutfen bekleyin.');
+            }
+
+            if (!resp.ok) {
+                const data = await resp.json().catch(() => ({}));
+                throw new Error(data.detail || 'Tahmin olusturma hatasi (HTTP ' + resp.status + ')');
+            }
+
+            return await resp.json();
+        }
+
+        async function pollStatus(jobId) {
+            const resp = await fetch('/status/' + jobId, {
+                headers: authHeaders()
+            });
+
+            if (!resp.ok) {
+                throw new Error('Durum sorgulanamadi (HTTP ' + resp.status + ')');
+            }
+
+            return await resp.json();
+        }
+
+        // ── Main flow ───────────────────────────────────────
+        let pollTimer = null;
+
+        uploadForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
+
+            // Clear previous polling
+            if (pollTimer) {
+                clearInterval(pollTimer);
+                pollTimer = null;
+            }
+
+            setLoading(true);
+            resultCard.classList.remove('show');
+
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+            formData.append('email', document.getElementById('emailInput').value);
+
+            try {
+                // Step 1: Submit prediction job
+                const job = await submitPrediction(formData);
+                const jobId = job.job_id;
+
+                showResult('running', 'Tahmin Isleniyor...', 'Is No: ' + jobId);
+                updateProgress(5, 'Kuyruga alindi, islem basliyor...');
+
+                // Step 2: Poll for status
+                pollTimer = setInterval(async () => {
+                    try {
+                        const status = await pollStatus(jobId);
+
+                        if (status.status === 'running') {
+                            const pct = status.progress || 10;
+                            updateProgress(pct, 'Ilerleme: %' + pct + ' — islem devam ediyor...');
+                        } else if (status.status === 'completed') {
+                            clearInterval(pollTimer);
+                            pollTimer = null;
+                            showResult('success',
+                                'Tahmin Tamamlandi!',
+                                'Sonuclar ' + document.getElementById('emailInput').value + ' adresine gonderildi. Is No: ' + jobId
+                            );
+                            setLoading(false);
+                        } else if (status.status === 'failed') {
+                            clearInterval(pollTimer);
+                            pollTimer = null;
+                            showResult('error',
+                                'Tahmin Basarisiz',
+                                status.error || 'Bilinmeyen bir hata olustu. Is No: ' + jobId
+                            );
+                            setLoading(false);
+                        }
+                        // 'pending' status: keep polling
+                    } catch (pollErr) {
+                        clearInterval(pollTimer);
+                        pollTimer = null;
+                        showResult('error', 'Baglanti Hatasi', 'Durum sorgulamada hata: ' + pollErr.message);
+                        setLoading(false);
+                    }
+                }, POLL_INTERVAL_MS);
+
+            } catch (err) {
+                showResult('error', 'Hata', err.message);
+                setLoading(false);
+            }
+        });
+    </script>
+</body>
+</html>

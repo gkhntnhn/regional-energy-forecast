@@ -1202,6 +1202,7 @@ class EnvConfig(BaseSettings):
     smtp_port: int = 587
     smtp_username: str = ""
     smtp_password: str = ""
+    sender_email: str = ""
     mlflow_tracking_uri: str = "http://localhost:5000"
     aws_s3_bucket: str = ""
     aws_region: str = "eu-west-1"

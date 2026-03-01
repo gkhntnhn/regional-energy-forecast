@@ -1,25 +1,25 @@
 # Temporal Fusion Transformer configuration
 architecture:
-  hidden_size: 64
-  attention_head_size: 4
-  lstm_layers: 2
+  hidden_size: 8
+  attention_head_size: 1
+  lstm_layers: 1
   dropout: 0.1
-  hidden_continuous_size: 16
+  hidden_continuous_size: 8
 
 training:
   encoder_length: 168  # 7 days
   prediction_length: 48
   batch_size: 64
-  max_epochs: 100
+  max_epochs: 2
   learning_rate: 0.001
-  early_stop_patience: 10
+  early_stop_patience: 1
   gradient_clip_val: 0.1
   random_seed: 42
-  accelerator: "auto"  # "auto" uses GPU if available, else CPU
+  accelerator: "gpu"
   num_workers: 0
 
 optimization:
-  fast_epochs: 10  # Reduced epochs for Optuna trials
+  fast_epochs: 2  # Reduced epochs for Optuna trials
   optuna_splits: 2  # Number of CV splits for Optuna objective (balances speed vs bias)
   val_size_hours: 720  # ~1 month (24 * 30) for final model validation
 

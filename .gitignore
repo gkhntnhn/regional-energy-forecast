@@ -35,9 +35,13 @@ data/outputs/
 data/predictions/
 data/static/
 
-# Model artifacts
+# Model artifacts (timestamped training outputs)
 models/*
 !models/.gitkeep
+
+# Final model artifacts for serving
+final_models/*
+!final_models/.gitkeep
 
 # MLflow
 mlruns/

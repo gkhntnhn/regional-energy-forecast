@@ -5,12 +5,12 @@
 target_col: consumption
 
 catboost:
-  n_trials: 50
+  n_trials: 1
   search_space:
     iterations:
       type: int
-      low: 1000
-      high: 3000
+      low: 100
+      high: 100
     learning_rate:
       type: float
       low: 0.01
@@ -37,7 +37,7 @@ catboost:
       choices: ["MAE"]
 
 prophet:
-  n_trials: 30
+  n_trials: 1
   search_space:
     changepoint_prior_scale:
       type: float
@@ -63,39 +63,39 @@ prophet:
     # Fixed in configs/models/prophet.yaml → seasonality.mode: "multiplicative"
 
 tft:
-  n_trials: 20
+  n_trials: 1
   search_space:
     hidden_size:
       type: int
-      low: 32
-      high: 128
-      step: 16
+      low: 8
+      high: 8
+      step: 8
     attention_head_size:
       type: categorical
-      choices: [1, 2, 4]
+      choices: [1]
     dropout:
       type: float
-      low: 0.05
-      high: 0.3
+      low: 0.1
+      high: 0.1
     hidden_continuous_size:
       type: int
       low: 8
-      high: 32
+      high: 8
       step: 8
     lstm_layers:
       type: categorical
-      choices: [1, 2]
+      choices: [1]
     learning_rate:
       type: float
-      low: 0.0001
-      high: 0.01
+      low: 0.001
+      high: 0.001
       log: true
     batch_size:
       type: categorical
-      choices: [32, 64, 128]
+      choices: [128]
 
 cross_validation:
-  n_splits: 12
+  n_splits: 2
   val_months: 1
   test_months: 1
   gap_hours: 0

@@ -323,7 +323,12 @@ class CatBoostTrainer:
         x, y = self._split_xy(df)
         x, cat_idx = self._prepare_categoricals(x)
 
-        final_params = {**self._get_fixed_params(), **params, "iterations": n_iterations}
+        final_params = {
+            **self._get_fixed_params(),
+            **params,
+            "iterations": n_iterations,
+            "use_best_model": False,  # no eval_set in final training
+        }
         model = CatBoostRegressor(**final_params, allow_writing_files=False)
         train_pool = Pool(x, label=y, cat_features=cat_idx)
         model.fit(train_pool, verbose=self._cb_config.training.verbose)
@@ -362,8 +367,17 @@ class CatBoostTrainer:
         with self._tracker.start_run("catboost_final"):
             final_model = self.train_final(df, study.best_params, best_result.avg_best_iteration)
 
-            # Save model to local disk (always, regardless of MLflow)
-            model_dir = Path(self._settings.paths.models_dir) / "catboost"
+            # Save model to timestamped subdirectory
+            from datetime import datetime
+
+            from energy_forecast.utils import TZ_ISTANBUL
+
+            run_ts = datetime.now(tz=TZ_ISTANBUL).strftime("%Y-%m-%d_%H-%M")
+            model_dir = (
+                Path(self._settings.paths.models_dir)
+                / "catboost"
+                / f"catboost_{run_ts}"
+            )
             model_dir.mkdir(parents=True, exist_ok=True)
             model_path = model_dir / "model.cbm"
             final_model.save_model(str(model_path))

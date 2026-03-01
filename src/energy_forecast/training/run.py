@@ -305,8 +305,15 @@ def run_ensemble(
     )
     result = trainer.run(data)
 
-    # Save weights
-    weights_path = Path(settings.paths.ensemble_weights)
+    # Save weights to timestamped subdirectory
+    from datetime import datetime
+
+    from energy_forecast.utils import TZ_ISTANBUL
+
+    run_ts = datetime.now(tz=TZ_ISTANBUL).strftime("%Y-%m-%d_%H-%M")
+    ensemble_dir = Path(settings.paths.models_dir) / "ensemble" / f"ensemble_{run_ts}"
+    ensemble_dir.mkdir(parents=True, exist_ok=True)
+    weights_path = ensemble_dir / "ensemble_weights.json"
     save_ensemble_weights(result.training_result.optimized_weights, weights_path)
 
     logger.info("Ensemble val MAPE: {:.2f}%", result.training_result.avg_val_mape)

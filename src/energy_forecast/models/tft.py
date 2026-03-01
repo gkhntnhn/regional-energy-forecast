@@ -394,6 +394,12 @@ class TFTForecaster(BaseForecaster):
             pred_df = pred_df.copy()
             pred_df[TIME_IDX_COL] = range(len(pred_df))
 
+        # Fill NaN target values for forecast rows — TimeSeriesDataSet requires
+        # non-NaN target, but decoder predictions override these placeholder values.
+        if pred_df[target_col].isna().any():
+            pred_df = pred_df.copy()
+            pred_df[target_col] = pred_df[target_col].ffill().fillna(0)
+
         # Create prediction dataset
         prediction_dataset = TimeSeriesDataSet.from_dataset(
             self._training_dataset,

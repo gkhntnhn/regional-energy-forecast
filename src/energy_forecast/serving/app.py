@@ -11,8 +11,9 @@ from typing import TYPE_CHECKING, Annotated
 
 from fastapi import BackgroundTasks, Depends, FastAPI, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi.staticfiles import StaticFiles
 from loguru import logger
 from pydantic import EmailStr
 from slowapi import Limiter
@@ -40,39 +41,27 @@ if TYPE_CHECKING:
     pass
 
 
-def _find_latest_model(model_dir: Path, pattern: str) -> Path | None:
-    """Find the latest model file matching a glob pattern.
+def _find_latest_model_dir(base_dir: Path, prefix: str) -> Path | None:
+    """Find the latest timestamped model subdirectory.
 
-    Scans ``model_dir`` for files matching ``pattern`` and returns the most
-    recent one (sorted by name, so timestamped names sort chronologically).
+    All models use timestamped subdirectories: ``{prefix}_YYYY-MM-DD_HH-MM/``.
+    Scans ``base_dir`` for matching subdirectories and returns the most recent
+    one (sorted by name, so timestamps sort chronologically).
 
     Args:
-        model_dir: Directory to search in.
-        pattern: Glob pattern (e.g. ``"*.cbm"``, ``"*.pkl"``).
+        base_dir: Parent directory (e.g. ``models/catboost``).
+        prefix: Directory name prefix (e.g. ``"catboost"``, ``"prophet"``, ``"tft"``).
 
     Returns:
-        Path to the latest matching file, or None if no match found.
+        Path to the latest matching subdirectory, or None if no match found.
     """
-    if not model_dir.exists():
+    if not base_dir.exists():
         return None
-    matches = sorted(model_dir.glob(pattern), key=lambda p: p.name)
-    return matches[-1] if matches else None
-
-
-def _find_latest_tft_dir(tft_base: Path) -> Path:
-    """Find the latest timestamped TFT model directory.
-
-    Scans ``tft_base`` for subdirectories matching ``tft_YYYY-MM-DD_HH-MM``
-    and returns the most recent one. Falls back to ``tft_base`` itself if no
-    timestamped subdirectories exist (backward compatibility).
-    """
-    if not tft_base.exists():
-        return tft_base
     subdirs = sorted(
-        (p for p in tft_base.glob("tft_*") if p.is_dir()),
+        (p for p in base_dir.glob(f"{prefix}_*") if p.is_dir()),
         key=lambda p: p.name,
     )
-    return subdirs[-1] if subdirs else tft_base
+    return subdirs[-1] if subdirs else None
 
 # ---------------------------------------------------------------------------
 # Authentication
@@ -150,24 +139,51 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         smtp_port=settings.env.smtp_port,
         username=settings.env.smtp_username,
         password=settings.env.smtp_password,
+        sender_email=settings.env.sender_email or settings.env.smtp_username,
+        sender_name=settings.api.email.sender_name,
+        subject_template=settings.api.email.subject_template,
+        body_template=settings.api.email.body_template,
     )
     app.state.email_service = EmailService(email_config)
 
-    # Initialize prediction service
+    # Initialize prediction service — prefer final_models/ (flat), fallback to timestamped
     models_dir = Path(settings.paths.models_dir)
-    catboost_path = (
-        _find_latest_model(models_dir / "catboost", "*.cbm")
-        or models_dir / "catboost" / "model.cbm"
-    )
-    prophet_path = (
-        _find_latest_model(models_dir / "prophet", "*.pkl")
-        or models_dir / "prophet" / "model.pkl"
-    )
+    final_dir = Path("final_models")
+    use_final = (final_dir / "catboost" / "model.cbm").exists()
+
+    if use_final:
+        catboost_path = final_dir / "catboost" / "model.cbm"
+        prophet_path = final_dir / "prophet" / "prophet_model.pkl"
+        tft_path = final_dir / "tft"
+        ensemble_dir = final_dir / "ensemble"
+        logger.info("Serving from final_models/ directory")
+    else:
+        catboost_dir = _find_latest_model_dir(models_dir / "catboost", "catboost")
+        catboost_path = (
+            catboost_dir / "model.cbm"
+            if catboost_dir
+            else models_dir / "catboost" / "model.cbm"
+        )
+
+        prophet_dir = _find_latest_model_dir(models_dir / "prophet", "prophet")
+        prophet_path = (
+            prophet_dir / "prophet_model.pkl"
+            if prophet_dir
+            else models_dir / "prophet" / "prophet_model.pkl"
+        )
+
+        tft_dir = _find_latest_model_dir(models_dir / "tft", "tft")
+        tft_path = tft_dir if tft_dir else models_dir / "tft"
+
+        ensemble_dir = _find_latest_model_dir(models_dir / "ensemble", "ensemble")
+        logger.info("Serving from models/ with timestamped discovery")
+
     pred_config = PredictionServiceConfig(
         models_dir=models_dir,
         catboost_path=catboost_path,
         prophet_path=prophet_path,
-        tft_path=_find_latest_tft_dir(models_dir / "tft"),
+        tft_path=tft_path,
+        ensemble_dir=ensemble_dir,
     )
     app.state.prediction_service = PredictionService(pred_config, settings)
 
@@ -236,6 +252,11 @@ app.add_middleware(
 # Add rate limiter
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# Static files for dashboard
+_static_dir = Path(__file__).parent / "static"
+if _static_dir.exists():
+    app.mount("/static", StaticFiles(directory=_static_dir), name="static")
 
 
 # ---------------------------------------------------------------------------
@@ -413,3 +434,9 @@ async def list_jobs(
             for j in jobs
         ],
     }
+
+
+@app.get("/", include_in_schema=False)
+async def root() -> FileResponse:
+    """Serve the dashboard."""
+    return FileResponse(Path(__file__).parent / "static" / "dashboard.html")

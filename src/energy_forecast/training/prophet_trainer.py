@@ -508,9 +508,19 @@ class ProphetTrainer:
         with self._tracker.start_run("prophet_final"):
             final_model = self.train_final(df, study.best_params)
 
-            # Save model via ProphetForecaster.save() for consistent naming
-            # and metadata (regressor_names, config, SHA256 hash).
-            model_dir = Path(self._settings.paths.models_dir) / "prophet"
+            # Save model to timestamped subdirectory via ProphetForecaster.save()
+            # (consistent naming, metadata with regressor_names, config, SHA256 hash).
+            from datetime import datetime
+
+            from energy_forecast.utils import TZ_ISTANBUL
+
+            run_ts = datetime.now(tz=TZ_ISTANBUL).strftime("%Y-%m-%d_%H-%M")
+            model_dir = (
+                Path(self._settings.paths.models_dir)
+                / "prophet"
+                / f"prophet_{run_ts}"
+            )
+            model_dir.mkdir(parents=True, exist_ok=True)
             forecaster = ProphetForecaster(self._prophet_config.model_dump())
             forecaster.set_model(final_model, regressor_names=list(self._regressor_names))
             forecaster.save(model_dir)

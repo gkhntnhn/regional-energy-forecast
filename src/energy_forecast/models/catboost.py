@@ -85,6 +85,12 @@ class CatBoostForecaster(BaseForecaster):
         Returns:
             DataFrame with ``consumption_mwh`` column and same index as input.
         """
+        x = x.copy()
+        cat_indices = self.model.get_cat_feature_indices()
+        if cat_indices:
+            cat_cols = [x.columns[i] for i in cat_indices if i < len(x.columns)]
+            for col in cat_cols:
+                x[col] = x[col].fillna("missing").astype(str)
         predictions: Any = self.model.predict(x)
         return pd.DataFrame({"consumption_mwh": predictions}, index=x.index)
 

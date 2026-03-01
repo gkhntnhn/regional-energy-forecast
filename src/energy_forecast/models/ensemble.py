@@ -181,7 +181,12 @@ class EnsembleForecaster(BaseForecaster):
 
         # CatBoost prediction
         if "catboost" in self._active_models and self._catboost_model is not None:
-            features = X.drop(columns=[self._target_col], errors="ignore")
+            features = X.drop(columns=[self._target_col], errors="ignore").copy()
+            cat_indices = self._catboost_model.get_cat_feature_indices()
+            if cat_indices:
+                cat_cols = [features.columns[i] for i in cat_indices if i < len(features.columns)]
+                for col in cat_cols:
+                    features[col] = features[col].fillna("missing").astype(str)
             predictions["catboost"] = np.asarray(
                 self._catboost_model.predict(features), dtype=np.float64
             )
@@ -196,14 +201,14 @@ class EnsembleForecaster(BaseForecaster):
 
         # TFT prediction (uses median quantile)
         if "tft" in self._active_models and self._tft_model is not None:
-            pred_len = self._tft_model._tft_config.training.prediction_length
             enc_len = self._tft_model._tft_config.training.encoder_length
 
-            if history is not None and len(X) > pred_len:
-                # Rolling prediction: prepend encoder context from history
+            if history is not None:
+                # TFT always needs encoder context — prepend from history
                 context = history.iloc[-enc_len:]
                 full_df = pd.concat([context, X])
                 full_df = full_df[~full_df.index.duplicated(keep="last")].sort_index()
+                # predict_rolling delegates to predict() for short inputs
                 tft_result = self._tft_model.predict_rolling(
                     full_df, target_col=self._target_col
                 )
@@ -213,7 +218,7 @@ class EnsembleForecaster(BaseForecaster):
                     tft_aligned[PREDICTION_COL].values, dtype=np.float64
                 )
             else:
-                # Standard single-window prediction (serving case, ~48 rows)
+                # No history — direct prediction (needs sufficient rows)
                 tft_result = self._tft_model.predict(X, target_col=self._target_col)
                 predictions["tft"] = np.asarray(
                     tft_result[PREDICTION_COL].values, dtype=np.float64
@@ -299,10 +304,19 @@ class EnsembleForecaster(BaseForecaster):
         with open(weights_path, encoding="utf-8") as f:
             config = json.load(f)
 
-        self._weights = config["weights"]
-        self._active_models = config.get("active_models", ["catboost", "prophet", "tft"])
-        self._target_col = config.get("target_col", "consumption")
-        self._prophet_regressors = config.get("prophet_regressors", [])
+        # Support both nested {"weights": {...}} and flat {"catboost": 0.3, ...} formats
+        if "weights" in config:
+            self._weights = config["weights"]
+        else:
+            # Flat format from ensemble_trainer — all keys are model weights
+            self._weights = {
+                k: v for k, v in config.items()
+                if k not in ("active_models", "target_col", "prophet_regressors")
+            }
+        self._active_models = config.get("active_models", self._active_models)
+        self._target_col = config.get("target_col", self._target_col)
+        if "prophet_regressors" in config:
+            self._prophet_regressors = config["prophet_regressors"]
 
         logger.info("Loaded ensemble config from {}", path)
 

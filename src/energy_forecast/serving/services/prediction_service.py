@@ -30,8 +30,9 @@ class PredictionServiceConfig(BaseModel, frozen=True):
 
     models_dir: Path = Field(default=Path("models"))
     catboost_path: Path = Field(default=Path("models/catboost/model.cbm"))
-    prophet_path: Path = Field(default=Path("models/prophet/model.pkl"))
+    prophet_path: Path = Field(default=Path("models/prophet"))
     tft_path: Path = Field(default=Path("models/tft"))
+    ensemble_dir: Path | None = Field(default=None)
     forecast_horizon: int = Field(default=48, ge=1)
 
 
@@ -101,10 +102,15 @@ class PredictionService:
             }
             self._ensemble = EnsembleForecaster(ensemble_config)
 
-            # Try to load ensemble weights if available
-            ensemble_weights_path = self._config.models_dir / "ensemble_weights.json"
-            if ensemble_weights_path.exists():
-                self._ensemble.load(self._config.models_dir)
+            # Try to load ensemble weights if available (timestamped subdir or legacy)
+            ensemble_dir = self._config.ensemble_dir
+            if ensemble_dir and (ensemble_dir / "ensemble_weights.json").exists():
+                self._ensemble.load(ensemble_dir)
+            else:
+                # Legacy fallback: models/ensemble_weights.json
+                legacy_path = self._config.models_dir / "ensemble_weights.json"
+                if legacy_path.exists():
+                    self._ensemble.load(self._config.models_dir)
 
             # Load individual models
             self._ensemble.load_models(
