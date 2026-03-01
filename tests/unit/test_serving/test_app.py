@@ -37,7 +37,7 @@ def mock_prediction_service() -> MagicMock:
 def mock_file_service(tmp_path: Path) -> MagicMock:
     """Create mock file service."""
     mock = MagicMock()
-    mock.save_upload.return_value = tmp_path / "uploaded.xlsx"
+    mock.save_upload.return_value = (tmp_path / "uploaded.xlsx", "01-03-2026_12-05-30")
     mock.create_output_xlsx.return_value = tmp_path / "output.xlsx"
     mock.cleanup_old_files.return_value = 0
     return mock

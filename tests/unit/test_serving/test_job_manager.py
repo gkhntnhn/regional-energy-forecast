@@ -26,6 +26,7 @@ def sample_job() -> Job:
     return Job(
         email="test@example.com",
         excel_path=Path("/tmp/test.xlsx"),
+        file_stem="01-03-2026_12-00-00",
     )
 
 
@@ -34,7 +35,11 @@ class TestJob:
 
     def test_job_defaults(self) -> None:
         """Test job default values."""
-        job = Job(email="test@test.com", excel_path=Path("/tmp/test.xlsx"))
+        job = Job(
+            email="test@test.com",
+            excel_path=Path("/tmp/test.xlsx"),
+            file_stem="01-03-2026_12-00-00",
+        )
 
         assert len(job.id) == 12
         assert job.status == JobStatus.PENDING
@@ -50,6 +55,7 @@ class TestJob:
             id="custom123",
             email="test@test.com",
             excel_path=Path("/tmp/test.xlsx"),
+            file_stem="01-03-2026_12-00-00",
             status=JobStatus.RUNNING,
             created_at=now,
         )
@@ -70,6 +76,7 @@ class TestJobManager:
         job = job_manager.create_job(
             email="test@test.com",
             excel_path=Path("/tmp/test.xlsx"),
+            file_stem="01-03-2026_12-00-00",
         )
 
         assert job.id in job_manager._jobs
@@ -81,6 +88,7 @@ class TestJobManager:
         job = job_manager.create_job(
             email="test@test.com",
             excel_path=Path("/tmp/test.xlsx"),
+            file_stem="01-03-2026_12-00-00",
         )
         job_manager._set_running(job.id)
 
@@ -89,6 +97,7 @@ class TestJobManager:
             job_manager.create_job(
                 email="test2@test.com",
                 excel_path=Path("/tmp/test2.xlsx"),
+                file_stem="01-03-2026_12-00-01",
             )
 
     def test_get_job(self, job_manager: JobManager) -> None:
@@ -96,6 +105,7 @@ class TestJobManager:
         created = job_manager.create_job(
             email="test@test.com",
             excel_path=Path("/tmp/test.xlsx"),
+            file_stem="01-03-2026_12-00-00",
         )
 
         found = job_manager.get_job(created.id)
@@ -111,6 +121,7 @@ class TestJobManager:
         job = job_manager.create_job(
             email="test@test.com",
             excel_path=Path("/tmp/test.xlsx"),
+            file_stem="01-03-2026_12-00-00",
         )
 
         job_manager.update_progress(job.id, "Step 1 of 3")
@@ -122,6 +133,7 @@ class TestJobManager:
         job = job_manager.create_job(
             email="test@test.com",
             excel_path=Path("/tmp/test.xlsx"),
+            file_stem="01-03-2026_12-00-00",
         )
 
         job_manager._set_running(job.id)
@@ -135,6 +147,7 @@ class TestJobManager:
         job = job_manager.create_job(
             email="test@test.com",
             excel_path=Path("/tmp/test.xlsx"),
+            file_stem="01-03-2026_12-00-00",
         )
         job_manager._set_running(job.id)
 
@@ -152,6 +165,7 @@ class TestJobManager:
         job = job_manager.create_job(
             email="test@test.com",
             excel_path=Path("/tmp/test.xlsx"),
+            file_stem="01-03-2026_12-00-00",
         )
         job_manager._set_running(job.id)
 
@@ -165,15 +179,15 @@ class TestJobManager:
     def test_get_stats(self, job_manager: JobManager) -> None:
         """Test job statistics."""
         # Create jobs in different states
-        job1 = job_manager.create_job("a@a.com", Path("/tmp/a.xlsx"))
+        job1 = job_manager.create_job("a@a.com", Path("/tmp/a.xlsx"), "01-03-2026_12-00-00")
         job_manager._set_running(job1.id)
         job_manager._complete_job(job1.id, Path("/tmp/out.xlsx"))
 
-        job2 = job_manager.create_job("b@b.com", Path("/tmp/b.xlsx"))
+        job2 = job_manager.create_job("b@b.com", Path("/tmp/b.xlsx"), "01-03-2026_12-00-01")
         job_manager._set_running(job2.id)
         job_manager._fail_job(job2.id, "error")
 
-        job_manager.create_job("c@c.com", Path("/tmp/c.xlsx"))  # pending job
+        job_manager.create_job("c@c.com", Path("/tmp/c.xlsx"), "01-03-2026_12-00-02")
 
         stats = job_manager.get_stats()
 
@@ -185,7 +199,7 @@ class TestJobManager:
     def test_cleanup_old_jobs(self, job_manager: JobManager) -> None:
         """Test cleaning up old jobs."""
         # Create an old completed job
-        job = job_manager.create_job("test@test.com", Path("/tmp/test.xlsx"))
+        job = job_manager.create_job("test@test.com", Path("/tmp/test.xlsx"), "01-03-2026_12-00-00")
         job_manager._set_running(job.id)
         job_manager._complete_job(job.id, Path("/tmp/out.xlsx"))
 
@@ -206,7 +220,7 @@ class TestJobManagerProcessJob:
         """Test successful job processing."""
         import pandas as pd
 
-        job = job_manager.create_job("test@test.com", Path("/tmp/test.xlsx"))
+        job = job_manager.create_job("test@test.com", Path("/tmp/test.xlsx"), "01-03-2026_12-00-00")
 
         # Mock services
         mock_prediction = MagicMock()
@@ -230,13 +244,15 @@ class TestJobManagerProcessJob:
 
         assert job_manager.get_job(job.id).status == JobStatus.COMPLETED
         mock_prediction.run_prediction.assert_called_once()
-        mock_file.create_output_xlsx.assert_called_once()
+        # Verify file_stem is passed (not job_id)
+        call_args = mock_file.create_output_xlsx.call_args
+        assert call_args[0][1] == "01-03-2026_12-00-00"
         mock_email.send_prediction_result.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_process_job_failure(self, job_manager: JobManager) -> None:
         """Test job processing with failure (error is captured, not re-raised)."""
-        job = job_manager.create_job("test@test.com", Path("/tmp/test.xlsx"))
+        job = job_manager.create_job("test@test.com", Path("/tmp/test.xlsx"), "01-03-2026_12-00-00")
 
         # Mock services with error
         mock_prediction = MagicMock()

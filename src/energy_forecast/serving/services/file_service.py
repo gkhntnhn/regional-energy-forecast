@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -53,14 +52,16 @@ class FileService:
             self._config.output_dir,
         )
 
-    def save_upload(self, file: UploadFile) -> Path:
+    def save_upload(self, file: UploadFile) -> tuple[Path, str]:
         """Save uploaded file to disk with validation.
 
         Args:
             file: FastAPI UploadFile object.
 
         Returns:
-            Path to saved file.
+            Tuple of (path to saved file, file_stem for output pairing).
+            The file_stem is a DD-MM-YYYY_HH-MM-SS timestamp shared between
+            the input and output files for traceability.
 
         Raises:
             InvalidFileTypeError: If file extension not allowed.
@@ -77,10 +78,9 @@ class FileService:
                 f"File type '{ext}' not allowed. Allowed: {self._config.allowed_extensions}"
             )
 
-        # Generate unique filename
-        unique_id = uuid.uuid4().hex[:8]
-        timestamp = datetime.now(tz=TZ_ISTANBUL).strftime("%Y%m%d_%H%M%S")
-        safe_filename = f"{timestamp}_{unique_id}{ext}"
+        # Generate traceable filename: DD-MM-YYYY_HH-MM-SS_Input.xlsx
+        file_stem = datetime.now(tz=TZ_ISTANBUL).strftime("%d-%m-%Y_%H-%M-%S")
+        safe_filename = f"{file_stem}_Input{ext}"
         save_path = self._config.upload_dir / safe_filename
 
         try:
@@ -103,7 +103,7 @@ class FileService:
                 save_path.name,
                 size_mb,
             )
-            return save_path
+            return save_path, file_stem
 
         except (FileTooLargeError, InvalidFileTypeError):
             raise
@@ -115,19 +115,18 @@ class FileService:
     def create_output_xlsx(
         self,
         predictions: pd.DataFrame,
-        job_id: str,
+        file_stem: str,
     ) -> Path:
         """Create output Excel file with predictions.
 
         Args:
             predictions: DataFrame with datetime index and prediction column.
-            job_id: Job identifier for filename.
+            file_stem: Shared timestamp stem (DD-MM-YYYY_HH-MM-SS) from upload.
 
         Returns:
             Path to created Excel file.
         """
-        timestamp = datetime.now(tz=TZ_ISTANBUL).strftime("%Y%m%d_%H%M%S")
-        filename = f"forecast_{job_id}_{timestamp}.xlsx"
+        filename = f"{file_stem}_Forecast.xlsx"
         output_path = self._config.output_dir / filename
 
         # Prepare DataFrame for export — customer-friendly column names

@@ -76,11 +76,13 @@ class TestFileService:
         mock_upload_file: MagicMock,
     ) -> None:
         """Test successful file upload."""
-        path = file_service.save_upload(mock_upload_file)
+        path, file_stem = file_service.save_upload(mock_upload_file)
 
         assert path.exists()
         assert path.suffix == ".xlsx"
         assert path.parent == file_service._config.upload_dir
+        assert path.name.endswith("_Input.xlsx")
+        assert file_stem in path.name
 
     def test_save_upload_invalid_extension(
         self,
@@ -115,11 +117,12 @@ class TestFileService:
             index=pd.date_range("2025-01-01", periods=3, freq="h"),
         )
 
-        path = file_service.create_output_xlsx(predictions, "test123")
+        file_stem = "01-03-2026_12-05-30"
+        path = file_service.create_output_xlsx(predictions, file_stem)
 
         assert path.exists()
         assert path.suffix == ".xlsx"
-        assert "test123" in path.name
+        assert path.name == f"{file_stem}_Forecast.xlsx"
 
         # Verify content
         df = pd.read_excel(path)

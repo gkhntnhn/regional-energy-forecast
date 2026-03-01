@@ -27,6 +27,7 @@ class Job(BaseModel):
     id: str = Field(default_factory=lambda: uuid.uuid4().hex[:12])
     email: str
     excel_path: Path
+    file_stem: str
     status: JobStatus = JobStatus.PENDING
     progress: str | None = None
     error: str | None = None
@@ -65,12 +66,13 @@ class JobManager:
             return self._jobs.get(self._active_job_id)
         return None
 
-    def create_job(self, email: str, excel_path: Path) -> Job:
+    def create_job(self, email: str, excel_path: Path, file_stem: str) -> Job:
         """Create a new pending job.
 
         Args:
             email: Recipient email address.
             excel_path: Path to uploaded Excel file.
+            file_stem: Shared timestamp stem for input/output file pairing.
 
         Returns:
             Created Job instance.
@@ -85,7 +87,7 @@ class JobManager:
                 "Please wait for it to complete."
             )
 
-        job = Job(email=email, excel_path=excel_path)
+        job = Job(email=email, excel_path=excel_path, file_stem=file_stem)
         self._jobs[job.id] = job
         logger.info("Created job: {} for {}", job.id, email)
         return job
@@ -184,7 +186,7 @@ class JobManager:
 
                 # Create output file
                 self.update_progress(job.id, "Creating output file...")
-                output_path = file_service.create_output_xlsx(predictions, job.id)
+                output_path = file_service.create_output_xlsx(predictions, job.file_stem)
 
                 # Send email
                 self.update_progress(job.id, "Sending email...")

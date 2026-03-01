@@ -320,7 +320,7 @@ async def predict(
     Returns:
         Job creation response with job_id.
     """
-    # TODO: forecast_type parameter will be implemented (day_ahead vs day_ahead_and_intraday)
+    # TODO(future): forecast_type toggle (GOP-only vs GOP+GİP) — currently only T+1 (24h)
     # Get services from app state
     file_service: FileService = request.app.state.file_service
     job_manager: JobManager = request.app.state.job_manager
@@ -344,10 +344,10 @@ async def predict(
         )
 
     # Save uploaded file
-    excel_path = file_service.save_upload(file)
+    excel_path, file_stem = file_service.save_upload(file)
 
     # Create job
-    job = job_manager.create_job(email=str(email), excel_path=excel_path)
+    job = job_manager.create_job(email=str(email), excel_path=excel_path, file_stem=file_stem)
 
     # Queue background task
     background_tasks.add_task(
