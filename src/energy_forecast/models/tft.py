@@ -322,6 +322,7 @@ class TFTForecaster(BaseForecaster):
             train=True,
             batch_size=cfg.batch_size,
             num_workers=cfg.num_workers,
+            persistent_workers=cfg.num_workers > 0,
         )
 
         val_dataloader = None
@@ -330,6 +331,7 @@ class TFTForecaster(BaseForecaster):
                 train=False,
                 batch_size=cfg.batch_size,
                 num_workers=cfg.num_workers,
+                persistent_workers=cfg.num_workers > 0,
             )
 
         # Build model
@@ -423,6 +425,7 @@ class TFTForecaster(BaseForecaster):
             train=False,
             batch_size=cfg.batch_size * 2,
             num_workers=cfg.num_workers,
+            persistent_workers=cfg.num_workers > 0,
         )
 
         # Generate predictions
