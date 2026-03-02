@@ -390,7 +390,7 @@ class TestComparisonDF:
         df = trainer._generate_comparison_df(model_results, training_result)
 
         assert len(df) == 4  # 3 models + 1 ensemble
-        assert "Ensemble" in df["Model"].values
+        assert any("Ensemble" in m for m in df["Model"].values)
 
     def test_comparison_df_two_models_has_three_rows(self) -> None:
         settings = _get_test_settings()
@@ -427,7 +427,7 @@ class TestComparisonDF:
         model_names = list(df["Model"])
         assert "Catboost" in model_names
         assert "Prophet" in model_names
-        assert "Ensemble" in model_names
+        assert any("Ensemble" in m for m in model_names)
 
 
 # ---------------------------------------------------------------------------

@@ -58,6 +58,8 @@ class TFTSplitResult:
     test_month: str
     val_predictions: np.ndarray[Any, np.dtype[np.floating[Any]]] | None = None
     val_actuals: np.ndarray[Any, np.dtype[np.floating[Any]]] | None = None
+    test_predictions: np.ndarray[Any, np.dtype[np.floating[Any]]] | None = None
+    test_actuals: np.ndarray[Any, np.dtype[np.floating[Any]]] | None = None
 
 
 @dataclass(frozen=True)
@@ -246,6 +248,8 @@ class TFTTrainer:
             test_month=split_info.test_start.strftime("%Y-%m"),
             val_predictions=val_pred_arr,
             val_actuals=y_val,
+            test_predictions=test_pred_arr,
+            test_actuals=y_test,
         )
 
     # -- All splits training --

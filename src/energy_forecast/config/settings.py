@@ -1095,9 +1095,35 @@ class EnsembleFallbackConfig(BaseModel, frozen=True):
     enabled: bool = True
 
 
+class StackingMetaLearnerConfig(BaseModel, frozen=True):
+    """CatBoost meta-learner hyperparameters for stacking ensemble."""
+
+    depth: int = 2
+    iterations: int = 500
+    early_stopping_rounds: int = 30
+    learning_rate: float = 0.05
+    loss_function: str = "RMSE"
+    l2_leaf_reg: float = 3.0
+    task_type: str = "CPU"
+
+
+class StackingConfig(BaseModel, frozen=True):
+    """Stacking ensemble configuration."""
+
+    meta_learner: StackingMetaLearnerConfig = Field(
+        default_factory=StackingMetaLearnerConfig
+    )
+    context_features: list[str] = Field(
+        default_factory=lambda: [
+            "hour", "day_of_week", "is_weekend", "is_holiday", "month",
+        ]
+    )
+
+
 class EnsembleConfig(BaseModel, frozen=True):
     """Ensemble model configuration."""
 
+    mode: str = "stacking"
     active_models: list[str] = Field(
         default_factory=lambda: ["catboost", "prophet", "tft"]
     )
@@ -1105,6 +1131,7 @@ class EnsembleConfig(BaseModel, frozen=True):
     optimization: EnsembleOptimizationConfig = Field(
         default_factory=EnsembleOptimizationConfig,
     )
+    stacking: StackingConfig = Field(default_factory=StackingConfig)
     fallback: EnsembleFallbackConfig = Field(default_factory=EnsembleFallbackConfig)
 
     @field_validator("active_models")

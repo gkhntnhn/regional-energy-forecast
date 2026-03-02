@@ -1,4 +1,7 @@
-# Ensemble configuration for CatBoost + Prophet + TFT weighted average
+# Ensemble configuration for CatBoost + Prophet + TFT
+
+# Ensemble mode: "stacking" (CatBoost meta-learner) or "weighted_average" (fallback)
+mode: "stacking"
 
 # Active models (can be overridden via CLI --models flag)
 active_models:
@@ -6,14 +9,14 @@ active_models:
   - prophet
   - tft
 
-# Default weights (used when optimization is disabled)
+# Default weights (used when mode=weighted_average or as fallback)
 # Weights are auto-normalized to sum=1 based on active models
 weights:
   catboost: 0.45
   prophet: 0.30
   tft: 0.25
 
-# Weight optimization settings
+# Weight optimization settings (used when mode=weighted_average)
 optimization:
   enabled: true
   metric: "mape"  # Metric to minimize
@@ -22,6 +25,23 @@ optimization:
     catboost: [0.2, 0.7]     # R2: Best MAPE, min weight raised
     prophet: [0.1, 0.5]      # R2: Complementary bias, max slightly reduced
     tft: [0.1, 0.5]          # R2: Uncertainty quantification, max slightly reduced
+
+# Stacking meta-learner config (used when mode=stacking)
+stacking:
+  meta_learner:
+    depth: 2                      # Very shallow — only learns conditional weighting
+    iterations: 500
+    early_stopping_rounds: 30
+    learning_rate: 0.05
+    loss_function: "RMSE"
+    l2_leaf_reg: 3.0
+    task_type: "CPU"              # Meta-learner is tiny, CPU sufficient
+  context_features:               # Context features added to OOF predictions
+    - hour
+    - day_of_week
+    - is_weekend
+    - is_holiday
+    - month
 
 # Fallback behavior when one model fails
 fallback:

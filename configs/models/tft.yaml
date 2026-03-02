@@ -11,18 +11,18 @@ training:
   encoder_length: 168  # 7 days
   prediction_length: 48
   batch_size: 128             # GPU-optimized
-  max_epochs: 50              # production training, early stopping decides
+  max_epochs: 2               # SMOKE TEST (prod: 50)
   learning_rate: 0.001
   early_stop_patience: 7      # 5→7 (allow longer convergence plateau)
   gradient_clip_val: 0.1
   random_seed: 42
-  accelerator: "gpu"
+  accelerator: "auto"         # SMOKE TEST (prod: gpu)
   num_workers: 4              # pod has 16+ vCPU for data loading
   enable_progress_bar: false  # suppress verbose progress bars in log files
   precision: "16-mixed"       # Mixed precision for ~30-40% GPU speedup
 
 optimization:
-  fast_epochs: 8              # 5→8 (better signal for Optuna pruning decisions)
+  fast_epochs: 2              # SMOKE TEST (prod: 8)
   optuna_splits: 3            # 3 splits for HPO evaluation
   val_size_hours: 720  # ~1 month (24 * 30) for final model validation
 

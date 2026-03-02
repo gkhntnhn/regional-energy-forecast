@@ -44,6 +44,8 @@ class SplitResult:
     test_month: str
     val_predictions: np.ndarray[Any, np.dtype[np.floating[Any]]] | None = None
     val_actuals: np.ndarray[Any, np.dtype[np.floating[Any]]] | None = None
+    test_predictions: np.ndarray[Any, np.dtype[np.floating[Any]]] | None = None
+    test_actuals: np.ndarray[Any, np.dtype[np.floating[Any]]] | None = None
 
 
 @dataclass(frozen=True)
@@ -177,6 +179,8 @@ class CatBoostTrainer:
             test_month=split_info.test_start.strftime("%Y-%m"),
             val_predictions=val_pred,
             val_actuals=y_val.to_numpy(),
+            test_predictions=test_pred,
+            test_actuals=y_test.to_numpy(),
         )
 
     # -- All splits training --

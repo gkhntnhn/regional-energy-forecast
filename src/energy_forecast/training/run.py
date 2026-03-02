@@ -305,7 +305,7 @@ def run_ensemble(
     )
     result = trainer.run(data)
 
-    # Save weights to timestamped subdirectory
+    # Save ensemble artifacts to timestamped subdirectory
     from datetime import datetime
 
     from energy_forecast.utils import TZ_ISTANBUL
@@ -313,13 +313,25 @@ def run_ensemble(
     run_ts = datetime.now(tz=TZ_ISTANBUL).strftime("%Y-%m-%d_%H-%M")
     ensemble_dir = Path(settings.paths.models_dir) / "ensemble" / f"ensemble_{run_ts}"
     ensemble_dir.mkdir(parents=True, exist_ok=True)
+
+    # Save weights/config
     weights_path = ensemble_dir / "ensemble_weights.json"
     save_ensemble_weights(result.training_result.optimized_weights, weights_path)
 
+    # Save meta-learner if stacking mode
+    if result.meta_model is not None:
+        meta_path = ensemble_dir / "meta_model.cbm"
+        result.meta_model.save_model(str(meta_path))
+        logger.info("Saved meta-learner to {}", meta_path)
+
+    mode = result.training_result.mode
+    logger.info("Ensemble mode: {}", mode)
     logger.info("Ensemble val MAPE: {:.2f}%", result.training_result.avg_val_mape)
-    for model_name, mape in result.training_result.model_avg_val_mapes.items():
-        logger.info("{} val MAPE: {:.2f}%", model_name.capitalize(), mape)
-    logger.info("Optimized weights: {}", result.training_result.optimized_weights)
+    logger.info("Ensemble test MAPE: {:.2f}%", result.training_result.avg_test_mape)
+    for model_name, mape_val in result.training_result.model_avg_val_mapes.items():
+        logger.info("{} val MAPE: {:.2f}%", model_name.capitalize(), mape_val)
+    if mode == "weighted_average":
+        logger.info("Optimized weights: {}", result.training_result.optimized_weights)
     logger.info("Training time: {:.1f}s", result.training_time_seconds)
 
 
