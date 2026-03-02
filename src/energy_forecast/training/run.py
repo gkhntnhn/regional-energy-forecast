@@ -387,6 +387,11 @@ def main(argv: list[str] | None = None) -> None:
         logger.error("Unknown model: {}", args.model)
         sys.exit(1)
 
+    if args.model in ("tft", "ensemble"):
+        from energy_forecast.utils.logging import suppress_training_noise
+
+        suppress_training_noise()
+
     runner()
 
 

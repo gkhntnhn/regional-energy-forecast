@@ -23,3 +23,44 @@ def setup_logger(level: str = "INFO") -> None:
             "<cyan>{name}</cyan> - <level>{message}</level>"
         ),
     )
+
+
+def suppress_training_noise() -> None:
+    """Suppress noisy warnings and logging from training dependencies.
+
+    Silences Lightning banners/tips/GPU info, pytorch-forecasting hints,
+    Optuna per-trial INFO logs, and torch deprecation warnings.
+    Keeps WARNING+ from all libs so real errors remain visible.
+
+    Call once before TFT or ensemble training starts.
+    """
+    import logging as stdlib_logging
+    import warnings
+
+    # --- warnings.warn() calls ---
+    # Lightning: checkpoint hints, nn.Module save recommendations, deprecations
+    warnings.filterwarnings("ignore", category=UserWarning, module="lightning")
+    warnings.filterwarnings("ignore", category=DeprecationWarning, module="lightning")
+    # pytorch-forecasting: dataset validation hints
+    warnings.filterwarnings("ignore", category=UserWarning, module="pytorch_forecasting")
+    # torch: FutureWarning (API changes), DeprecationWarning (cuda.amp → torch.amp)
+    warnings.filterwarnings("ignore", category=FutureWarning, module="torch")
+    warnings.filterwarnings("ignore", category=DeprecationWarning, module="torch")
+
+    # --- stdlib logging (Lightning banners, Optuna trial logs) ---
+    # Lightning: kills "GPU available", "TPU available", "LOCAL_RANK", "Tip" banners
+    stdlib_logging.getLogger("lightning.pytorch").setLevel(stdlib_logging.WARNING)
+    stdlib_logging.getLogger("lightning.fabric").setLevel(stdlib_logging.WARNING)
+    # pytorch-forecasting: suppress dataset creation INFO
+    stdlib_logging.getLogger("pytorch_forecasting").setLevel(stdlib_logging.WARNING)
+
+    # Optuna: suppress "[I] Trial X finished..." and "[I] study created..."
+    import optuna
+
+    optuna.logging.set_verbosity(optuna.logging.WARNING)
+
+    # Set Tensor Core precision to avoid "you should set precision" warning
+    import torch
+
+    if torch.cuda.is_available():
+        torch.set_float32_matmul_precision("high")
