@@ -13,6 +13,7 @@ Uses the same shared infrastructure as CatBoostTrainer and ProphetTrainer:
 from __future__ import annotations
 
 import gc
+import threading
 import time
 import warnings
 from collections.abc import Callable
@@ -241,7 +242,12 @@ class TFTTrainer:
             # Free GPU/CPU memory from this fold's model
             del model
             gc.collect()
-            if torch.cuda.is_available():
+            # empty_cache evicts ALL GPU cache — unsafe when parallel threads share
+            # the same CUDA context (n_jobs > 1).  Let PyTorch manage memory instead.
+            if (
+                torch.cuda.is_available()
+                and self._tft_config.optimization.n_jobs <= 1
+            ):
                 torch.cuda.empty_cache()
 
         # Align predictions with actuals
@@ -350,6 +356,7 @@ class TFTTrainer:
         )
 
         trial_results: dict[int, list[TFTSplitResult]] = {}
+        cache_lock = threading.Lock()
 
         def objective(trial: Trial) -> float:
             suggested = suggest_params(trial, search_space)
@@ -381,7 +388,8 @@ class TFTTrainer:
             avg_mape = float(np.mean(val_mapes))
             trial.set_user_attr("val_mapes", val_mapes)
             trial.set_user_attr("avg_test_mape", float(np.mean(test_mapes)))
-            trial_results[trial.number] = split_results
+            with cache_lock:
+                trial_results[trial.number] = split_results
             return avg_mape
 
         return objective, trial_results
@@ -414,7 +422,16 @@ class TFTTrainer:
         )
 
         objective, trial_results = self._create_objective(df)
-        study.optimize(objective, n_trials=self._search_config.n_trials)
+
+        n_jobs = self._tft_config.optimization.n_jobs
+        logger.info(
+            "TFT Optuna: {} trials, {} parallel job(s)",
+            self._search_config.n_trials,
+            n_jobs,
+        )
+        study.optimize(
+            objective, n_trials=self._search_config.n_trials, n_jobs=n_jobs
+        )
 
         logger.info(
             "Optimization done — best val MAPE: {:.2f}%, params: {}",

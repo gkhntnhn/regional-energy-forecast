@@ -26,6 +26,7 @@ optimization:
   # fast_epochs/retrain pattern.  All trials now train at max_epochs; bad
   # trials are pruned early by MedianPruner via PyTorchLightningPruningCallback.
   optuna_splits: 3            # 3 splits for HPO evaluation
+  n_jobs: 1                   # Local: 1 (serial), RunPod A100: 8 (parallel)
   val_size_hours: 720  # ~1 month (24 * 30) for final model validation
 
 # R2: Covariates pruned via CatBoost feature importance (top-75, >= 0.1%)
