@@ -204,10 +204,11 @@ class TestTFTOptunaObjective:
         from energy_forecast.training.tft_trainer import TFTTrainer
 
         trainer = TFTTrainer(mock_settings)
-        # fast_epochs is now read from config (tft.optimization.fast_epochs)
-        objective = trainer._create_objective(sample_df)
+        # _create_objective returns (objective_fn, trial_results_cache)
+        objective, trial_results = trainer._create_objective(sample_df)
 
         assert callable(objective)
+        assert isinstance(trial_results, dict)
 
     @pytest.mark.slow
     def test_objective_returns_float(
@@ -219,7 +220,7 @@ class TestTFTOptunaObjective:
         from energy_forecast.training.tft_trainer import TFTTrainer
 
         trainer = TFTTrainer(mock_settings)
-        objective = trainer._create_objective(sample_df)
+        objective, _trial_results = trainer._create_objective(sample_df)
 
         # Create mock trial
         mock_trial = MagicMock()

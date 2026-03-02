@@ -244,9 +244,6 @@ class EnsembleTrainer:
         errors: dict[str, Exception] = {}
 
         for model_name, trainer in self._trainers.items():
-            # Ensemble needs full split results for weight optimization —
-            # force validation even when skip_validation_after_optuna is set
-            trainer._skip_validation = False
             try:
                 logger.info("Training {} model...", model_name)
                 result = trainer.run(df)

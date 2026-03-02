@@ -301,17 +301,14 @@ class TFTTrainer:
     def _create_objective(
         self,
         df: pd.DataFrame,
-    ) -> Callable[[Trial], float]:
+    ) -> tuple[Callable[[Trial], float], dict[int, list[TFTSplitResult]]]:
         """Create Optuna objective using dynamic YAML search space.
 
         Uses ``optuna_splits`` CV splits (default 2) with reduced epochs
         to balance speed and robustness against seasonality bias.
 
-        Args:
-            df: Training data.
-
         Returns:
-            Objective function for Optuna.
+            Tuple of (objective function, trial split results cache).
         """
         fast_epochs = self._tft_config.optimization.fast_epochs
         n_optuna_splits = self._tft_config.optimization.optuna_splits
@@ -335,10 +332,13 @@ class TFTTrainer:
             len(all_splits),
         )
 
+        trial_results: dict[int, list[TFTSplitResult]] = {}
+
         def objective(trial: Trial) -> float:
             suggested = suggest_params(trial, search_space)
             val_mapes: list[float] = []
             test_mapes: list[float] = []
+            split_results: list[TFTSplitResult] = []
 
             for fold_idx, (info, train_df, val_df, test_df) in enumerate(
                 selected_splits
@@ -354,6 +354,7 @@ class TFTTrainer:
                     )
                     val_mapes.append(result.val_metrics.mape)
                     test_mapes.append(result.test_metrics.mape)
+                    split_results.append(result)
 
                     trial.report(result.val_metrics.mape, fold_idx)
                     if trial.should_prune():
@@ -367,9 +368,10 @@ class TFTTrainer:
             avg_mape = float(np.mean(val_mapes))
             trial.set_user_attr("val_mapes", val_mapes)
             trial.set_user_attr("avg_test_mape", float(np.mean(test_mapes)))
+            trial_results[trial.number] = split_results
             return avg_mape
 
-        return objective
+        return objective, trial_results
 
     # -- Optimize --
 
@@ -395,7 +397,7 @@ class TFTTrainer:
             pruner=MedianPruner(n_startup_trials=3, n_warmup_steps=1),
         )
 
-        objective = self._create_objective(df)
+        objective, trial_results = self._create_objective(df)
         study.optimize(objective, n_trials=self._search_config.n_trials)
 
         logger.info(
@@ -404,7 +406,24 @@ class TFTTrainer:
             study.best_params,
         )
 
-        if self._skip_validation:
+        best_trial_num = study.best_trial.number
+        fast_epochs = self._tft_config.optimization.fast_epochs
+        max_epochs = self._tft_config.training.max_epochs
+
+        if fast_epochs >= max_epochs and best_trial_num in trial_results:
+            cached_splits = trial_results[best_trial_num]
+            best_result = TFTTrainingResult(
+                split_results=cached_splits,
+                avg_val_mape=study.best_value,
+                avg_test_mape=float(
+                    study.best_trial.user_attrs.get("avg_test_mape", float("nan"))
+                ),
+                std_val_mape=float(
+                    np.std([sr.val_metrics.mape for sr in cached_splits])
+                ),
+            )
+            logger.info("Using cached predictions from trial {}", best_trial_num)
+        elif self._skip_validation:
             logger.info("Skipping post-Optuna validation (skip_validation_after_optuna=true)")
             best_result = TFTTrainingResult(
                 split_results=[],
@@ -415,6 +434,10 @@ class TFTTrainer:
                 std_val_mape=0.0,
             )
         else:
+            logger.info(
+                "TFT retraining with max_epochs={} (fast_epochs={})",
+                max_epochs, fast_epochs,
+            )
             best_result = self._train_all_splits(df, study.best_params)
 
         return study, best_result

@@ -394,24 +394,25 @@ class ProphetTrainer:
 
     # -- Optuna objective (dynamic from YAML) --
 
-    def _create_objective(self, df: pd.DataFrame) -> Callable[[Trial], float]:
+    def _create_objective(
+        self, df: pd.DataFrame
+    ) -> tuple[Callable[[Trial], float], dict[int, ProphetTrainingResult]]:
         """Create Optuna objective using dynamic YAML search space.
 
-        Args:
-            df: Training data.
-
         Returns:
-            Objective function for Optuna.
+            Tuple of (objective function, trial results cache).
         """
         search_space = self._search_config.search_space
+        trial_results: dict[int, ProphetTrainingResult] = {}
 
         def objective(trial: Trial) -> float:
             suggested = suggest_params(trial, search_space)
             result = self._train_all_splits(df, suggested, trial=trial)
             trial.set_user_attr("avg_test_mape", result.avg_test_mape)
+            trial_results[trial.number] = result
             return result.avg_val_mape
 
-        return objective
+        return objective, trial_results
 
     # -- Optimize --
 
@@ -434,7 +435,7 @@ class ProphetTrainer:
             pruner=MedianPruner(n_startup_trials=3, n_warmup_steps=2),
         )
 
-        objective = self._create_objective(df)
+        objective, trial_results = self._create_objective(df)
         study.optimize(objective, n_trials=self._search_config.n_trials)
 
         logger.info(
@@ -443,7 +444,12 @@ class ProphetTrainer:
             study.best_params,
         )
 
-        if self._skip_validation:
+        best_trial_num = study.best_trial.number
+
+        if best_trial_num in trial_results:
+            best_result = trial_results[best_trial_num]
+            logger.info("Using cached predictions from trial {}", best_trial_num)
+        elif self._skip_validation:
             logger.info("Skipping post-Optuna validation (skip_validation_after_optuna=true)")
             best_result = ProphetTrainingResult(
                 split_results=[],
@@ -455,6 +461,7 @@ class ProphetTrainer:
                 regressor_names=list(self._regressor_names),
             )
         else:
+            logger.warning("Cache miss for trial {}, retraining", best_trial_num)
             best_result = self._train_all_splits(df, study.best_params)
 
         return study, best_result
