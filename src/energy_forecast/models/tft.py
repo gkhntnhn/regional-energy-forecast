@@ -217,11 +217,16 @@ class TFTForecaster(BaseForecaster):
 
         return model
 
-    def _create_trainer(self, max_epochs: int | None = None) -> pl.Trainer:
+    def _create_trainer(
+        self,
+        max_epochs: int | None = None,
+        extra_callbacks: list[Any] | None = None,
+    ) -> pl.Trainer:
         """Create PyTorch Lightning trainer.
 
         Args:
             max_epochs: Override max epochs (for testing).
+            extra_callbacks: Additional Lightning callbacks (e.g. Optuna pruning).
 
         Returns:
             Configured lightning Trainer.
@@ -243,6 +248,9 @@ class TFTForecaster(BaseForecaster):
                     mode="min",
                 )
             )
+
+        if extra_callbacks:
+            callbacks.extend(extra_callbacks)
 
         epochs = max_epochs if max_epochs is not None else cfg.max_epochs
 
@@ -281,6 +289,7 @@ class TFTForecaster(BaseForecaster):
         """
         target_col = kwargs.get("target_col", self._target_col)
         max_epochs = kwargs.get("max_epochs")
+        extra_callbacks: list[Any] | None = kwargs.get("callbacks")
 
         logger.info(
             "Starting TFT training | samples={} | val={}",
@@ -327,7 +336,7 @@ class TFTForecaster(BaseForecaster):
         self._model = self._build_model(training_dataset)
 
         # Create trainer and fit
-        trainer = self._create_trainer(max_epochs)
+        trainer = self._create_trainer(max_epochs, extra_callbacks=extra_callbacks)
         trainer.fit(
             self._model,
             train_dataloaders=train_dataloader,

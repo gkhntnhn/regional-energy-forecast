@@ -191,6 +191,7 @@ class TFTTrainer:
         test_df: pd.DataFrame,
         params: dict[str, Any],
         max_epochs: int | None = None,
+        trial: Trial | None = None,
     ) -> TFTSplitResult:
         """Train TFT on a single CV split.
 
@@ -201,26 +202,47 @@ class TFTTrainer:
             test_df: Test data.
             params: Hyperparameters.
             max_epochs: Override max epochs (for faster optimization).
+            trial: Optuna trial for epoch-level pruning callback.
 
         Returns:
             TFTSplitResult with metrics.
+
+        Raises:
+            TrialPruned: When epoch-level pruning determines the trial is unpromising.
         """
         # Build config with suggested params
         tft_config = self._build_tft_config(params)
 
-        # Create and train model
-        model = TFTForecaster(tft_config)
-        model.train(
-            train_df,
-            val_df,
-            target_col=self._target_col,
-            max_epochs=max_epochs,
-        )
+        # Create pruning callback for epoch-level Optuna integration
+        callbacks: list[Any] = []
+        if trial is not None:
+            from optuna.integration import PyTorchLightningPruningCallback
 
-        # Predictions
-        train_pred = model.predict(train_df, target_col=self._target_col)
-        val_pred = model.predict(val_df, target_col=self._target_col)
-        test_pred = model.predict(test_df, target_col=self._target_col)
+            callbacks.append(
+                PyTorchLightningPruningCallback(trial, monitor="val_loss")
+            )
+
+        # Create and train model (try/finally ensures GPU memory cleanup on pruning)
+        model = TFTForecaster(tft_config)
+        try:
+            model.train(
+                train_df,
+                val_df,
+                target_col=self._target_col,
+                max_epochs=max_epochs,
+                callbacks=callbacks or None,
+            )
+
+            # Predictions
+            train_pred = model.predict(train_df, target_col=self._target_col)
+            val_pred = model.predict(val_df, target_col=self._target_col)
+            test_pred = model.predict(test_df, target_col=self._target_col)
+        finally:
+            # Free GPU/CPU memory from this fold's model
+            del model
+            gc.collect()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
 
         # Align predictions with actuals
         y_train = np.asarray(train_df[self._target_col].values[-len(train_pred):], dtype=np.float64)
@@ -232,12 +254,6 @@ class TFTTrainer:
         train_pred_arr = np.asarray(train_pred[PREDICTION_COL].values, dtype=np.float64)
         val_pred_arr = np.asarray(val_pred[PREDICTION_COL].values, dtype=np.float64)
         test_pred_arr = np.asarray(test_pred[PREDICTION_COL].values, dtype=np.float64)
-
-        # Free GPU/CPU memory from this fold's model
-        del model
-        gc.collect()
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
 
         return TFTSplitResult(
             split_idx=split_info.split_idx,
@@ -304,13 +320,14 @@ class TFTTrainer:
     ) -> tuple[Callable[[Trial], float], dict[int, list[TFTSplitResult]]]:
         """Create Optuna objective using dynamic YAML search space.
 
-        Uses ``optuna_splits`` CV splits (default 2) with reduced epochs
-        to balance speed and robustness against seasonality bias.
+        Uses ``optuna_splits`` CV splits with epoch-level pruning via
+        ``PyTorchLightningPruningCallback``.  All trials train at full
+        ``max_epochs``; bad trials are pruned early by the MedianPruner
+        based on ``val_loss`` reported each epoch.
 
         Returns:
             Tuple of (objective function, trial split results cache).
         """
-        fast_epochs = self._tft_config.optimization.fast_epochs
         n_optuna_splits = self._tft_config.optimization.optuna_splits
         search_space = self._search_config.search_space
 
@@ -327,7 +344,7 @@ class TFTTrainer:
             selected_splits = [all_splits[i] for i in indices]
 
         logger.info(
-            "TFT Optuna: using {}/{} CV splits for objective",
+            "TFT Optuna: using {}/{} CV splits, epoch-level pruning active",
             len(selected_splits),
             len(all_splits),
         )
@@ -340,7 +357,7 @@ class TFTTrainer:
             test_mapes: list[float] = []
             split_results: list[TFTSplitResult] = []
 
-            for fold_idx, (info, train_df, val_df, test_df) in enumerate(
+            for _fold_idx, (info, train_df, val_df, test_df) in enumerate(
                 selected_splits
             ):
                 try:
@@ -350,15 +367,11 @@ class TFTTrainer:
                         val_df,
                         test_df,
                         suggested,
-                        max_epochs=fast_epochs,
+                        trial=trial,
                     )
                     val_mapes.append(result.val_metrics.mape)
                     test_mapes.append(result.test_metrics.mape)
                     split_results.append(result)
-
-                    trial.report(result.val_metrics.mape, fold_idx)
-                    if trial.should_prune():
-                        raise TrialPruned()
                 except TrialPruned:
                     raise
                 except Exception as e:
@@ -394,7 +407,10 @@ class TFTTrainer:
             storage=storage,
             load_if_exists=True,
             sampler=TPESampler(seed=self._tft_config.training.random_seed),
-            pruner=MedianPruner(n_startup_trials=3, n_warmup_steps=1),
+            pruner=MedianPruner(
+                n_startup_trials=2,  # First 2 trials run uninterrupted (reference)
+                n_warmup_steps=3,    # First 3 epochs per trial safe (model stabilization)
+            ),
         )
 
         objective, trial_results = self._create_objective(df)
@@ -406,11 +422,11 @@ class TFTTrainer:
             study.best_params,
         )
 
+        # Epoch-level pruning means all trials run at max_epochs, so the best
+        # trial's cached results are production-quality — no retrain needed.
         best_trial_num = study.best_trial.number
-        fast_epochs = self._tft_config.optimization.fast_epochs
-        max_epochs = self._tft_config.training.max_epochs
 
-        if fast_epochs >= max_epochs and best_trial_num in trial_results:
+        if best_trial_num in trial_results:
             cached_splits = trial_results[best_trial_num]
             best_result = TFTTrainingResult(
                 split_results=cached_splits,
@@ -434,10 +450,7 @@ class TFTTrainer:
                 std_val_mape=0.0,
             )
         else:
-            logger.info(
-                "TFT retraining with max_epochs={} (fast_epochs={})",
-                max_epochs, fast_epochs,
-            )
+            logger.info("Cache miss for best trial — retraining on all splits")
             best_result = self._train_all_splits(df, study.best_params)
 
         return study, best_result

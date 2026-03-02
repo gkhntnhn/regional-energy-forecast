@@ -24,6 +24,7 @@ dependencies = [
     "pandera>=0.18",
     "mlflow>=2.10",
     "optuna>=3.5",
+    "optuna-integration>=3.5",
     "tenacity>=8.2",
     "openpyxl>=3.1",
     "pyyaml>=6.0",

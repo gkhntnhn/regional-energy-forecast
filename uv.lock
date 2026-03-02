@@ -887,6 +887,7 @@ dependencies = [
     { name = "openmeteo-requests" },
     { name = "openpyxl" },
     { name = "optuna" },
+    { name = "optuna-integration" },
     { name = "pandas" },
     { name = "pandera" },
     { name = "prophet" },
@@ -942,6 +943,7 @@ requires-dist = [
     { name = "openmeteo-requests", specifier = ">=1.3" },
     { name = "openpyxl", specifier = ">=3.1" },
     { name = "optuna", specifier = ">=3.5" },
+    { name = "optuna-integration", specifier = ">=3.5" },
     { name = "pandas", specifier = ">=2.1" },
     { name = "pandas-stubs", marker = "extra == 'dev'", specifier = ">=2.1" },
     { name = "pandera", specifier = ">=0.18" },
@@ -2606,6 +2608,18 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/58/b2/b5e12de7b4486556fe2257611b55dbabf30d0300bdb031831aa943ad20e4/optuna-4.7.0.tar.gz", hash = "sha256:d91817e2079825557bd2e97de2e8c9ae260bfc99b32712502aef8a5095b2d2c0", size = 479740, upload-time = "2026-01-19T05:45:52.604Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/75/d1/6c8a4fbb38a9e3565f5c36b871262a85ecab3da48120af036b1e4937a15c/optuna-4.7.0-py3-none-any.whl", hash = "sha256:e41ec84018cecc10eabf28143573b1f0bde0ba56dba8151631a590ecbebc1186", size = 413894, upload-time = "2026-01-19T05:45:50.815Z" },
+]
+
+[[package]]
+name = "optuna-integration"
+version = "4.7.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "optuna" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/8e/87/819babea96e56aad948f7658d044fbd63ed0ee5c4e2081bc8f78d44d6f04/optuna_integration-4.7.0.tar.gz", hash = "sha256:f4d3bcf7474d6797575fe6921bc943add11f071d26f9c83a8c6569d4a43e794d", size = 86520, upload-time = "2026-01-19T04:57:07.099Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/1b/2f/18600e9a1e19b52245bfabbd027b9cc4c8cbd599a1f782fa624157ce8101/optuna_integration-4.7.0-py3-none-any.whl", hash = "sha256:26b3d70a4def3efa0cf52b8d227180c21a38c08d44a7edb48f68de6f9e39d4d9", size = 99167, upload-time = "2026-01-19T04:57:05.073Z" },
 ]
 
 [[package]]

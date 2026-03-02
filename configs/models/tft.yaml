@@ -22,7 +22,9 @@ training:
   precision: "16-mixed"       # Mixed precision for ~30-40% GPU speedup
 
 optimization:
-  fast_epochs: 2              # SMOKE TEST (prod: 8)
+  # fast_epochs: no longer used — epoch-level Optuna pruning replaces the
+  # fast_epochs/retrain pattern.  All trials now train at max_epochs; bad
+  # trials are pruned early by MedianPruner via PyTorchLightningPruningCallback.
   optuna_splits: 3            # 3 splits for HPO evaluation
   val_size_hours: 720  # ~1 month (24 * 30) for final model validation
 

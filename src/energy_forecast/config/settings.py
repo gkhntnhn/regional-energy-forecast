@@ -1003,7 +1003,7 @@ class TFTCovariatesConfig(BaseModel, frozen=True):
 class TFTOptimizationConfig(BaseModel, frozen=True):
     """TFT optimization settings."""
 
-    fast_epochs: int = Field(default=10, ge=1)
+    fast_epochs: int = Field(default=10, ge=1)  # Deprecated: epoch-level pruning replaces this
     optuna_splits: int = Field(default=2, ge=1)
     val_size_hours: int = Field(default=720, ge=24)  # ~1 month (24 * 30)
 
