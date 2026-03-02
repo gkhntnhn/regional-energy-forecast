@@ -70,15 +70,19 @@ class SolarFeatureEngineer(BaseFeatureEngineer):
         )
         df["sol_poa_global"] = poa["poa_global"].values
 
-        # 4. Clearness index and cloud proxy
+        # 4. Clearness index (cloud proxy disabled R2 — redundant inverse)
         extra = pvlib.irradiance.get_extra_radiation(times)
         kt = (clearsky["ghi"] / extra).clip(0, 1)
         df["sol_clearness_index"] = kt.values
-        df["sol_cloud_proxy"] = (1.0 - kt).clip(0, 1).values
+        disabled: list[str] = self.config.get("disabled_features", [])
+        if "sol_cloud_proxy" not in disabled:
+            df["sol_cloud_proxy"] = (1.0 - kt).clip(0, 1).values
 
-        # 5. Daylight flags
-        df["sol_is_daylight"] = (df["sol_elevation"] > 0).astype(int)
-        daily_daylight = df["sol_is_daylight"].resample("D").sum()
+        # 5. Daylight flags (sol_is_daylight disabled R2 — zero importance)
+        if "sol_is_daylight" not in disabled:
+            df["sol_is_daylight"] = (df["sol_elevation"] > 0).astype(int)
+        daylight_mask = (df["sol_elevation"] > 0).astype(int)
+        daily_daylight = daylight_mask.resample("D").sum()
         df["sol_daylight_hours"] = daily_daylight.reindex(df.index, method="ffill").values
 
         # 6. Lead features — basic GHI leads (NOT leakage — deterministic)

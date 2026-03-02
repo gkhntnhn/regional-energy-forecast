@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import gc
 import time
+import warnings
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -23,6 +24,12 @@ import numpy as np
 import pandas as pd
 import torch
 from loguru import logger
+
+# Suppress noisy Lightning warnings that flood training logs
+warnings.filterwarnings("ignore", message=".*litmodels.*")
+warnings.filterwarnings("ignore", message=".*litlogger.*")
+warnings.filterwarnings("ignore", message=".*LeafSpec.*")
+warnings.filterwarnings("ignore", category=DeprecationWarning, module="lightning")
 from optuna import Study, Trial, TrialPruned, create_study
 from optuna.pruners import MedianPruner
 from optuna.samplers import TPESampler

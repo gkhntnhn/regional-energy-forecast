@@ -17,11 +17,11 @@ weights:
 optimization:
   enabled: true
   metric: "mape"  # Metric to minimize
-  # Per-model weight bounds [min, max]
+  # R2: Per-model weight bounds [min, max] — tighter based on R1 performance
   bounds:
-    catboost: [0.1, 0.8]
-    prophet: [0.1, 0.6]
-    tft: [0.1, 0.6]
+    catboost: [0.2, 0.7]     # R2: Best MAPE, min weight raised
+    prophet: [0.1, 0.5]      # R2: Complementary bias, max slightly reduced
+    tft: [0.1, 0.5]          # R2: Uncertainty quantification, max slightly reduced
 
 # Fallback behavior when one model fails
 fallback:

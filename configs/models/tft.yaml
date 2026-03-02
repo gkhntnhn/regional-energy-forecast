@@ -1,30 +1,35 @@
 # Temporal Fusion Transformer configuration
+# R2: Architecture defaults updated from smoke (8) to HPO midpoint (64)
 architecture:
-  hidden_size: 8
-  attention_head_size: 1
+  hidden_size: 64             # 8→64 (HPO midpoint, search [32, 128])
+  attention_head_size: 2      # 1→2 (multi-head exploration)
   lstm_layers: 1
   dropout: 0.1
-  hidden_continuous_size: 8
+  hidden_continuous_size: 32  # 8→32 (larger continuous embedding)
 
 training:
   encoder_length: 168  # 7 days
   prediction_length: 48
-  batch_size: 64
-  max_epochs: 2
+  batch_size: 128             # GPU-optimized
+  max_epochs: 50              # production training, early stopping decides
   learning_rate: 0.001
-  early_stop_patience: 1
+  early_stop_patience: 7      # 5→7 (allow longer convergence plateau)
   gradient_clip_val: 0.1
   random_seed: 42
   accelerator: "gpu"
-  num_workers: 0
+  num_workers: 4              # pod has 16+ vCPU for data loading
+  enable_progress_bar: false  # suppress verbose progress bars in log files
+  precision: "16-mixed"       # Mixed precision for ~30-40% GPU speedup
 
 optimization:
-  fast_epochs: 2  # Reduced epochs for Optuna trials
-  optuna_splits: 2  # Number of CV splits for Optuna objective (balances speed vs bias)
+  fast_epochs: 8              # 5→8 (better signal for Optuna pruning decisions)
+  optuna_splits: 3            # 3 splits for HPO evaluation
   val_size_hours: 720  # ~1 month (24 * 30) for final model validation
 
-# Covariates pruned via CatBoost feature importance (top-75, >= 0.1%)
-# Total: 39 features (from 358 available, 89% reduction)
+# R2: Covariates pruned via CatBoost feature importance (top-75, >= 0.1%)
+# FIXES: hdd_x_hour moved unknown→known (forecast-derivable)
+# ADDS: wth_cdd, wth_hdd, temp_x_hour, cdd_x_hour to known (all forecast-derivable)
+# REMOVES: 3 low-importance unknowns with high NaN rates
 covariates:
   # Deterministic or forecast-available — enters both encoder AND decoder
   time_varying_known:
@@ -51,6 +56,12 @@ covariates:
     - shortwave_radiation   # 0.23%
     # Solar (deterministic, astronomic)
     - sol_elevation         # 0.11%
+    # R2 NEW: Weather-derived features (forecast-derivable, all known at prediction time)
+    - wth_cdd              # cooling degree days, forecast-derived
+    - wth_hdd              # heating degree days, forecast-derived
+    - hdd_x_hour           # FIX: was in unknown, but wth_hdd*hour = forecast*deterministic = KNOWN
+    - temp_x_hour          # temperature*hour interaction, forecast-derived
+    - cdd_x_hour           # CDD*hour interaction, forecast-derived
 
   # Observed only in past (lagged >= 48h) — enters ONLY encoder
   time_varying_unknown:
@@ -69,14 +80,14 @@ covariates:
     - consumption_window_720_std  # 1.15%
     - consumption_window_48_max   # 0.38%
     - consumption_window_336_max  # 0.37%
-    - consumption_window_720_mean # 0.13%
-    - consumption_window_336_min  # 0.11%
-    - consumption_q75_168         # 0.14%
+    # DROPPED R2: consumption_window_720_mean (0.13%, high NaN from 720h window)
+    # DROPPED R2: consumption_window_336_min (0.11%, moderate NaN)
+    # DROPPED R2: consumption_q75_168 (0.14%, single quantile not informative alone)
     # Weather windows (observed, not forecast)
     - temperature_2m_window_24_max   # 2.24%
     - temperature_2m_window_12_max   # 1.49%
     - temperature_2m_window_6_mean   # 1.48%
-    - hdd_x_hour                     # 1.28% — heating degree x hour interaction
+    # MOVED R2: hdd_x_hour → time_varying_known (forecast-derivable)
 
 quantiles:
   - 0.02

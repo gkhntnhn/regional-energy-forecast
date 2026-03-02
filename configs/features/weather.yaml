@@ -6,6 +6,12 @@ thresholds:
   extreme_cold: 0.0
   extreme_hot: 35.0
   high_wind: 25.0   # km/h (data max ~31, old 50 was always 0)
+  # R2: Selective extreme flags (zero-importance flags disabled)
+  extreme_flags:
+    cold: true       # Keep — winter Bursa'da anlamli
+    hot: false       # R2 DISABLED: zero CatBoost importance
+    wind: false      # R2 DISABLED: zero CatBoost importance
+    precip: false    # R2 DISABLED: zero CatBoost importance
 
 comfort_index:
   method: "apparent_temperature"
@@ -22,26 +28,30 @@ rolling:
 
 weather_lags:
   # Thermal inertia: yesterday's temperature still affects today's consumption
-  # Building heat capacity means 6-48h delayed response
+  # R1 pruning: 8→4 hours, 3→2 columns (wind_speed lags near-zero importance)
+  # R2 pruning: humidity 48h lag dropped (autocorrelated, near-zero importance)
   enabled: true
-  hours: [6, 12, 18, 24, 30, 36, 42, 48]
+  hours: [6, 12, 24]          # DROPPED R2: 48h (autocorrelated humidity)
   columns:
-    - temperature_2m
-    - relative_humidity_2m
-    - wind_speed_10m
+    - temperature_2m           # keep — strong thermal inertia
+    - relative_humidity_2m     # keep — comfort signal
 
 quadratic_temperature:
   # Energy-temperature is U-shaped: both cold and hot extremes increase demand
   enabled: true
 
 severity:
-  enabled: true
+  # R2: DISABLED — wth_severity and wth_is_severe both zero/near-zero importance
+  enabled: false
   wind_threshold: 25.0
   precip_threshold: 5.0
 
+interactions:
+  # R2: cdd_x_is_peak disabled (zero importance), others kept
+  cdd_x_is_peak: false
+
 heat_index:
   # Steadman simplified heat index — captures humidity-amplified heat stress
-  # Only applied when temperature >= threshold (below = raw temperature)
   enabled: true
   threshold: 27.0
 

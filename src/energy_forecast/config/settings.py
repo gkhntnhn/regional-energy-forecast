@@ -319,6 +319,7 @@ class CalendarConfig(BaseModel, frozen=True):
         default_factory=SplineSeasonalityConfig,
     )
     business_hours: BusinessHoursConfig = Field(default_factory=BusinessHoursConfig)
+    disabled_features: list[str] = Field(default_factory=list)
 
 
 # -- Consumption --
@@ -432,6 +433,15 @@ class WeatherSeverityConfig(BaseModel, frozen=True):
     precip_threshold: float = 5.0
 
 
+class ExtremeFlagsConfig(BaseModel, frozen=True):
+    """Selective enable/disable for extreme weather flags."""
+
+    cold: bool = True
+    hot: bool = True
+    wind: bool = True
+    precip: bool = True
+
+
 class WeatherThresholdsConfig(BaseModel, frozen=True):
     """Temperature and weather thresholds."""
 
@@ -440,6 +450,7 @@ class WeatherThresholdsConfig(BaseModel, frozen=True):
     extreme_cold: float = 0.0
     extreme_hot: float = 35.0
     high_wind: float = 25.0
+    extreme_flags: ExtremeFlagsConfig = Field(default_factory=ExtremeFlagsConfig)
 
 
 class WeatherRollingConfig(BaseModel, frozen=True):
@@ -478,6 +489,12 @@ class TempDeviationConfig(BaseModel, frozen=True):
     enabled: bool = False
 
 
+class WeatherInteractionsConfig(BaseModel, frozen=True):
+    """Selective enable/disable for weather x calendar interactions."""
+
+    cdd_x_is_peak: bool = True
+
+
 class WeatherFeaturesConfig(BaseModel, frozen=True):
     """Weather feature engineering parameters."""
 
@@ -491,6 +508,9 @@ class WeatherFeaturesConfig(BaseModel, frozen=True):
         default_factory=QuadraticTemperatureConfig,
     )
     severity: WeatherSeverityConfig = Field(default_factory=WeatherSeverityConfig)
+    interactions: WeatherInteractionsConfig = Field(
+        default_factory=WeatherInteractionsConfig,
+    )
     heat_index: HeatIndexConfig = Field(default_factory=HeatIndexConfig)
     temp_deviation: TempDeviationConfig = Field(default_factory=TempDeviationConfig)
 
@@ -552,6 +572,7 @@ class SolarConfig(BaseModel, frozen=True):
         ]
     )
     lead: SolarLeadConfig = Field(default_factory=SolarLeadConfig)
+    disabled_features: list[str] = Field(default_factory=list)
 
 
 # -- EPIAS --
@@ -924,6 +945,7 @@ class TFTTrainingConfig(BaseModel, frozen=True):
     num_workers: int = Field(default=0, ge=0)
     enable_progress_bar: bool = True
     enable_model_summary: bool = False
+    precision: str = "32-true"
 
 
 class TFTCovariatesConfig(BaseModel, frozen=True):

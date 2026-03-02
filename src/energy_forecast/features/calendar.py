@@ -454,8 +454,10 @@ class CalendarFeatureEngineer(BaseFeatureEngineer):
         df["is_weekend_x_hour"] = df["is_weekend"] * hour
 
         # Ramp periods: morning/evening demand transition windows
+        disabled: list[str] = self.config.get("disabled_features", [])
         df["is_ramp_morning"] = hour.isin([6, 7, 8, 9]).astype(int)
-        df["is_ramp_evening"] = hour.isin([18, 19, 20, 21]).astype(int)
+        if "is_ramp_evening" not in disabled:
+            df["is_ramp_evening"] = hour.isin([18, 19, 20, 21]).astype(int)
 
         # Meteorological seasons: 0=winter, 1=spring, 2=summer, 3=autumn
         df["season"] = np.select(
@@ -468,6 +470,7 @@ class CalendarFeatureEngineer(BaseFeatureEngineer):
             [0, 1, 2, 3],
             default=0,
         )
-        df["is_heating_season"] = month.isin([11, 12, 1, 2, 3]).astype(int)
+        if "is_heating_season" not in disabled:
+            df["is_heating_season"] = month.isin([11, 12, 1, 2, 3]).astype(int)
         df["is_cooling_season"] = month.isin([6, 7, 8, 9]).astype(int)
         return df

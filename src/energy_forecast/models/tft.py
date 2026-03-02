@@ -254,6 +254,7 @@ class TFTForecaster(BaseForecaster):
             callbacks=callbacks,
             enable_progress_bar=cfg.enable_progress_bar,
             enable_model_summary=cfg.enable_model_summary,
+            precision=cfg.precision,
             logger=False,  # Disable Lightning's logger, we use MLflow
             default_root_dir=str(Path("models") / "tft"),
         )

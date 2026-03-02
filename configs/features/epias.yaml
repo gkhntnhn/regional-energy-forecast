@@ -5,28 +5,25 @@ source:
   file_pattern: "epias_market_{year}.parquet"
 
 variables:
-  - FDPP
+  # R2 prune: 5→3 (FDPP deprecated, Bilateral near-zero importance)
   - Real_Time_Consumption
   - DAM_Purchase
-  - Bilateral_Agreement_Purchase
   - Load_Forecast
+  # DROPPED: FDPP (deprecated API), Bilateral_Agreement_Purchase (near-zero R1)
 
 lags:
   min_lag: 48
   values:
     - 48
-    - 72
-    - 168
+    - 168           # DROPPED: 72 (3-day lag weak, R1 near-zero importance)
 
 rolling:
   # shift(1) THEN rolling()
   windows:
     - 24
-    - 48
-    - 168
+    - 168           # DROPPED: 48 (redundant between 24 and 168)
   functions:
-    - mean
-    - std
+    - mean          # DROPPED: std (near-zero importance in R1)
 
 expanding:
   min_periods: 48
@@ -38,33 +35,20 @@ drop_raw: true
 # Real-time generation data (supply-side features)
 # CRITICAL: min_lag=48, raw gen_ values are DROPPED after feature creation
 generation:
+  # R2 prune: 5→2 variables (individual fuels near-zero, aggregate + dominant thermal yeter)
+  # Composite ratios: renewable_ratio = 1 - (natural_gas / total)
   variables:
-    - gen_asphaltite_coal
-    - gen_biomass
-    - gen_black_coal
-    - gen_dammed_hydro
-    - gen_fueloil
-    - gen_geothermal
-    - gen_import_coal
-    - gen_import_export
-    - gen_lignite
-    - gen_lng
-    - gen_naphta
-    - gen_natural_gas
-    - gen_river
-    - gen_sun
-    - gen_total
-    - gen_wasteheat
-    - gen_wind
+    - gen_total           # aggregate — most informative
+    - gen_natural_gas     # dominant thermal source (~40% of generation)
+    # DROPPED R2: gen_wind, gen_sun, gen_dammed_hydro (each <0.05% importance)
+    # DROPPED R1: 12 minor fuel types
   lags:
     min_lag: 48
     values:
-      - 48
-      - 168
+      - 48              # DROPPED: 168 (weekly gen lag weak)
   rolling:
     windows:
-      - 24
-      - 168
+      - 24              # DROPPED: 168
     functions:
       - mean
   expanding:
@@ -74,15 +58,10 @@ generation:
   drop_raw: true
   composites:
     # Supply-side mix ratios from lagged generation data
+    # R2: renewable_ratio = 1 - thermal_ratio (gen_total ve gen_natural_gas'tan turetilir)
     enabled: true
-    renewable_vars:
-      - gen_wind
-      - gen_sun
-      - gen_river
-      - gen_dammed_hydro
+    renewable_vars: []    # R2: bos — renewable_ratio = 1 - thermal_ratio olarak hesaplanir
     thermal_vars:
       - gen_natural_gas
-      - gen_lignite
-      - gen_import_coal
     total_var: gen_total
     lag: 48

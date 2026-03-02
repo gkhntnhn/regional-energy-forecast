@@ -1,101 +1,101 @@
-# Optuna hyperparameter search spaces
+# Optuna hyperparameter search spaces — R2 (R1-informed narrowed ranges)
 # Each param: type (int/float/categorical), low, high, step?, log?, choices?
 # Adding a new parameter to YAML requires NO code change
 
 target_col: consumption
 
 catboost:
-  n_trials: 1
+  n_trials: 30           # 50→30 (narrower space converges faster)
   search_space:
     iterations:
       type: int
-      low: 100
-      high: 100
+      low: 5000
+      high: 5000          # Fixed — early stopping decides (avg 738 iter in R1)
     learning_rate:
       type: float
-      low: 0.01
-      high: 0.1
+      low: 0.05
+      high: 0.12          # Narrowed from [0.01, 0.1] — R1 optimum: 0.093
       log: true
     depth:
       type: int
-      low: 4
-      high: 7
+      low: 5
+      high: 7             # Keep some exploration (R1: depth=6 dominated)
     l2_leaf_reg:
       type: float
       low: 1.0
-      high: 10.0
+      high: 3.0           # Narrowed from [1.0, 10.0] — R1 optimum: 1.57
     min_child_samples:
       type: int
-      low: 5
-      high: 100
+      low: 50
+      high: 100           # Narrowed from [5, 100] — R1 optimum: 75
     subsample:
       type: float
-      low: 0.6
-      high: 1.0
+      low: 0.65
+      high: 0.95          # Narrowed from [0.6, 1.0] — R1 optimum: 0.75
     loss_function:
       type: categorical
-      choices: ["MAE"]
+      choices: ["RMSE"]   # Fixed — RMSE beat MAE by 0.16% (2.42% vs 2.58%)
 
 prophet:
-  n_trials: 1
+  n_trials: 30
   search_space:
     changepoint_prior_scale:
       type: float
       low: 0.001
-      high: 1.0              # expanded from 0.5 — allow more aggressive trend shifts
+      high: 0.02          # Narrowed from [0.001, 1.0] — R1 best: 0.003
       log: true
     seasonality_prior_scale:
       type: float
       low: 0.01
-      high: 50.0
+      high: 1.0           # Narrowed from [0.01, 50.0] — R1 best: 0.038
       log: true
     holidays_prior_scale:
       type: float
-      low: 0.01
-      high: 50.0
+      low: 0.005
+      high: 0.5           # Narrowed from [0.01, 50.0] — R1 best: 0.016
       log: true
     n_changepoints:
       type: int
-      low: 15
-      high: 50
+      low: 35
+      high: 50            # Narrowed from [15, 50] — R1 best: 46
     # seasonality_mode removed from search space — energy consumption is
     # inherently multiplicative (seasonal effects scale with load level).
     # Fixed in configs/models/prophet.yaml → seasonality.mode: "multiplicative"
 
 tft:
-  n_trials: 1
+  n_trials: 15              # 12→15 (slightly more exploration for R2)
   search_space:
     hidden_size:
       type: int
-      low: 8
-      high: 8
-      step: 8
+      low: 32
+      high: 128           # Production architecture range (R1 smoke: 64)
+      step: 32
     attention_head_size:
       type: categorical
-      choices: [1]
+      choices: [1, 2, 4]  # Explore multi-head attention
     dropout:
       type: float
-      low: 0.1
-      high: 0.1
+      low: 0.05
+      high: 0.2           # Wider range around R1's 0.1
     hidden_continuous_size:
       type: int
-      low: 8
-      high: 8
-      step: 8
+      low: 16
+      high: 64            # Larger continuous embedding (R1 smoke: 8)
+      step: 16
     lstm_layers:
       type: categorical
-      choices: [1]
+      choices: [1, 2]     # Explore deeper LSTM
     learning_rate:
       type: float
-      low: 0.001
-      high: 0.001
+      low: 0.0005
+      high: 0.005         # Range around R1 best: 0.0016
       log: true
     batch_size:
       type: categorical
-      choices: [128]
+      choices: [128, 256] # GPU-optimized batch sizes
 
 cross_validation:
-  n_splits: 2
+  n_splits: 12
   val_months: 1
   test_months: 1
   gap_hours: 0

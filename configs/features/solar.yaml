@@ -18,22 +18,21 @@ features:
   - sol_dhi
   - sol_poa_global
   - sol_clearness_index
+  - sol_daylight_hours
+  # DROPPED R2: sol_cloud_proxy (1 - clearness_index, redundant)
+  # DROPPED R2: sol_is_daylight (zero CatBoost importance)
+
+# R2: Zero-importance features disabled
+disabled_features:
   - sol_cloud_proxy
   - sol_is_daylight
-  - sol_daylight_hours
 
 lead:
   # Solar lead/lag features (NOT leakage — deterministic astronomical calculation)
   # Range [-10, +10]: negative = lead (future), positive = lag (past)
-  enabled: true
-  hours:
-    - 1
-    - 2
-    - 3
-  lag_range:
-    min: -10
-    max: 10
-  lag_columns:
-    - sol_ghi
-    - sol_dni
-    - sol_dhi
+  # DISABLED: R1 analysis showed total solar group = 3.34% importance,
+  # lead features alone ~60 features with near-zero contribution (88% waste)
+  enabled: false
+  hours: []
+  lag_range: {}
+  lag_columns: []

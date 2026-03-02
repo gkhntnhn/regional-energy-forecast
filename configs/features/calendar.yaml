@@ -29,11 +29,13 @@ anticipation:
   # Forward-looking holiday windows: "is there a holiday in the next N days?"
   # NOT leakage — calendar is deterministic (known future)
   enabled: true
-  windows: [3, 7, 15]
+  windows: [3, 7]    # DROPPED: 15 (too far out, minimal signal in R1)
 
 spline_seasonality:
   # Periodic spline encoding for hour (more flexible than sin/cos)
-  enabled: true
+  # DISABLED: R1 analysis showed 0.26% total importance (92% waste),
+  # cyclical sin/cos encoding already captures periodicity
+  enabled: false
   n_splines: 12
 
 business_hours:
@@ -41,3 +43,8 @@ business_hours:
   end: 18
   peak_start: 17
   peak_end: 22
+
+# R2: Zero-importance features disabled (hardcoded in code, controlled here)
+disabled_features:
+  - is_ramp_evening      # zero CatBoost importance
+  - is_heating_season    # zero CatBoost importance (is_cooling_season kept)

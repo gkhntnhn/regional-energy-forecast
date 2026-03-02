@@ -106,17 +106,22 @@ class WeatherFeatureEngineer(BaseFeatureEngineer):
     # Custom: cross-feature interactions
     # ------------------------------------------------------------------
 
-    @staticmethod
-    def _add_interactions(df: pd.DataFrame) -> pd.DataFrame:
-        """Add weather × calendar interaction features.
+    def _add_interactions(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Add weather x calendar interaction features.
 
         Requires ``is_peak`` and ``hour`` from CalendarFeatureEngineer
         (runs first in pipeline).
         """
-        if "wth_cdd" in df.columns and "is_peak" in df.columns:
+        interactions: dict[str, bool] = self.config.get("interactions", {})
+
+        if (
+            interactions.get("cdd_x_is_peak", True)
+            and "wth_cdd" in df.columns
+            and "is_peak" in df.columns
+        ):
             df["cdd_x_is_peak"] = df["wth_cdd"] * df["is_peak"]
 
-        # Weather × hour interactions: capture how temperature effects vary by time of day
+        # Weather x hour interactions: capture how temperature effects vary by time of day
         if "temperature_2m" in df.columns and "hour" in df.columns:
             df["temp_x_hour"] = df["temperature_2m"] * df["hour"]
         if "wth_cdd" in df.columns and "hour" in df.columns:
@@ -206,17 +211,19 @@ class WeatherFeatureEngineer(BaseFeatureEngineer):
 
     def _add_extreme_flags(self, df: pd.DataFrame) -> pd.DataFrame:
         th: dict[str, Any] = self.config["thresholds"]
+        enabled: dict[str, bool] = th.get("extreme_flags", {})
 
-        if "temperature_2m" in df.columns:
+        if "temperature_2m" in df.columns and enabled.get("cold", True):
             df["wth_extreme_cold"] = (df["temperature_2m"] < th["extreme_cold"]).astype(int)
+        if "temperature_2m" in df.columns and enabled.get("hot", True):
             df["wth_extreme_hot"] = (df["temperature_2m"] > th["extreme_hot"]).astype(int)
 
-        if "wind_speed_10m" in df.columns:
+        if "wind_speed_10m" in df.columns and enabled.get("wind", True):
             df["wth_extreme_wind"] = (df["wind_speed_10m"] > th["high_wind"]).astype(int)
 
         sev_cfg: dict[str, Any] = self.config.get("severity", {})
         precip_th: float = sev_cfg.get("precip_threshold", 10.0)
-        if "precipitation" in df.columns:
+        if "precipitation" in df.columns and enabled.get("precip", True):
             df["wth_heavy_precip"] = (df["precipitation"] > precip_th).astype(int)
 
         return df

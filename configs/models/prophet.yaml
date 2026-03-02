@@ -12,6 +12,7 @@ holidays:
   country: "TR"
   include_ramadan: true
 
+# R2: 14 regressors (2 swapped: -wind_speed_10m -is_peak, +apparent_temperature +is_sunday)
 regressors:
   # --- Consumption lags (autoregressive signal) ---
   - name: "consumption_lag_168"
@@ -23,10 +24,11 @@ regressors:
   # --- Weather ---
   - name: "temperature_2m"
     mode: "multiplicative"
+  - name: "apparent_temperature"    # R2 NEW: 3.06% CatBoost importance, better thermal proxy
+    mode: "multiplicative"
   - name: "relative_humidity_2m"
     mode: "additive"
-  - name: "wind_speed_10m"
-    mode: "additive"
+  # DROPPED R2: wind_speed_10m (low importance, daily Fourier captures wind pattern)
   - name: "shortwave_radiation"
     mode: "multiplicative"
   - name: "wth_cdd"
@@ -36,12 +38,13 @@ regressors:
   # --- Deterministic (calendar/solar) ---
   - name: "is_weekend"
     mode: "multiplicative"
+  - name: "is_sunday"               # R2 NEW: weekend MAPE 5.31%, Pazar farkli tuketim paterni
+    mode: "multiplicative"
   - name: "is_holiday"
     mode: "multiplicative"
   - name: "is_business_hours"
     mode: "multiplicative"
-  - name: "is_peak"
-    mode: "multiplicative"
+  # DROPPED R2: is_peak (zero CatBoost importance, overlap with daily Fourier + is_business_hours)
   - name: "sol_elevation"
     mode: "multiplicative"
 

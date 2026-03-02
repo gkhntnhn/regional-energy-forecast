@@ -1,16 +1,18 @@
 # CatBoost model configuration
 training:
   task_type: "CPU"
-  iterations: 100
+  iterations: 5000
   learning_rate: 0.05
   depth: 6
-  loss_function: "MAE"
+  loss_function: "RMSE"       # R1: RMSE beat MAE by 0.16% (2.42% vs 2.58%)
   eval_metric: "MAPE"
-  early_stopping_rounds: 10
+  early_stopping_rounds: 100
+  bootstrap_type: "MVS"       # R1 lesson: GPU compat, subsample requires MVS
   has_time: true
   random_seed: 42
   verbose: 500
 
+# R2: 36→28 categorical features (pruned zero-importance + misclassified)
 categorical_features:
   # Time
   - hour
@@ -37,7 +39,7 @@ categorical_features:
   - is_business_hours
   - is_peak
   - is_ramp_morning
-  - is_ramp_evening
+  # DROPPED R2: is_ramp_evening (zero importance, removed from pipeline)
   - is_friday
   - is_monday
   - is_sunday
@@ -45,16 +47,13 @@ categorical_features:
   - weather_code
   - weather_group
   - wth_extreme_cold
-  - wth_extreme_hot
-  - wth_extreme_wind
-  - wth_heavy_precip
-  - wth_is_severe
-  - wth_severity
+  # DROPPED R2: wth_extreme_hot, wth_extreme_wind, wth_heavy_precip (zero importance, disabled)
+  # DROPPED R2: wth_is_severe, wth_severity (severity disabled in pipeline)
   # Season / solar
   - is_cooling_season
-  - is_heating_season
-  - sol_is_daylight
-  - sol_daylight_hours
+  # DROPPED R2: is_heating_season (zero importance, removed from pipeline)
+  # DROPPED R2: sol_is_daylight (zero importance, removed from pipeline)
+  # DROPPED R2: sol_daylight_hours (continuous value, was misclassified as categorical)
 
 nan_handling:
   categorical: "missing"

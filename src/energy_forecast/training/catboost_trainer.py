@@ -227,6 +227,7 @@ class CatBoostTrainer:
         """Return CatBoost parameters that stay constant across all trials."""
         return {
             "task_type": self._cb_config.training.task_type,
+            "iterations": self._cb_config.training.iterations,
             "eval_metric": self._cb_config.training.eval_metric,
             "random_seed": self._cb_config.training.random_seed,
             "has_time": self._cb_config.training.has_time,

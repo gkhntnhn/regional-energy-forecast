@@ -188,7 +188,7 @@ class TimeSeriesSplitter:
             self.gap_hours,
         )
         for s in splits:
-            logger.info(
+            logger.debug(
                 "  Split {:>2d}: train=[{}..{}] val=[{}..{}] test=[{}..{}]",
                 s.split_idx,
                 s.train_start.date(),
