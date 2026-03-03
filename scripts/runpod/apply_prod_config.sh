@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # apply_prod_config.sh — Switch configs to production HPO values
+# Target: RunPod RTX PRO 4500 (32 GB VRAM, 62 GB RAM, 32 vCPU)
 # Run from project root: bash scripts/runpod/apply_prod_config.sh
 set -euo pipefail
 
@@ -192,6 +193,7 @@ echo "[OK] catboost.yaml → CPU mode, RMSE loss, MVS bootstrap, 28 R2-pruned ca
 # --- tft.yaml ---
 cat > configs/models/tft.yaml << 'EOF'
 # Temporal Fusion Transformer configuration — PRODUCTION
+# Target: RTX PRO 4500 (32 GB VRAM, 32 vCPU)
 # R2: Architecture defaults updated from smoke (8) to HPO midpoint (64)
 architecture:
   hidden_size: 64             # 8→64 (HPO midpoint, search [32, 128])
@@ -203,14 +205,14 @@ architecture:
 training:
   encoder_length: 168  # 7 days
   prediction_length: 48
-  batch_size: 512             # A100 80GB — ~88 steps/epoch, GPU well-utilized
+  batch_size: 512             # RTX PRO 4500 32GB — ~88 steps/epoch, VRAM ~2GB worst case
   max_epochs: 50              # PRODUCTION (dev: 2)
   learning_rate: 0.001
-  early_stop_patience: 5      # PRODUCTION (dev: 7) — tighter with 20 trials + pruning
+  early_stop_patience: 7      # RTX slightly slower per epoch → more patience for convergence
   gradient_clip_val: 0.1
   random_seed: 42
   accelerator: "gpu"          # PRODUCTION (dev: auto)
-  num_workers: 2              # PRODUCTION — n_jobs=8 × 2 workers = 16 (matches 16 vCPU)
+  num_workers: 8              # n_jobs=1 × 8 workers = 8 (32 vCPU has plenty of headroom)
   enable_progress_bar: false  # suppress verbose progress bars in log files
   precision: "16-mixed"       # Mixed precision for ~30-40% GPU speedup
 
@@ -219,7 +221,7 @@ optimization:
   # fast_epochs/retrain pattern.  All trials now train at max_epochs; bad
   # trials are pruned early by MedianPruner via PyTorchLightningPruningCallback.
   optuna_splits: 6            # PRODUCTION (dev: 3) — 6 months seasonality coverage
-  n_jobs: 8                   # PRODUCTION (dev: 1) — A100 80GB parallel trials
+  n_jobs: 1                   # MUST be 1 — parallel trials on single GPU = 100x slowdown
   val_size_hours: 720  # ~1 month (24 * 30) for final model validation
 
 # R2: Covariates pruned via CatBoost feature importance (top-75, >= 0.1%)
@@ -296,27 +298,29 @@ quantiles:
 
 loss: "quantile"
 EOF
-echo "[OK] tft.yaml → Production (epochs=50, gpu, workers=8, n_jobs=8, epoch-level pruning)"
+echo "[OK] tft.yaml → Production RTX PRO 4500 (epochs=50, gpu, workers=8, n_jobs=1, epoch-level pruning)"
 
 echo ""
-echo "=== Production Config Applied ==="
+echo "=== Production Config Applied (RTX PRO 4500) ==="
+echo ""
+echo "Target hardware: RTX PRO 4500 (32 GB VRAM, 62 GB RAM, 32 vCPU)"
 echo ""
 echo "Summary of changes:"
 echo "  hyperparameters.yaml:"
-echo "    - CatBoost: 50 trials, RMSE+MAE search, bootstrap MVS"
+echo "    - CatBoost: 50 trials, RMSE-only, bootstrap MVS"
 echo "    - Prophet:  30 trials"
-echo "    - TFT:      20 trials, expanded architecture search"
+echo "    - TFT:      20 trials, batch search [256, 512]"
 echo "    - CV:       12 splits (was 2)"
 echo "  catboost.yaml:"
-echo "    - CPU 32-core (RunPod), RMSE loss, MVS bootstrap"
+echo "    - CPU 32-core, RMSE loss, MVS bootstrap"
 echo "    - iterations: 5000, early_stopping: 100"
 echo "    - R2 pruned: 28 categoricals (was 36)"
 echo "  tft.yaml:"
 echo "    - Architecture: hidden=64, heads=2, lstm=1 (HPO midpoints)"
-echo "    - Training: max_epochs=50, patience=5, batch=512, gpu, 16-mixed precision"
-echo "    - DataLoader: num_workers=2 (×8 trials=16 CPUs), persistent_workers=true"
-echo "    - Optuna: epoch-level pruning (MedianPruner), n_jobs=8 parallel trials"
+echo "    - Training: max_epochs=50, patience=7, batch=512, gpu, 16-mixed precision"
+echo "    - DataLoader: num_workers=8 (n_jobs=1 × 8 = 8, 32 vCPU has headroom)"
+echo "    - Optuna: epoch-level pruning (MedianPruner), n_jobs=1 (MUST be 1 on single GPU)"
 echo "    - Optuna: optuna_splits=6 (6 months seasonality coverage)"
-echo "    - R2 covariates: 24 known + 16 unknown (was 19+20)"
+echo "    - R2 covariates: 24 known + 16 unknown"
 echo ""
 echo "To revert: bash scripts/runpod/restore_dev_config.sh"

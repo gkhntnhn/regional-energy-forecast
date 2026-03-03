@@ -89,7 +89,6 @@ skills_results/
 tasks/
 
 # RunPod artifacts
-scripts/runpod/
 runpod_data.tar.gz
 *_training.log
 configs/models/.dev_backup/
