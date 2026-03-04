@@ -76,12 +76,17 @@ class TFTForecaster(BaseForecaster):
         nf_df["unique_id"] = NF_UNIQUE_ID
         nf_df = nf_df.rename(columns={target_col: "y"})
 
-        # Drop NaN covariates (lag features have NaN at start)
+        # NeuralForecast converts ALL columns to float32, so we must filter
+        # to only keep the required columns + specified covariates.
         cfg = self._tft_config.covariates
         covariate_cols = [
             c for c in list(cfg.time_varying_known) + list(cfg.time_varying_unknown)
             if c in nf_df.columns
         ]
+        keep_cols = ["unique_id", "ds", "y"] + covariate_cols
+        nf_df = nf_df[keep_cols]
+
+        # Drop NaN covariates (lag features have NaN at start)
         n_before = len(nf_df)
         nf_df = nf_df.dropna(subset=covariate_cols)
         n_dropped = n_before - len(nf_df)
