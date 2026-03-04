@@ -134,10 +134,21 @@ class TFTForecaster(BaseForecaster):
             "precision": train_cfg.precision,
             "gradient_clip_val": train_cfg.gradient_clip_val,
             "enable_progress_bar": train_cfg.enable_progress_bar,
+            "log_every_n_steps": 100,
         }
         # NF defaults devices=-1 (all GPUs); CPU requires devices=1
         if train_cfg.accelerator == "cpu":
             extra_trainer_kwargs["devices"] = 1
+
+        # Progress bar: refresh every 100 steps instead of every step
+        if train_cfg.enable_progress_bar:
+            from pytorch_lightning.callbacks import TQDMProgressBar
+
+            progress_callbacks = [TQDMProgressBar(refresh_rate=100)]
+            if callbacks:
+                callbacks = list(callbacks) + progress_callbacks
+            else:
+                callbacks = progress_callbacks
         if callbacks:
             extra_trainer_kwargs["callbacks"] = callbacks
 
