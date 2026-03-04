@@ -65,11 +65,8 @@ prophet:
 tft:
   n_trials: 1              # SMOKE TEST (prod: 15)
   search_space:
-    hidden_size:
-      type: int
-      low: 32
-      high: 128           # Production architecture range
-      step: 32
+    # hidden_size: fixed at 128 in tft.yaml (H200 validated)
+    # windows_batch_size: fixed at 2048 in tft.yaml (H200 sweet spot)
     n_head:
       type: categorical
       choices: [1, 2, 4]  # Explore multi-head attention (NF: n_head)
@@ -85,12 +82,9 @@ tft:
       low: 0.0005
       high: 0.005         # Range around default 0.001
       log: true
-    windows_batch_size:
-      type: categorical
-      choices: [512, 1024, 2048]  # NF actual training batch
 
 cross_validation:
-  n_splits: 2             # SMOKE TEST (prod: 12)
+  n_splits: 12            # Production: 12-fold TSCV
   val_months: 1
   test_months: 1
   gap_hours: 0
