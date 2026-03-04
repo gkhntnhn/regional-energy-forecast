@@ -19,7 +19,7 @@ training:
   accelerator: "auto"         # SMOKE TEST (prod: gpu)
   num_workers: 4              # pod has 16+ vCPU for data loading
   enable_progress_bar: true   # true for local dev, false for RunPod/log files
-  precision: "32-true"          # fp32 baseline — bf16/fp16 overflow in TFT attention
+  precision: "bf16-mixed"       # bfloat16 test — RTX 4060 Ti (Ada) supports bf16
 
 optimization:
   # fast_epochs: no longer used — epoch-level Optuna pruning replaces the
