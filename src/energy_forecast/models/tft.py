@@ -125,15 +125,17 @@ class TFTForecaster(BaseForecaster):
         arch = cfg.architecture
         train_cfg = cfg.training
 
-        trainer_kwargs: dict[str, Any] = {
+        steps = max_steps if max_steps is not None else train_cfg.max_steps
+
+        # NeuralForecast uses **kwargs to capture extra arguments as trainer_kwargs.
+        # Pass precision/gradient_clip/callbacks as flat kwargs, NOT in a dict.
+        extra_trainer_kwargs: dict[str, Any] = {
             "precision": train_cfg.precision,
             "gradient_clip_val": train_cfg.gradient_clip_val,
             "enable_progress_bar": train_cfg.enable_progress_bar,
         }
         if callbacks:
-            trainer_kwargs["callbacks"] = callbacks
-
-        steps = max_steps if max_steps is not None else train_cfg.max_steps
+            extra_trainer_kwargs["callbacks"] = callbacks
 
         model = TFT(
             h=train_cfg.prediction_length,
@@ -155,7 +157,7 @@ class TFTForecaster(BaseForecaster):
             hist_exog_list=list(cfg.covariates.time_varying_unknown),
             num_lr_decays=-1,
             random_seed=train_cfg.random_seed,
-            trainer_kwargs=trainer_kwargs,
+            **extra_trainer_kwargs,
         )
 
         nf = NeuralForecast(models=[model], freq="h")
