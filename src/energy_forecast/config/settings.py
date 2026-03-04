@@ -937,7 +937,7 @@ class TFTTrainingConfig(BaseModel, frozen=True):
     max_steps: int = Field(default=2000, ge=1)
     windows_batch_size: int = Field(default=1024, ge=1)
     learning_rate: float = Field(default=0.001, gt=0.0)
-    early_stop_patience_steps: int = Field(default=200, ge=1)
+    early_stop_patience_steps: int = Field(default=200, ge=-1)  # -1 disables
     val_check_steps: int = Field(default=50, ge=1)
     gradient_clip_val: float = Field(default=0.1, gt=0.0)
     random_seed: int = 42
