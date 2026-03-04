@@ -1,273 +1,164 @@
 """Temporal Fusion Transformer forecaster with uncertainty quantification.
 
-Wraps pytorch-forecasting's TFT model to conform to BaseForecaster interface.
-Handles TimeSeriesDataSet conversion and quantile prediction output.
+Wraps NeuralForecast's TFT model to conform to BaseForecaster interface.
+Handles long-format conversion and quantile prediction output.
 """
 
 from __future__ import annotations
 
-import hashlib
 import json
-import pickle
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import numpy as np
 import pandas as pd
-import torch
 from loguru import logger
 from numpy.typing import NDArray
-from pytorch_forecasting import TemporalFusionTransformer, TimeSeriesDataSet
-from pytorch_forecasting.data import GroupNormalizer
-from pytorch_forecasting.metrics import QuantileLoss
 
 from energy_forecast.config.settings import TFTConfig
 from energy_forecast.models.base import PREDICTION_COL, BaseForecaster
 
-if TYPE_CHECKING:
-    import lightning.pytorch as pl
-
-# Constants for TimeSeriesDataSet
-GROUP_ID = "series_0"
-GROUP_COL = "_group_id"
-TIME_IDX_COL = "_time_idx"
+# NeuralForecast long-format constants
+NF_UNIQUE_ID = "uludag"
 
 
 class TFTForecaster(BaseForecaster):
     """TFT-based hourly consumption forecaster with uncertainty quantification.
 
-    Converts feature-engineered DataFrame to pytorch-forecasting's TimeSeriesDataSet
-    format and provides quantile predictions for uncertainty estimation.
+    Uses NeuralForecast's TFT implementation for efficient GPU-accelerated training
+    with pre-computed tensor windowing.
 
     Args:
         config: TFT configuration from settings.
     """
 
-    MODEL_FILENAME = "tft_model.ckpt"
     METADATA_FILENAME = "metadata.json"
-    DATASET_PARAMS_FILENAME = "dataset_params.json"
-    TRAINING_DATASET_FILENAME = "training_dataset.pkl"
 
     def __init__(self, config: TFTConfig) -> None:
-        super().__init__(config.model_dump())  # Convert to dict for base class
+        super().__init__(config.model_dump())
         self._tft_config = config
-        self._model: TemporalFusionTransformer | None = None
-        self._training_dataset: TimeSeriesDataSet | None = None
-        self._dataset_params: dict[str, Any] = {}
+        self._nf: Any | None = None  # NeuralForecast instance
         self._quantiles: list[float] = list(config.quantiles)
-        self._all_quantile_predictions: NDArray[np.floating[Any]] | None = None
-        self._loaded_state_dict: dict[str, Any] | None = None
+        self._all_quantile_predictions: dict[float, NDArray[np.floating[Any]]] | None = None
+        self._last_train_df: pd.DataFrame | None = None  # for predict() context
 
     @property
     def is_fitted(self) -> bool:
         """Check if the model has been trained."""
-        return self._model is not None
+        return self._nf is not None
 
-    def _prepare_dataframe(
+    def _to_nf_format(
         self,
         df: pd.DataFrame,
         target_col: str,
-        include_target: bool = True,
+        *,
+        drop_target_nan: bool = True,
     ) -> pd.DataFrame:
-        """Prepare DataFrame for TimeSeriesDataSet.
-
-        Adds required _time_idx and _group_id columns.
+        """Convert DatetimeIndex DataFrame to NeuralForecast long format.
 
         Args:
             df: DataFrame with DatetimeIndex.
             target_col: Target column name.
-            include_target: Include target in output.
+            drop_target_nan: Drop rows where target is NaN.
 
         Returns:
-            DataFrame ready for TimeSeriesDataSet.
+            NF-formatted DataFrame with unique_id, ds, y columns.
         """
-        result = df.copy()
+        nf_df = df.reset_index()
 
-        # Ensure DatetimeIndex
-        if not isinstance(result.index, pd.DatetimeIndex):
-            msg = "DataFrame must have DatetimeIndex"
-            raise ValueError(msg)
+        # Detect datetime column name after reset_index
+        dt_col = "date" if "date" in nf_df.columns else "index"
+        if dt_col not in nf_df.columns:
+            # Try the first column
+            dt_col = nf_df.columns[0]
+        nf_df = nf_df.rename(columns={dt_col: "ds"})
 
-        result = result.sort_index()
+        nf_df["unique_id"] = NF_UNIQUE_ID
+        nf_df = nf_df.rename(columns={target_col: "y"})
 
-        # Add time index (integer sequence)
-        result[TIME_IDX_COL] = range(len(result))
-
-        # Add group identifier (single series)
-        result[GROUP_COL] = GROUP_ID
-
-        # Reset index to make timestamp a column
-        result = result.reset_index()
-        if "index" in result.columns:
-            result = result.rename(columns={"index": "timestamp"})
-
-        if not include_target and target_col in result.columns:
-            result = result.drop(columns=[target_col])
-
-        return result
-
-    def _create_dataset(
-        self,
-        data: pd.DataFrame,
-        target_col: str,
-        is_training: bool = True,
-    ) -> TimeSeriesDataSet:
-        """Create TimeSeriesDataSet from prepared DataFrame.
-
-        Args:
-            data: Prepared DataFrame with _time_idx and _group_id.
-            target_col: Target column name.
-            is_training: Whether this is for training.
-
-        Returns:
-            Configured TimeSeriesDataSet.
-        """
-        cfg = self._tft_config
-        train_cfg = cfg.training
-        cov_cfg = cfg.covariates
-
-        # Filter known reals to only include available columns
-        time_varying_known = [
-            col for col in cov_cfg.time_varying_known if col in data.columns
+        # Drop NaN covariates (lag features have NaN at start)
+        cfg = self._tft_config.covariates
+        covariate_cols = [
+            c for c in list(cfg.time_varying_known) + list(cfg.time_varying_unknown)
+            if c in nf_df.columns
         ]
-
-        # Unknown reals: target + configured consumption/EPIAS lag features
-        time_varying_unknown = [target_col] + [
-            col for col in cov_cfg.time_varying_unknown if col in data.columns
-        ]
-
-        # Drop rows with NaN/inf in any covariate or target column
-        # (lag features have NaN at the start of the time series)
-        check_cols = time_varying_known + time_varying_unknown
-        n_before = len(data)
-        data = data.dropna(subset=check_cols)
-        n_dropped = n_before - len(data)
+        n_before = len(nf_df)
+        nf_df = nf_df.dropna(subset=covariate_cols)
+        n_dropped = n_before - len(nf_df)
         if n_dropped > 0:
             logger.info(
                 "Dropped {} rows with NaN in covariates ({:.1f}%)",
                 n_dropped,
                 100.0 * n_dropped / n_before,
             )
-            # Re-index _time_idx to be contiguous after dropping
-            data = data.copy()
-            data[TIME_IDX_COL] = range(len(data))
 
-        # Store params for serialization
-        self._dataset_params = {
-            "time_idx": TIME_IDX_COL,
-            "target": target_col,
-            "group_ids": [GROUP_COL],
-            "max_encoder_length": train_cfg.encoder_length,
-            "max_prediction_length": train_cfg.prediction_length,
-            "time_varying_known_reals": time_varying_known,
-            "time_varying_unknown_reals": time_varying_unknown,
-        }
+        if drop_target_nan:
+            nf_df = nf_df.dropna(subset=["y"])
 
-        dataset = TimeSeriesDataSet(
-            data,
-            time_idx=TIME_IDX_COL,
-            target=target_col,
-            group_ids=[GROUP_COL],
-            max_encoder_length=train_cfg.encoder_length,
-            max_prediction_length=train_cfg.prediction_length,
-            time_varying_known_reals=time_varying_known,
-            time_varying_unknown_reals=time_varying_unknown,
-            static_categoricals=[],
-            static_reals=[],
-            add_relative_time_idx=True,
-            add_target_scales=True,
-            add_encoder_length=True,
-            target_normalizer=GroupNormalizer(
-                groups=[GROUP_COL],
-                transformation="softplus",
-            ),
-            allow_missing_timesteps=True,
-        )
+        return nf_df
 
-        return dataset
-
-    def _build_model(self, dataset: TimeSeriesDataSet) -> TemporalFusionTransformer:
-        """Build TFT model from dataset.
+    def _build_nf_model(
+        self,
+        callbacks: list[Any] | None = None,
+        *,
+        max_steps: int | None = None,
+    ) -> Any:
+        """Build NeuralForecast TFT model from config.
 
         Args:
-            dataset: TimeSeriesDataSet for model configuration.
+            callbacks: Extra Lightning callbacks (e.g. Optuna pruning).
+            max_steps: Override max_steps (for HPO).
 
         Returns:
-            Configured TemporalFusionTransformer.
+            NeuralForecast instance wrapping a TFT model.
         """
+        from neuralforecast import NeuralForecast
+        from neuralforecast.losses.pytorch import MQLoss
+        from neuralforecast.models import TFT
+
         cfg = self._tft_config
         arch = cfg.architecture
         train_cfg = cfg.training
 
-        model = TemporalFusionTransformer.from_dataset(
-            dataset,
+        trainer_kwargs: dict[str, Any] = {
+            "precision": train_cfg.precision,
+            "gradient_clip_val": train_cfg.gradient_clip_val,
+            "enable_progress_bar": train_cfg.enable_progress_bar,
+        }
+        if callbacks:
+            trainer_kwargs["callbacks"] = callbacks
+
+        steps = max_steps if max_steps is not None else train_cfg.max_steps
+
+        model = TFT(
+            h=train_cfg.prediction_length,
+            input_size=train_cfg.encoder_length,
             hidden_size=arch.hidden_size,
-            attention_head_size=arch.attention_head_size,
+            n_head=arch.n_head,
+            n_rnn_layers=arch.n_rnn_layers,
             dropout=arch.dropout,
-            hidden_continuous_size=arch.hidden_continuous_size,
-            lstm_layers=arch.lstm_layers,
-            output_size=len(cfg.quantiles),
-            loss=QuantileLoss(quantiles=cfg.quantiles),
+            rnn_type=train_cfg.rnn_type,
+            loss=MQLoss(quantiles=cfg.quantiles),
             learning_rate=train_cfg.learning_rate,
-            reduce_on_plateau_patience=train_cfg.early_stop_patience,
+            max_steps=steps,
+            val_check_steps=train_cfg.val_check_steps,
+            early_stop_patience_steps=train_cfg.early_stop_patience_steps,
+            scaler_type=train_cfg.scaler_type,
+            batch_size=1,  # Single time series
+            windows_batch_size=train_cfg.windows_batch_size,
+            futr_exog_list=list(cfg.covariates.time_varying_known),
+            hist_exog_list=list(cfg.covariates.time_varying_unknown),
+            num_lr_decays=-1,
+            random_seed=train_cfg.random_seed,
+            trainer_kwargs=trainer_kwargs,
         )
 
-        n_params = sum(p.numel() for p in model.parameters())
-        logger.debug("TFT model built with {} parameters", n_params)
+        nf = NeuralForecast(models=[model], freq="h")
 
-        return model
+        n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+        logger.debug("TFT model built with {} trainable parameters", n_params)
 
-    def _create_trainer(
-        self,
-        max_epochs: int | None = None,
-        extra_callbacks: list[Any] | None = None,
-    ) -> pl.Trainer:
-        """Create PyTorch Lightning trainer.
-
-        Args:
-            max_epochs: Override max epochs (for testing).
-            extra_callbacks: Additional Lightning callbacks (e.g. Optuna pruning).
-
-        Returns:
-            Configured lightning Trainer.
-        """
-        import lightning.pytorch as pl_lib
-        from lightning.pytorch.callbacks import Callback, EarlyStopping
-
-        cfg = self._tft_config.training
-
-        callbacks: list[Callback] = []
-
-        if cfg.early_stop_patience > 0:
-            callbacks.append(
-                EarlyStopping(
-                    monitor="val_loss",
-                    min_delta=1e-4,
-                    patience=cfg.early_stop_patience,
-                    verbose=False,
-                    mode="min",
-                )
-            )
-
-        if extra_callbacks:
-            callbacks.extend(extra_callbacks)
-
-        epochs = max_epochs if max_epochs is not None else cfg.max_epochs
-
-        trainer = pl_lib.Trainer(
-            max_epochs=epochs,
-            accelerator=cfg.accelerator,
-            devices=1,
-            gradient_clip_val=cfg.gradient_clip_val,
-            callbacks=callbacks,
-            enable_progress_bar=cfg.enable_progress_bar,
-            enable_model_summary=cfg.enable_model_summary,
-            precision=cfg.precision,
-            logger=False,  # Disable Lightning's logger, we use MLflow
-            default_root_dir=str(Path("models") / "tft"),
-        )
-
-        return trainer
+        return nf
 
     def train(
         self,
@@ -281,14 +172,15 @@ class TFTForecaster(BaseForecaster):
             train_df: Training DataFrame with DatetimeIndex.
             val_df: Optional validation DataFrame.
             **kwargs: Additional arguments:
-                - target_col: Target column name (default: from config).
-                - max_epochs: Override max epochs (for testing).
+                - target_col: Target column name.
+                - max_steps: Override max_steps.
+                - callbacks: Extra Lightning callbacks.
 
         Returns:
             Training metrics dict.
         """
-        target_col = kwargs.get("target_col", self._target_col)
-        max_epochs = kwargs.get("max_epochs")
+        target_col: str = kwargs.get("target_col", self._target_col)
+        max_steps: int | None = kwargs.get("max_steps")
         extra_callbacks: list[Any] | None = kwargs.get("callbacks")
 
         logger.info(
@@ -297,62 +189,44 @@ class TFTForecaster(BaseForecaster):
             len(val_df) if val_df is not None else 0,
         )
 
-        # Prepare data
-        train_prepared = self._prepare_dataframe(train_df, target_col)
+        # Build NF model
+        nf = self._build_nf_model(callbacks=extra_callbacks, max_steps=max_steps)
 
-        # Create training dataset
-        training_dataset = self._create_dataset(train_prepared, target_col)
-        self._training_dataset = training_dataset
-
-        # Create validation dataset
+        # Convert to NF format
         if val_df is not None:
-            val_prepared = self._prepare_dataframe(val_df, target_col)
-            validation_dataset = TimeSeriesDataSet.from_dataset(
-                training_dataset,
-                val_prepared,
-                predict=False,
-                stop_randomization=True,
-            )
+            full_df = pd.concat([train_df, val_df])
+            nf_df = self._to_nf_format(full_df, target_col)
+            val_size = len(val_df)
         else:
-            validation_dataset = None
+            nf_df = self._to_nf_format(train_df, target_col)
+            val_size = 0
 
-        # Create dataloaders
-        cfg = self._tft_config.training
-        train_dataloader = training_dataset.to_dataloader(
-            train=True,
-            batch_size=cfg.batch_size,
-            num_workers=cfg.num_workers,
-            persistent_workers=cfg.num_workers > 0,
+        logger.info(
+            "NF training data: {} rows, val_size={}",
+            len(nf_df),
+            val_size,
         )
 
-        val_dataloader = None
-        if validation_dataset is not None:
-            val_dataloader = validation_dataset.to_dataloader(
-                train=False,
-                batch_size=cfg.batch_size,
-                num_workers=cfg.num_workers,
-                persistent_workers=cfg.num_workers > 0,
-            )
+        # Fit
+        nf.fit(df=nf_df, val_size=val_size)
 
-        # Build model
-        self._model = self._build_model(training_dataset)
+        self._nf = nf
+        self._last_train_df = nf_df
 
-        # Create trainer and fit
-        trainer = self._create_trainer(max_epochs, extra_callbacks=extra_callbacks)
-        trainer.fit(
-            self._model,
-            train_dataloaders=train_dataloader,
-            val_dataloaders=val_dataloader,
-        )
-
-        # Collect metrics
+        # Collect metrics from the underlying Lightning trainer
         metrics: dict[str, float] = {}
-        if hasattr(trainer, "callback_metrics"):
-            for key, value in trainer.callback_metrics.items():
-                if isinstance(value, torch.Tensor):
-                    metrics[key] = float(value.item())
-                else:
-                    metrics[key] = float(value)
+        try:
+            tft_model = nf.models[0]
+            if hasattr(tft_model, "trainer") and tft_model.trainer is not None:
+                import torch
+
+                for key, value in tft_model.trainer.callback_metrics.items():
+                    if isinstance(value, torch.Tensor):
+                        metrics[key] = float(value.item())
+                    else:
+                        metrics[key] = float(value)
+        except Exception:
+            logger.debug("Could not extract trainer metrics")
 
         logger.info("TFT training complete | metrics={}", metrics)
         return metrics
@@ -362,13 +236,15 @@ class TFTForecaster(BaseForecaster):
         X: pd.DataFrame,
         target_col: str | None = None,
     ) -> pd.DataFrame:
-        """Generate predictions using median (0.50 quantile).
+        """Generate predictions using median quantile.
 
-        All quantiles are stored in `self._all_quantile_predictions` for later use.
+        NeuralForecast predicts the next h steps from the end of the provided
+        context DataFrame. The last prediction_length timestamps in X are used
+        as the prediction target period.
 
         Args:
             X: Feature DataFrame with DatetimeIndex.
-            target_col: Target column name (default: from config).
+            target_col: Target column name.
 
         Returns:
             DataFrame with PREDICTION_COL (median prediction) column.
@@ -379,198 +255,96 @@ class TFTForecaster(BaseForecaster):
             msg = "Model must be trained before prediction"
             raise RuntimeError(msg)
 
-        if self._training_dataset is None:
-            msg = "Training dataset not available for prediction"
-            raise RuntimeError(msg)
+        pred_len = self._tft_config.training.prediction_length
 
         logger.debug("Generating TFT predictions for {} samples", len(X))
 
-        # Prepare data
-        pred_df = self._prepare_dataframe(X, target_col, include_target=True)
+        # Build context DataFrame (everything up to the forecast period)
+        # and future exogenous DataFrame (known covariates for forecast period)
+        enc_len = self._tft_config.training.encoder_length
 
-        # Drop rows with NaN in covariates (matching training behaviour).
-        # NOTE: target_col is intentionally EXCLUDED — in forecast mode the
-        # target is NaN by design (not yet observed) and must not be dropped.
-        cov_cfg = self._tft_config.covariates
-        check_cols = [c for c in (
-            list(cov_cfg.time_varying_known)
-            + list(cov_cfg.time_varying_unknown)
-        ) if c in pred_df.columns and c != target_col]
-        n_before = len(pred_df)
-        pred_df = pred_df.dropna(subset=check_cols)
-        n_dropped = n_before - len(pred_df)
-        if n_dropped > 0:
-            logger.debug(
-                "Predict: dropped {} NaN rows ({:.1f}%)", n_dropped, 100.0 * n_dropped / n_before
+        # Determine context and forecast boundaries
+        if len(X) > pred_len:
+            context_end = len(X) - pred_len
+            context_df = X.iloc[max(0, context_end - enc_len):context_end]
+            forecast_df = X.iloc[context_end:]
+        else:
+            # Short input — use last_train_df as context
+            context_df = None
+            forecast_df = X.iloc[-pred_len:]
+
+        # Prepare future exogenous DataFrame
+        futr_cols = list(self._tft_config.covariates.time_varying_known)
+        futr_data: dict[str, Any] = {
+            "unique_id": NF_UNIQUE_ID,
+            "ds": forecast_df.index,
+        }
+        for col in futr_cols:
+            if col in forecast_df.columns:
+                futr_data[col] = forecast_df[col].values
+        futr_df = pd.DataFrame(futr_data)
+
+        # Prepare context (if different from training data)
+        nf_context = None
+        if context_df is not None:
+            nf_context = self._to_nf_format(
+                context_df, target_col, drop_target_nan=False,
             )
-            pred_df = pred_df.copy()
-            pred_df[TIME_IDX_COL] = range(len(pred_df))
-
-        # Fill NaN target values for forecast rows — TimeSeriesDataSet requires
-        # non-NaN target, but decoder predictions override these placeholder values.
-        if pred_df[target_col].isna().any():
-            pred_df = pred_df.copy()
-            pred_df[target_col] = pred_df[target_col].ffill().fillna(0)
-
-        # Create prediction dataset
-        prediction_dataset = TimeSeriesDataSet.from_dataset(
-            self._training_dataset,
-            pred_df,
-            predict=True,
-            stop_randomization=True,
-        )
-
-        cfg = self._tft_config.training
-        prediction_dataloader = prediction_dataset.to_dataloader(
-            train=False,
-            batch_size=cfg.batch_size * 2,
-            num_workers=cfg.num_workers,
-            persistent_workers=cfg.num_workers > 0,
-        )
+            # Fill NaN target in context (forecast rows have NaN consumption)
+            if nf_context["y"].isna().any():
+                nf_context = nf_context.copy()
+                nf_context["y"] = nf_context["y"].ffill().fillna(0)
 
         # Generate predictions
-        self._model.eval()  # type: ignore[union-attr]
-        raw_predictions = self._model.predict(  # type: ignore[union-attr]
-            prediction_dataloader,
-            return_index=False,
-            return_x=False,
-            mode="prediction",
-        )
+        preds = self._nf.predict(df=nf_context, futr_df=futr_df)
+
+        # Extract median prediction
+        median_col = "TFT-median"
+        if median_col not in preds.columns:
+            # Fallback: try TFT column (point forecast without quantiles)
+            median_col = "TFT"
+            if median_col not in preds.columns:
+                # Use first available prediction column
+                pred_cols = [c for c in preds.columns if c.startswith("TFT")]
+                median_col = pred_cols[0] if pred_cols else preds.columns[-1]
 
         # Store all quantile predictions
-        if isinstance(raw_predictions, torch.Tensor):
-            self._all_quantile_predictions = raw_predictions.cpu().numpy()
-        else:
-            self._all_quantile_predictions = np.array(raw_predictions)
+        self._store_quantile_predictions(preds)
 
-        # Extract median (0.50 quantile)
-        if 0.50 in self._quantiles:
-            median_idx = self._quantiles.index(0.50)
-        else:
-            median_idx = len(self._quantiles) // 2
-
-        if len(self._all_quantile_predictions.shape) == 3:
-            # Shape: (batch, prediction_length, n_quantiles)
-            median_pred = self._all_quantile_predictions[:, :, median_idx].flatten()
-        else:
-            median_pred = self._all_quantile_predictions.flatten()
-
-        # Align predictions with input index
-        n_preds = len(median_pred)
-        result_index = X.index[-n_preds:] if n_preds <= len(X) else X.index
+        # Build result DataFrame
+        pred_values = preds[median_col].values
+        n_preds = len(pred_values)
+        result_index = forecast_df.index[-n_preds:]
 
         result = pd.DataFrame(
-            {PREDICTION_COL: median_pred[-len(result_index):]},
+            {PREDICTION_COL: pred_values[-len(result_index):]},
             index=result_index,
         )
 
         return result
 
-    def predict_rolling(
-        self,
-        X: pd.DataFrame,
-        target_col: str | None = None,
-        *,
-        step: int | None = None,
-    ) -> pd.DataFrame:
-        """Generate predictions using a sliding window across the full input.
+    def _store_quantile_predictions(self, preds: pd.DataFrame) -> None:
+        """Extract and store quantile predictions from NF output.
 
-        For inputs longer than encoder_length + prediction_length, slides a window
-        of that size across the data, calling predict() per window. Overlapping
-        predictions are averaged.
-
-        For short inputs (<= encoder + prediction), delegates directly to predict().
-
-        Args:
-            X: Feature DataFrame with DatetimeIndex.
-            target_col: Target column name (default: from config).
-            step: Window step size in rows. Defaults to prediction_length
-                  (non-overlapping predictions).
-
-        Returns:
-            DataFrame with PREDICTION_COL column covering the prediction region of X.
+        NF MQLoss output columns: TFT-median, TFT-lo-96.0, TFT-hi-96.0, etc.
+        Maps back to our quantile format: {0.02: array, 0.10: array, ...}
         """
-        if target_col is None:
-            target_col = self._target_col
+        result: dict[float, NDArray[np.floating[Any]]] = {}
 
-        enc_len = self._tft_config.training.encoder_length
-        pred_len = self._tft_config.training.prediction_length
-        window_size = enc_len + pred_len
+        for q in self._quantiles:
+            # NF naming convention for quantiles
+            level = abs(q - 0.5) * 200  # e.g., q=0.02 → level=96.0
+            if q == 0.5:
+                col = "TFT-median"
+            elif q < 0.5:
+                col = f"TFT-lo-{level:.1f}"
+            else:
+                col = f"TFT-hi-{level:.1f}"
 
-        # Short input: delegate directly
-        if len(X) <= window_size:
-            return self.predict(X, target_col)
+            if col in preds.columns:
+                result[q] = preds[col].values.astype(np.float64)
 
-        if step is None:
-            step = pred_len
-
-        from collections import defaultdict
-
-        all_preds: defaultdict[Any, list[float]] = defaultdict(list)
-        n_windows = 0
-        n_failed = 0
-        pos = enc_len  # First decode position (encoder ends here)
-
-        while pos < len(X):
-            # Calculate window boundaries
-            window_end = min(pos + pred_len, len(X))
-            window_start = window_end - pred_len - enc_len
-
-            # If last window is short, slide back to maintain full window
-            if window_start < 0:
-                window_start = 0
-                window_end = min(window_size, len(X))
-
-            window_df = X.iloc[window_start:window_end]
-
-            if len(window_df) < window_size:
-                # Skip windows that can't form a complete encoder+decoder
-                pos += step
-                continue
-
-            try:
-                preds = self.predict(window_df, target_col)
-                for ts, row in preds.iterrows():
-                    all_preds[ts].append(float(row[PREDICTION_COL]))
-                n_windows += 1
-            except Exception as e:
-                n_failed += 1
-                logger.warning(
-                    "Rolling window {} failed (start={}): {}, skipping",
-                    n_windows + n_failed,
-                    window_df.index[0],
-                    e,
-                )
-
-            pos += step
-
-        if n_windows == 0:
-            msg = f"All {n_failed} rolling windows failed"
-            raise RuntimeError(msg)
-
-        if n_failed > 0:
-            logger.warning(
-                "Rolling prediction: {}/{} windows succeeded",
-                n_windows,
-                n_windows + n_failed,
-            )
-
-        # Build result: average overlapping predictions, sort by timestamp
-        sorted_ts = sorted(all_preds.keys())
-        averaged = [np.mean(all_preds[ts]) for ts in sorted_ts]
-
-        result = pd.DataFrame(
-            {PREDICTION_COL: averaged},
-            index=pd.DatetimeIndex(sorted_ts),
-        )
-
-        logger.debug(
-            "Rolling prediction: {} windows, {} unique timestamps",
-            n_windows,
-            len(result),
-        )
-
-        return result
+        self._all_quantile_predictions = result if result else None
 
     def get_quantile_predictions(self) -> dict[float, NDArray[np.floating[Any]]]:
         """Get all quantile predictions from last predict() call.
@@ -582,23 +356,10 @@ class TFTForecaster(BaseForecaster):
             msg = "No predictions available. Call predict() first."
             raise RuntimeError(msg)
 
-        result: dict[float, NDArray[np.floating[Any]]] = {}
-        for i, q in enumerate(self._quantiles):
-            if len(self._all_quantile_predictions.shape) == 3:
-                result[q] = self._all_quantile_predictions[:, :, i].flatten()
-            else:
-                result[q] = self._all_quantile_predictions.flatten()
-
-        return result
+        return self._all_quantile_predictions
 
     def save(self, path: Path) -> None:
-        """Save TFT model checkpoint, metadata, and training dataset.
-
-        Saves all artifacts needed for full model reconstruction:
-        - state_dict (model weights)
-        - metadata (architecture params for rebuilding)
-        - dataset_params (feature structure)
-        - training_dataset (normalizers + structure for prediction)
+        """Save TFT model using NeuralForecast's built-in save.
 
         Args:
             path: Directory to save model files.
@@ -612,131 +373,40 @@ class TFTForecaster(BaseForecaster):
 
         logger.info("Saving TFT model to {}", path)
 
-        # Save model state dict
-        model_path = path / self.MODEL_FILENAME
-        torch.save(self._model.state_dict(), model_path)  # type: ignore[union-attr]
+        # NeuralForecast save (handles ckpt + config internally)
+        self._nf.save(path=str(path), overwrite=True)
 
-        # Save dataset params for reconstruction
-        params_path = path / self.DATASET_PARAMS_FILENAME
-        with open(params_path, "w") as f:
-            json.dump(self._dataset_params, f, indent=2)
-
-        # Save metadata with full architecture params for model rebuild
+        # Save our metadata (quantiles, architecture, covariates)
         metadata = {
             "quantiles": self._quantiles,
-            "hidden_size": self._tft_config.architecture.hidden_size,
-            "attention_head_size": self._tft_config.architecture.attention_head_size,
-            "lstm_layers": self._tft_config.architecture.lstm_layers,
-            "dropout": self._tft_config.architecture.dropout,
-            "hidden_continuous_size": self._tft_config.architecture.hidden_continuous_size,
-            "learning_rate": self._tft_config.training.learning_rate,
-            "encoder_length": self._tft_config.training.encoder_length,
-            "prediction_length": self._tft_config.training.prediction_length,
-            "batch_size": self._tft_config.training.batch_size,
-            "num_workers": self._tft_config.training.num_workers,
-            "reduce_on_plateau_patience": self._tft_config.training.early_stop_patience,
+            "architecture": self._tft_config.architecture.model_dump(),
+            "training": {
+                "encoder_length": self._tft_config.training.encoder_length,
+                "prediction_length": self._tft_config.training.prediction_length,
+                "num_workers": self._tft_config.training.num_workers,
+                "scaler_type": self._tft_config.training.scaler_type,
+                "rnn_type": self._tft_config.training.rnn_type,
+            },
+            "covariates": self._tft_config.covariates.model_dump(),
         }
         metadata_path = path / self.METADATA_FILENAME
         with open(metadata_path, "w") as f:
             json.dump(metadata, f, indent=2)
 
-        # Save training dataset (pickle) for prediction reconstruction
-        if self._training_dataset is not None:
-            ds_path = path / self.TRAINING_DATASET_FILENAME
-            with open(ds_path, "wb") as f:
-                pickle.dump(self._training_dataset, f, protocol=pickle.HIGHEST_PROTOCOL)
-
-            # SHA256 hash for integrity verification (CWE-502 mitigation,
-            # consistent with Prophet pattern in prophet.py).
-            ds_hash = "sha256:" + hashlib.sha256(ds_path.read_bytes()).hexdigest()
-            metadata["dataset_hash"] = ds_hash
-            # Re-write metadata with hash included
-            with open(metadata_path, "w") as f:
-                json.dump(metadata, f, indent=2)
-            logger.debug("Saved training dataset to {} (hash: {})", ds_path, ds_hash[:24])
-
         logger.info("TFT model saved successfully")
 
     @classmethod
     def from_checkpoint(cls, path: Path | str) -> TFTForecaster:
-        """Load a fully functional TFTForecaster from a saved checkpoint directory.
-
-        Reconstructs the model architecture from the training dataset and metadata,
-        then loads the trained weights. The returned instance is ready for prediction.
+        """Load a fully functional TFTForecaster from a saved checkpoint.
 
         Args:
-            path: Directory containing saved model files (ckpt, metadata, dataset).
+            path: Directory containing saved model files.
 
         Returns:
             TFTForecaster ready for prediction.
-
-        Raises:
-            FileNotFoundError: If required files are missing.
         """
-        path = Path(path)
-        logger.info("Loading TFT model from checkpoint: {}", path)
+        from neuralforecast import NeuralForecast
 
-        # Load metadata
-        metadata_path = path / cls.METADATA_FILENAME
-        if not metadata_path.exists():
-            msg = f"Metadata not found: {metadata_path}"
-            raise FileNotFoundError(msg)
-        with open(metadata_path) as f:
-            metadata = json.load(f)
-
-        # Load dataset params
-        params_path = path / cls.DATASET_PARAMS_FILENAME
-        dataset_params: dict[str, Any] = {}
-        if params_path.exists():
-            with open(params_path) as f:
-                dataset_params = json.load(f)
-
-        # Load training dataset (required for model architecture reconstruction)
-        ds_path = path / cls.TRAINING_DATASET_FILENAME
-        if not ds_path.exists():
-            msg = (
-                f"Training dataset not found: {ds_path}. "
-                "Model was saved with an older format. Please retrain."
-            )
-            raise FileNotFoundError(msg)
-
-        # Verify dataset integrity via SHA256 hash (if available in metadata)
-        expected_hash = metadata.get("dataset_hash")
-        if expected_hash:
-            actual_hash = "sha256:" + hashlib.sha256(ds_path.read_bytes()).hexdigest()
-            if actual_hash != expected_hash:
-                msg = f"Dataset integrity check failed: {ds_path} (expected {expected_hash[:24]}..., got {actual_hash[:24]}...)"
-                raise ValueError(msg)
-            logger.debug("Dataset hash verified: {}", expected_hash[:24])
-
-        with open(ds_path, "rb") as f:
-            training_dataset: TimeSeriesDataSet = pickle.load(f)  # noqa: S301
-
-        # Load state dict
-        model_path = path / cls.MODEL_FILENAME
-        if not model_path.exists():
-            msg = f"Model checkpoint not found: {model_path}"
-            raise FileNotFoundError(msg)
-        state_dict = torch.load(model_path, map_location="cpu", weights_only=True)
-
-        # Reconstruct model architecture from dataset + metadata
-        quantiles = metadata.get("quantiles", [0.02, 0.1, 0.25, 0.5, 0.75, 0.9, 0.98])
-        tft_model = TemporalFusionTransformer.from_dataset(
-            training_dataset,
-            hidden_size=metadata.get("hidden_size", 64),
-            attention_head_size=metadata.get("attention_head_size", 4),
-            dropout=metadata.get("dropout", 0.1),
-            hidden_continuous_size=metadata.get("hidden_continuous_size", 16),
-            lstm_layers=metadata.get("lstm_layers", 2),
-            output_size=len(quantiles),
-            loss=QuantileLoss(quantiles=quantiles),
-            learning_rate=metadata.get("learning_rate", 0.001),
-            reduce_on_plateau_patience=metadata.get("reduce_on_plateau_patience", 4),
-        )
-        tft_model.load_state_dict(state_dict)
-        tft_model.eval()
-
-        # Build a minimal TFTConfig for the instance
         from energy_forecast.config.settings import (
             TFTArchitectureConfig,
             TFTConfig,
@@ -744,36 +414,43 @@ class TFTForecaster(BaseForecaster):
             TFTTrainingConfig,
         )
 
+        path = Path(path)
+        logger.info("Loading TFT model from checkpoint: {}", path)
+
+        # Load our metadata
+        metadata_path = path / cls.METADATA_FILENAME
+        if not metadata_path.exists():
+            msg = f"Metadata not found: {metadata_path}"
+            raise FileNotFoundError(msg)
+        with open(metadata_path) as f:
+            metadata = json.load(f)
+
+        # Load NeuralForecast model
+        nf = NeuralForecast.load(path=str(path))
+
+        # Reconstruct TFTConfig
+        arch_data = metadata.get("architecture", {})
+        train_data = metadata.get("training", {})
+        cov_data = metadata.get("covariates", {})
+        quantiles = metadata.get("quantiles", [0.02, 0.1, 0.25, 0.5, 0.75, 0.9, 0.98])
+
         config = TFTConfig(
-            architecture=TFTArchitectureConfig(
-                hidden_size=metadata.get("hidden_size", 64),
-                attention_head_size=metadata.get("attention_head_size", 4),
-                lstm_layers=metadata.get("lstm_layers", 2),
-                dropout=metadata.get("dropout", 0.1),
-                hidden_continuous_size=metadata.get("hidden_continuous_size", 16),
-            ),
+            architecture=TFTArchitectureConfig(**arch_data),
             training=TFTTrainingConfig(
-                encoder_length=metadata.get("encoder_length", 168),
-                prediction_length=metadata.get("prediction_length", 48),
-                batch_size=metadata.get("batch_size", 64),
-                max_epochs=1,  # Not used for inference
-                learning_rate=metadata.get("learning_rate", 0.001),
-                num_workers=metadata.get("num_workers", 0),
+                encoder_length=train_data.get("encoder_length", 168),
+                prediction_length=train_data.get("prediction_length", 48),
+                max_steps=1,  # Not used for inference
+                num_workers=train_data.get("num_workers", 4),
+                scaler_type=train_data.get("scaler_type", "robust"),
+                rnn_type=train_data.get("rnn_type", "lstm"),
             ),
-            covariates=TFTCovariatesConfig(
-                time_varying_known=dataset_params.get("time_varying_known_reals", []),
-                time_varying_unknown=dataset_params.get("time_varying_unknown_reals", []),
-            ),
+            covariates=TFTCovariatesConfig(**cov_data),
             quantiles=quantiles,
         )
 
-        # Construct the instance without calling __init__ training path
         instance = cls(config)
-        instance._model = tft_model
-        instance._training_dataset = training_dataset
-        instance._dataset_params = dataset_params
+        instance._nf = nf
         instance._quantiles = quantiles
-        instance._loaded_state_dict = None
 
         logger.info("TFT model loaded successfully — ready for prediction")
         return instance
@@ -781,21 +458,16 @@ class TFTForecaster(BaseForecaster):
     def load(self, path: Path) -> None:
         """Load TFT model from checkpoint directory.
 
-        If a training dataset pickle is available, the model is fully
-        reconstructed and ready for prediction. Otherwise, only the state
-        dict is loaded (backward compatibility).
-
         Args:
             path: Directory containing saved model files.
         """
+        from neuralforecast import NeuralForecast
+
         path = Path(path)
         logger.info("Loading TFT model from {}", path)
 
-        # Load dataset params
-        params_path = path / self.DATASET_PARAMS_FILENAME
-        if params_path.exists():
-            with open(params_path) as f:
-                self._dataset_params = json.load(f)
+        # Load NeuralForecast model
+        self._nf = NeuralForecast.load(path=str(path))
 
         # Load metadata
         metadata_path = path / self.METADATA_FILENAME
@@ -804,52 +476,4 @@ class TFTForecaster(BaseForecaster):
                 metadata = json.load(f)
                 self._quantiles = metadata.get("quantiles", self._quantiles)
 
-        # Model checkpoint
-        model_path = path / self.MODEL_FILENAME
-        if not model_path.exists():
-            msg = f"Model checkpoint not found: {model_path}"
-            raise FileNotFoundError(msg)
-
-        state_dict = torch.load(model_path, map_location="cpu", weights_only=True)
-
-        # Try to load training dataset for full reconstruction
-        ds_path = path / self.TRAINING_DATASET_FILENAME
-        if ds_path.exists():
-            # Verify dataset integrity via SHA256 hash (if available)
-            expected_hash = metadata.get("dataset_hash") if metadata_path.exists() else None
-            if expected_hash:
-                actual_hash = "sha256:" + hashlib.sha256(ds_path.read_bytes()).hexdigest()
-                if actual_hash != expected_hash:
-                    msg = f"Dataset integrity check failed: {ds_path}"
-                    raise ValueError(msg)
-                logger.debug("Dataset hash verified: {}", expected_hash[:24])
-
-            with open(ds_path, "rb") as f:
-                self._training_dataset = pickle.load(f)  # noqa: S301
-
-            quantiles = self._quantiles
-            tft_model = TemporalFusionTransformer.from_dataset(
-                self._training_dataset,
-                hidden_size=metadata.get("hidden_size", 64),
-                attention_head_size=metadata.get("attention_head_size", 4),
-                dropout=metadata.get("dropout", 0.1),
-                hidden_continuous_size=metadata.get("hidden_continuous_size", 16),
-                lstm_layers=metadata.get("lstm_layers", 2),
-                output_size=len(quantiles),
-                loss=QuantileLoss(quantiles=quantiles),
-                learning_rate=metadata.get("learning_rate", 0.001),
-                reduce_on_plateau_patience=metadata.get(
-                    "reduce_on_plateau_patience", 4
-                ),
-            )
-            tft_model.load_state_dict(state_dict)
-            tft_model.eval()
-            self._model = tft_model
-            logger.info("TFT model fully reconstructed — ready for prediction")
-        else:
-            # Fallback: store state dict for later use (old format)
-            self._loaded_state_dict = state_dict
-            logger.warning(
-                "Training dataset not found. State dict loaded but model "
-                "needs retraining with new save format for full prediction."
-            )
+        logger.info("TFT model loaded successfully")
