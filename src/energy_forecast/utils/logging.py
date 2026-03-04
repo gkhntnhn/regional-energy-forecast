@@ -41,8 +41,8 @@ def suppress_training_noise() -> None:
     # Lightning: checkpoint hints, nn.Module save recommendations, deprecations
     warnings.filterwarnings("ignore", category=UserWarning, module="lightning")
     warnings.filterwarnings("ignore", category=DeprecationWarning, module="lightning")
-    # pytorch-forecasting: dataset validation hints
-    warnings.filterwarnings("ignore", category=UserWarning, module="pytorch_forecasting")
+    # neuralforecast: suppress internal warnings
+    warnings.filterwarnings("ignore", category=UserWarning, module="neuralforecast")
     # torch: FutureWarning (API changes), DeprecationWarning (cuda.amp → torch.amp)
     warnings.filterwarnings("ignore", category=FutureWarning, module="torch")
     warnings.filterwarnings("ignore", category=DeprecationWarning, module="torch")
@@ -51,8 +51,8 @@ def suppress_training_noise() -> None:
     # Lightning: kills "GPU available", "TPU available", "LOCAL_RANK", "Tip" banners
     stdlib_logging.getLogger("lightning.pytorch").setLevel(stdlib_logging.WARNING)
     stdlib_logging.getLogger("lightning.fabric").setLevel(stdlib_logging.WARNING)
-    # pytorch-forecasting: suppress dataset creation INFO
-    stdlib_logging.getLogger("pytorch_forecasting").setLevel(stdlib_logging.WARNING)
+    # neuralforecast: suppress internal INFO
+    stdlib_logging.getLogger("neuralforecast").setLevel(stdlib_logging.WARNING)
 
     # Optuna: suppress "[I] Trial X finished..." and "[I] study created..."
     import optuna

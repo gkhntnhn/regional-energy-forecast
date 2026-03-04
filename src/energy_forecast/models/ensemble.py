@@ -259,12 +259,11 @@ class EnsembleForecaster(BaseForecaster):
             enc_len = self._tft_model._tft_config.training.encoder_length
 
             if history is not None:
-                # TFT always needs encoder context — prepend from history
+                # TFT needs encoder context — prepend from history
                 context = history.iloc[-enc_len:]
                 full_df = pd.concat([context, X])
                 full_df = full_df[~full_df.index.duplicated(keep="last")].sort_index()
-                # predict_rolling delegates to predict() for short inputs
-                tft_result = self._tft_model.predict_rolling(
+                tft_result = self._tft_model.predict(
                     full_df, target_col=self._target_col
                 )
                 # Reindex to X's index (drop encoder context timestamps)
