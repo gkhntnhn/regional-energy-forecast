@@ -1,4 +1,4 @@
-"""Unit tests for TFTTrainer."""
+"""Unit tests for TFTTrainer (NeuralForecast implementation)."""
 
 from __future__ import annotations
 
@@ -56,22 +56,25 @@ def tft_config() -> TFTConfig:
     return TFTConfig(
         architecture=TFTArchitectureConfig(
             hidden_size=16,
-            attention_head_size=1,
-            lstm_layers=1,
+            n_head=1,
+            n_rnn_layers=1,
             dropout=0.1,
-            hidden_continuous_size=8,
         ),
         training=TFTTrainingConfig(
             encoder_length=48,  # 2 days
             prediction_length=24,  # 1 day
-            batch_size=32,
-            max_epochs=2,
+            max_steps=20,
+            windows_batch_size=64,
             learning_rate=0.01,
-            early_stop_patience=2,
+            early_stop_patience_steps=-1,
+            val_check_steps=10,
             gradient_clip_val=0.1,
             random_seed=42,
             accelerator="cpu",
             num_workers=0,
+            precision="32-true",
+            scaler_type="robust",
+            rnn_type="lstm",
         ),
         covariates=TFTCovariatesConfig(
             time_varying_known=[
@@ -147,6 +150,18 @@ class TestTFTTrainerBuildConfig:
         # Base params preserved
         assert new_config.training.encoder_length == mock_settings.tft.training.encoder_length
 
+    def test_build_config_nf_field_names(self, mock_settings: MagicMock) -> None:
+        """Test config uses NeuralForecast field names."""
+        from energy_forecast.training.tft_trainer import TFTTrainer
+
+        trainer = TFTTrainer(mock_settings)
+        params = {"n_head": 2, "n_rnn_layers": 2, "windows_batch_size": 512}
+        new_config = trainer._build_tft_config(params)
+
+        assert new_config.architecture.n_head == 2
+        assert new_config.architecture.n_rnn_layers == 2
+        assert new_config.training.windows_batch_size == 512
+
 
 class TestTFTTrainerSplit:
     """Tests for single split training."""
@@ -184,7 +199,7 @@ class TestTFTTrainerSplit:
             val_df,
             test_df,
             params={},
-            max_epochs=2,
+            max_steps=20,
         )
 
         assert result.split_idx == 0
@@ -204,7 +219,6 @@ class TestTFTOptunaObjective:
         from energy_forecast.training.tft_trainer import TFTTrainer
 
         trainer = TFTTrainer(mock_settings)
-        # _create_objective returns (objective_fn, trial_results_cache)
         objective, trial_results = trainer._create_objective(sample_df)
 
         assert callable(objective)
@@ -224,9 +238,9 @@ class TestTFTOptunaObjective:
 
         # Create mock trial
         mock_trial = MagicMock()
-        mock_trial.suggest_categorical.side_effect = [16, 32]  # hidden_size, batch_size
-        mock_trial.suggest_float.return_value = 0.005  # learning_rate
-        mock_trial.should_prune.return_value = False  # don't prune during test
+        mock_trial.suggest_categorical.side_effect = [16]
+        mock_trial.suggest_float.return_value = 0.005
+        mock_trial.should_prune.return_value = False
 
         # Patch suggest_params to return simple params
         with patch(

@@ -1,10 +1,9 @@
-"""Unit tests for TFTForecaster."""
+"""Unit tests for TFTForecaster (NeuralForecast implementation)."""
 
 from __future__ import annotations
 
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pandas as pd
@@ -46,22 +45,25 @@ def tft_config() -> TFTConfig:
     return TFTConfig(
         architecture=TFTArchitectureConfig(
             hidden_size=16,
-            attention_head_size=1,
-            lstm_layers=1,
+            n_head=1,
+            n_rnn_layers=1,
             dropout=0.1,
-            hidden_continuous_size=8,
         ),
         training=TFTTrainingConfig(
             encoder_length=24,  # 1 day
             prediction_length=12,  # Half day
-            batch_size=16,
-            max_epochs=2,
+            max_steps=20,  # Minimal for fast tests
+            windows_batch_size=64,
             learning_rate=0.01,
-            early_stop_patience=1,
+            early_stop_patience_steps=-1,  # Disabled for short tests
+            val_check_steps=10,
             gradient_clip_val=0.1,
             random_seed=42,
             accelerator="cpu",
             num_workers=0,
+            precision="32-true",
+            scaler_type="robust",
+            rnn_type="lstm",
         ),
         covariates=TFTCovariatesConfig(
             time_varying_known=[
@@ -93,44 +95,45 @@ class TestTFTForecasterInit:
         assert 0.50 in model._quantiles
 
 
-class TestTFTForecasterPrepare:
-    """Tests for data preparation."""
+class TestNFFormatConversion:
+    """Tests for NeuralForecast format conversion."""
 
-    def test_prepare_dataframe_adds_columns(
+    def test_to_nf_format_creates_required_columns(
         self,
         tft_config: TFTConfig,
         sample_df: pd.DataFrame,
     ) -> None:
-        """Test DataFrame preparation adds required columns."""
+        """Test _to_nf_format adds unique_id, ds, y columns."""
         model = TFTForecaster(tft_config)
-        prepared = model._prepare_dataframe(sample_df, "consumption")
+        nf_df = model._to_nf_format(sample_df, "consumption")
 
-        assert "_time_idx" in prepared.columns
-        assert "_group_id" in prepared.columns
-        assert "timestamp" in prepared.columns
+        assert "unique_id" in nf_df.columns
+        assert "ds" in nf_df.columns
+        assert "y" in nf_df.columns
+        assert "consumption" not in nf_df.columns  # Renamed to y
 
-    def test_prepare_dataframe_time_idx_sequential(
+    def test_to_nf_format_unique_id_is_constant(
         self,
         tft_config: TFTConfig,
         sample_df: pd.DataFrame,
     ) -> None:
-        """Test time index is sequential integers."""
+        """Test all rows have the same unique_id."""
         model = TFTForecaster(tft_config)
-        prepared = model._prepare_dataframe(sample_df, "consumption")
+        nf_df = model._to_nf_format(sample_df, "consumption")
 
-        expected = list(range(len(sample_df)))
-        assert prepared["_time_idx"].tolist() == expected
+        assert (nf_df["unique_id"] == "uludag").all()
 
-    def test_prepare_dataframe_rejects_non_datetime_index(
+    def test_to_nf_format_preserves_covariates(
         self,
         tft_config: TFTConfig,
+        sample_df: pd.DataFrame,
     ) -> None:
-        """Test preparation rejects non-DatetimeIndex."""
+        """Test covariates are preserved in NF format."""
         model = TFTForecaster(tft_config)
-        bad_df = pd.DataFrame({"consumption": [1, 2, 3]})
+        nf_df = model._to_nf_format(sample_df, "consumption")
 
-        with pytest.raises(ValueError, match="DatetimeIndex"):
-            model._prepare_dataframe(bad_df, "consumption")
+        assert "temperature_2m" in nf_df.columns
+        assert "hour_cos" in nf_df.columns
 
 
 class TestTFTForecasterTrain:
@@ -147,10 +150,10 @@ class TestTFTForecasterTrain:
         train_df = sample_df.iloc[:200]
         val_df = sample_df.iloc[200:]
 
-        model.train(train_df, val_df, max_epochs=2)
+        model.train(train_df, val_df, max_steps=20)
 
         assert model.is_fitted is True
-        assert model._model is not None
+        assert model._nf is not None
 
     @pytest.mark.slow
     def test_train_returns_metrics(
@@ -163,7 +166,7 @@ class TestTFTForecasterTrain:
         train_df = sample_df.iloc[:200]
         val_df = sample_df.iloc[200:]
 
-        metrics = model.train(train_df, val_df, max_epochs=2)
+        metrics = model.train(train_df, val_df, max_steps=20)
 
         assert isinstance(metrics, dict)
 
@@ -177,13 +180,13 @@ class TestTFTForecasterPredict:
         tft_config: TFTConfig,
         sample_df: pd.DataFrame,
     ) -> None:
-        """Test predict returns DataFrame with yhat column."""
+        """Test predict returns DataFrame with consumption_mwh column."""
         model = TFTForecaster(tft_config)
         train_df = sample_df.iloc[:200]
         val_df = sample_df.iloc[200:250]
         test_df = sample_df.iloc[250:]
 
-        model.train(train_df, val_df, max_epochs=2)
+        model.train(train_df, val_df, max_steps=20)
         predictions = model.predict(test_df)
 
         assert isinstance(predictions, pd.DataFrame)
@@ -201,7 +204,7 @@ class TestTFTForecasterPredict:
         val_df = sample_df.iloc[200:250]
         test_df = sample_df.iloc[250:]
 
-        model.train(train_df, val_df, max_epochs=2)
+        model.train(train_df, val_df, max_steps=20)
         model.predict(test_df)
 
         quantiles = model.get_quantile_predictions()
@@ -230,21 +233,21 @@ class TestTFTForecasterSaveLoad:
         tft_config: TFTConfig,
         sample_df: pd.DataFrame,
     ) -> None:
-        """Test save creates checkpoint, metadata, and training dataset files."""
+        """Test save creates NeuralForecast checkpoint and metadata files."""
         model = TFTForecaster(tft_config)
         train_df = sample_df.iloc[:200]
         val_df = sample_df.iloc[200:]
 
-        model.train(train_df, val_df, max_epochs=2)
+        model.train(train_df, val_df, max_steps=20)
 
         with tempfile.TemporaryDirectory() as tmpdir:
             save_path = Path(tmpdir)
             model.save(save_path)
 
-            assert (save_path / "tft_model.ckpt").exists()
             assert (save_path / "metadata.json").exists()
-            assert (save_path / "dataset_params.json").exists()
-            assert (save_path / "training_dataset.pkl").exists()
+            # NeuralForecast creates its own checkpoint files
+            nf_files = list(save_path.glob("*.ckpt")) + list(save_path.glob("*.pkl"))
+            assert len(nf_files) > 0, "NeuralForecast should save checkpoint files"
 
     def test_save_raises_if_not_fitted(
         self,
@@ -258,17 +261,17 @@ class TestTFTForecasterSaveLoad:
                 model.save(Path(tmpdir))
 
     @pytest.mark.slow
-    def test_load_restores_metadata(
+    def test_load_restores_model(
         self,
         tft_config: TFTConfig,
         sample_df: pd.DataFrame,
     ) -> None:
-        """Test load restores metadata, quantiles, and makes model usable."""
+        """Test load restores model and makes it usable."""
         model = TFTForecaster(tft_config)
         train_df = sample_df.iloc[:200]
         val_df = sample_df.iloc[200:]
 
-        model.train(train_df, val_df, max_epochs=2)
+        model.train(train_df, val_df, max_steps=20)
 
         with tempfile.TemporaryDirectory() as tmpdir:
             save_path = Path(tmpdir)
@@ -279,7 +282,6 @@ class TestTFTForecasterSaveLoad:
             new_model.load(save_path)
 
             assert new_model._quantiles == model._quantiles
-            assert new_model._dataset_params == model._dataset_params
             assert new_model.is_fitted is True
 
     @pytest.mark.slow
@@ -294,7 +296,7 @@ class TestTFTForecasterSaveLoad:
         val_df = sample_df.iloc[200:250]
         test_df = sample_df.iloc[250:]
 
-        model.train(train_df, val_df, max_epochs=2)
+        model.train(train_df, val_df, max_steps=20)
 
         with tempfile.TemporaryDirectory() as tmpdir:
             save_path = Path(tmpdir)
@@ -325,163 +327,3 @@ class TestTFTForecasterQuantiles:
 
         with pytest.raises(RuntimeError, match="No predictions"):
             model.get_quantile_predictions()
-
-
-class TestPredictRolling:
-    """Tests for rolling window prediction."""
-
-    def _make_mock_model(
-        self, tft_config: TFTConfig, pred_len: int
-    ) -> TFTForecaster:
-        """Create a TFTForecaster with mocked predict()."""
-        model = TFTForecaster(tft_config)
-        # Mark as fitted so predict_rolling doesn't fail early
-        model._model = MagicMock()
-        return model
-
-    def test_short_input_delegates_to_predict(
-        self,
-        tft_config: TFTConfig,
-        sample_df: pd.DataFrame,
-    ) -> None:
-        """Input <= enc+pred delegates directly to predict()."""
-        model = self._make_mock_model(tft_config, pred_len=12)
-        enc_len = tft_config.training.encoder_length  # 24
-        pred_len = tft_config.training.prediction_length  # 12
-        window_size = enc_len + pred_len  # 36
-
-        # Use exactly window_size rows
-        short_df = sample_df.iloc[:window_size]
-        expected_result = pd.DataFrame(
-            {"consumption_mwh": np.ones(pred_len)},
-            index=short_df.index[-pred_len:],
-        )
-
-        with patch.object(model, "predict", return_value=expected_result) as mock_pred:
-            result = model.predict_rolling(short_df)
-            mock_pred.assert_called_once()
-            assert len(result) == pred_len
-
-    def test_rolling_produces_full_coverage(
-        self,
-        tft_config: TFTConfig,
-        sample_df: pd.DataFrame,
-    ) -> None:
-        """Input > enc+pred produces predictions beyond the first window."""
-        model = self._make_mock_model(tft_config, pred_len=12)
-        enc_len = tft_config.training.encoder_length  # 24
-        pred_len = tft_config.training.prediction_length  # 12
-
-        # Use 100 rows (much larger than enc+pred=36)
-        long_df = sample_df.iloc[:100]
-
-        def mock_predict(window_df: pd.DataFrame, target_col: str | None = None) -> pd.DataFrame:
-            """Return pred_len predictions from end of window."""
-            return pd.DataFrame(
-                {"consumption_mwh": np.ones(pred_len) * 42.0},
-                index=window_df.index[-pred_len:],
-            )
-
-        with patch.object(model, "predict", side_effect=mock_predict):
-            result = model.predict_rolling(long_df)
-
-        # Should have more than pred_len predictions
-        assert len(result) > pred_len
-        # All predictions should have the mocked value
-        assert np.allclose(result["consumption_mwh"].values, 42.0)
-
-    def test_non_overlapping_single_prediction_per_timestamp(
-        self,
-        tft_config: TFTConfig,
-        sample_df: pd.DataFrame,
-    ) -> None:
-        """With step=pred_len, each timestamp gets exactly 1 prediction."""
-        model = self._make_mock_model(tft_config, pred_len=12)
-        enc_len = tft_config.training.encoder_length  # 24
-        pred_len = tft_config.training.prediction_length  # 12
-
-        long_df = sample_df.iloc[:72]  # 3 full windows (24+12)*2
-        call_count = 0
-
-        def mock_predict(window_df: pd.DataFrame, target_col: str | None = None) -> pd.DataFrame:
-            nonlocal call_count
-            call_count += 1
-            return pd.DataFrame(
-                {"consumption_mwh": np.ones(pred_len) * float(call_count)},
-                index=window_df.index[-pred_len:],
-            )
-
-        with patch.object(model, "predict", side_effect=mock_predict):
-            result = model.predict_rolling(long_df, step=pred_len)
-
-        # Each window produces different values, no averaging expected
-        assert call_count >= 2
-        # Timestamps should be unique (no duplicates in index)
-        assert result.index.is_unique
-
-    def test_overlapping_averages_predictions(
-        self,
-        tft_config: TFTConfig,
-        sample_df: pd.DataFrame,
-    ) -> None:
-        """With step < pred_len, overlapping timestamps are averaged."""
-        model = self._make_mock_model(tft_config, pred_len=12)
-        pred_len = tft_config.training.prediction_length  # 12
-        step = pred_len // 2  # 6 — produces overlaps
-
-        long_df = sample_df.iloc[:60]
-        window_num = 0
-
-        def mock_predict(window_df: pd.DataFrame, target_col: str | None = None) -> pd.DataFrame:
-            nonlocal window_num
-            window_num += 1
-            # Alternate between 10.0 and 20.0 per window
-            val = 10.0 if window_num % 2 == 1 else 20.0
-            return pd.DataFrame(
-                {"consumption_mwh": np.ones(pred_len) * val},
-                index=window_df.index[-pred_len:],
-            )
-
-        with patch.object(model, "predict", side_effect=mock_predict):
-            result = model.predict_rolling(long_df, step=step)
-
-        # With overlapping windows returning 10 and 20, averaged should be 15
-        # (for timestamps covered by both windows)
-        assert result.index.is_unique
-        # At least some predictions should be averaged (value = 15.0)
-        values = result["consumption_mwh"].values
-        has_averaged = any(np.isclose(v, 15.0) for v in values)
-        assert has_averaged, f"Expected some averaged values (15.0), got: {np.unique(values)}"
-
-    def test_predict_rolling_raises_if_not_fitted(
-        self,
-        tft_config: TFTConfig,
-        sample_df: pd.DataFrame,
-    ) -> None:
-        """predict_rolling raises if model not fitted (short input delegates to predict)."""
-        model = TFTForecaster(tft_config)
-        enc_len = tft_config.training.encoder_length
-        pred_len = tft_config.training.prediction_length
-        short_df = sample_df.iloc[: enc_len + pred_len]
-
-        with pytest.raises(RuntimeError, match="trained"):
-            model.predict_rolling(short_df)
-
-    def test_all_windows_fail_raises_error(
-        self,
-        tft_config: TFTConfig,
-        sample_df: pd.DataFrame,
-    ) -> None:
-        """If all windows fail, raises RuntimeError."""
-        model = self._make_mock_model(tft_config, pred_len=12)
-        long_df = sample_df.iloc[:100]
-
-        def mock_predict_fail(
-            window_df: pd.DataFrame, target_col: str | None = None
-        ) -> pd.DataFrame:
-            msg = "Simulated failure"
-            raise ValueError(msg)
-
-        with patch.object(model, "predict", side_effect=mock_predict_fail):
-            with pytest.raises(RuntimeError, match="All.*windows failed"):
-                model.predict_rolling(long_df)
