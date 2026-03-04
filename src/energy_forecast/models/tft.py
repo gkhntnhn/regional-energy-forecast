@@ -130,10 +130,14 @@ class TFTForecaster(BaseForecaster):
         # NeuralForecast uses **kwargs to capture extra arguments as trainer_kwargs.
         # Pass precision/gradient_clip/callbacks as flat kwargs, NOT in a dict.
         extra_trainer_kwargs: dict[str, Any] = {
+            "accelerator": train_cfg.accelerator,
             "precision": train_cfg.precision,
             "gradient_clip_val": train_cfg.gradient_clip_val,
             "enable_progress_bar": train_cfg.enable_progress_bar,
         }
+        # NF defaults devices=-1 (all GPUs); CPU requires devices=1
+        if train_cfg.accelerator == "cpu":
+            extra_trainer_kwargs["devices"] = 1
         if callbacks:
             extra_trainer_kwargs["callbacks"] = callbacks
 
