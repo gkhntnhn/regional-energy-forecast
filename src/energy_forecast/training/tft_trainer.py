@@ -150,7 +150,7 @@ class TFTTrainer:
             ),
         }
 
-        # Override training params
+        # Override training params (carry ALL fields from base config)
         train_params = {
             "encoder_length": base.training.encoder_length,
             "prediction_length": base.training.prediction_length,
@@ -162,6 +162,9 @@ class TFTTrainer:
             "random_seed": base.training.random_seed,
             "accelerator": base.training.accelerator,
             "num_workers": base.training.num_workers,
+            "enable_progress_bar": base.training.enable_progress_bar,
+            "enable_model_summary": base.training.enable_model_summary,
+            "precision": base.training.precision,
         }
 
         return TFTConfig(

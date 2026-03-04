@@ -18,8 +18,8 @@ training:
   random_seed: 42
   accelerator: "auto"         # SMOKE TEST (prod: gpu)
   num_workers: 4              # pod has 16+ vCPU for data loading
-  enable_progress_bar: false  # suppress verbose progress bars in log files
-  precision: "16-mixed"       # Mixed precision for ~30-40% GPU speedup
+  enable_progress_bar: true   # true for local dev, false for RunPod/log files
+  precision: "32-true"          # fp32 baseline — bf16/fp16 overflow in TFT attention
 
 optimization:
   # fast_epochs: no longer used — epoch-level Optuna pruning replaces the

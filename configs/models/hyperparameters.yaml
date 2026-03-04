@@ -5,7 +5,7 @@
 target_col: consumption
 
 catboost:
-  n_trials: 1            # SMOKE TEST (prod: 30)
+  n_trials: 2            # MLflow demo (prod: 30)
   search_space:
     iterations:
       type: int
