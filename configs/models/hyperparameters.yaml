@@ -68,31 +68,26 @@ tft:
     hidden_size:
       type: int
       low: 32
-      high: 128           # Production architecture range (R1 smoke: 64)
+      high: 128           # Production architecture range
       step: 32
-    attention_head_size:
+    n_head:
       type: categorical
-      choices: [1, 2, 4]  # Explore multi-head attention
+      choices: [1, 2, 4]  # Explore multi-head attention (NF: n_head)
     dropout:
       type: float
       low: 0.05
-      high: 0.2           # Wider range around R1's 0.1
-    hidden_continuous_size:
-      type: int
-      low: 16
-      high: 64            # Larger continuous embedding (R1 smoke: 8)
-      step: 16
-    lstm_layers:
+      high: 0.2           # Wider range around default 0.1
+    n_rnn_layers:
       type: categorical
-      choices: [1, 2]     # Explore deeper LSTM
+      choices: [1, 2]     # Explore deeper RNN (NF: n_rnn_layers)
     learning_rate:
       type: float
       low: 0.0005
-      high: 0.005         # Range around R1 best: 0.0016
+      high: 0.005         # Range around default 0.001
       log: true
-    batch_size:
+    windows_batch_size:
       type: categorical
-      choices: [128, 256] # GPU-optimized batch sizes
+      choices: [512, 1024, 2048]  # NF actual training batch
 
 cross_validation:
   n_splits: 2             # SMOKE TEST (prod: 12)
