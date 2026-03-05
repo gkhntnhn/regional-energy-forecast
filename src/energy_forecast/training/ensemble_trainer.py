@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -140,14 +141,18 @@ class EnsembleTrainer:
             "Ensemble active models: {} | mode: {}", self._active_models, self._mode
         )
 
-        # Create sub-trainers for active models only
+        # Create sub-trainers in active_models order (first model trains first)
+        _factory: dict[
+            str, Callable[[], CatBoostTrainer | ProphetTrainer | TFTTrainer]
+        ] = {
+            "catboost": lambda: CatBoostTrainer(settings, tracker),
+            "prophet": lambda: ProphetTrainer(settings, tracker),
+            "tft": lambda: TFTTrainer(settings, tracker),
+        }
         self._trainers: dict[str, CatBoostTrainer | ProphetTrainer | TFTTrainer] = {}
-        if "catboost" in self._active_models:
-            self._trainers["catboost"] = CatBoostTrainer(settings, tracker)
-        if "prophet" in self._active_models:
-            self._trainers["prophet"] = ProphetTrainer(settings, tracker)
-        if "tft" in self._active_models:
-            self._trainers["tft"] = TFTTrainer(settings, tracker)
+        for model_name in self._active_models:
+            if model_name in _factory:
+                self._trainers[model_name] = _factory[model_name]()
 
     def run(self, df: pd.DataFrame) -> EnsemblePipelineResult:
         """Execute full ensemble training pipeline.

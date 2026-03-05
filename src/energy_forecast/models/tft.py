@@ -398,6 +398,18 @@ class TFTForecaster(BaseForecaster):
         # NeuralForecast save (handles ckpt + config internally)
         self._nf.save(path=str(path), overwrite=True)
 
+        # Strip training callbacks from checkpoint — they hold dataset references
+        # (inflating file size 100x) and cause duplicate EarlyStopping on load
+        import torch
+
+        ckpt_files = list(path.glob("*.ckpt"))
+        for ckpt_file in ckpt_files:
+            ckpt = torch.load(ckpt_file, map_location="cpu", weights_only=False)
+            if "hyper_parameters" in ckpt and "callbacks" in ckpt["hyper_parameters"]:
+                ckpt["hyper_parameters"]["callbacks"] = []
+                torch.save(ckpt, ckpt_file)
+                logger.debug("Stripped callbacks from {}", ckpt_file.name)
+
         # Save our metadata (quantiles, architecture, covariates)
         metadata = {
             "quantiles": self._quantiles,
@@ -449,6 +461,13 @@ class TFTForecaster(BaseForecaster):
 
         # Load NeuralForecast model
         nf = NeuralForecast.load(path=str(path))
+
+        # Strip training callbacks from checkpoint — not needed for inference
+        # and duplicate EarlyStopping causes crash on predict()
+        for model in nf.models:
+            if hasattr(model, "hparams") and "callbacks" in model.hparams:
+                model.hparams["callbacks"] = []
+                logger.debug("Cleared training callbacks from loaded checkpoint")
 
         # Reconstruct TFTConfig
         arch_data = metadata.get("architecture", {})
