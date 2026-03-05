@@ -50,7 +50,7 @@ make train-ensemble       # Ensemble eğitimi
 ```
 
 > **Test için:** Model YAML'ında (configs/models/*.yaml veya configs/models/hyperparameters.yaml)
-> `n_splits`, `n_trials`, `max_epochs` değerlerini geçici olarak düşür, çalıştır, sonra geri al.
+> `n_splits`, `n_trials`, `max_steps` değerlerini geçici olarak düşür, çalıştır, sonra geri al.
 > Ayrı smoke/test config dosyası yok — tek YAML, tek pipeline.
 
 ## Training CLI
@@ -87,7 +87,7 @@ uv run python -m energy_forecast.training.run --model catboost
 - Feature pipeline tüm modlarda aynı feature'ları üretir
 - Ham EPIAS değerleri pipeline çıkışında her zaman DROP
 - PREDICTION_COL = "consumption_mwh" — tüm modellerin standart output kolon ismi
-- CatBoost categorical_features: 36 adet (catboost.yaml'da tanımlı, 6 grup: Time, Holiday, Interaction, Time-period, Weather, Season/Solar)
+- CatBoost categorical_features: 28 adet (catboost.yaml'da tanımlı, 6 grup: Time, Holiday, Interaction, Time-period, Weather, Season/Solar)
 - Prophet regressors: 14 adet (prophet.yaml'da tanımlı, her biri mode bilgisiyle)
 - Ensemble ağırlık optimizasyonu: MAPE(y, Σwᵢ·predᵢ) — blended predictions üzerinden
 - TimeSeriesSplitter: shuffle=True → ValueError (zaman serisi CV'de shuffle yasak)
@@ -150,12 +150,13 @@ data/
 ├── raw/
 │   └── Consumption_Input_Format.xlsx    # Ham tüketim verisi
 ├── processed/
-│   ├── features_historical.parquet      # Training için (~48K satır, ~162 feature)
+│   ├── features_historical.parquet      # Training için (~48K satır, ~153 feature)
 │   └── features_forecast.parquet        # Prediction için (48 satır)
 ├── static/
 │   └── turkish_holidays.parquet         # Tatil verileri
 └── external/
-    ├── epias/epias_market_{year}.parquet # EPIAS cache (yıllık, config-driven pattern)
+    ├── epias/epias_market_{year}.parquet # EPIAS piyasa cache (yıllık)
+    ├── epias/epias_generation_{year}.parquet # EPIAS üretim cache (yıllık)
     ├── profile/profile_coef_{year}.parquet # Profil katsayıları (yıllık)
     └── weather_cache.sqlite             # OpenMeteo cache
 
@@ -166,9 +167,9 @@ configs/
 ├── openmeteo.yaml          # Hava durumu
 ├── api.yaml                # API config (CORS, rate limit)
 ├── models/
-│   ├── catboost.yaml       # CatBoost model config (36 kategorik feature)
+│   ├── catboost.yaml       # CatBoost model config (28 kategorik feature)
 │   ├── prophet.yaml        # Prophet model config (14 regressor)
-│   ├── tft.yaml            # TFT model config
+│   ├── tft.yaml            # TFT model config (NeuralForecast)
 │   ├── ensemble.yaml       # Ensemble config
 │   └── hyperparameters.yaml # Optuna arama uzayı
 └── features/
@@ -183,14 +184,9 @@ configs/
 src/energy_forecast/utils/prophet_utils.py  # Shared to_prophet_format (DRY)
 ```
 
-## Mevcut Model Performansı
+## Model Performansı
 
-| Model | Val MAPE | Test MAPE | Durum |
-|-------|----------|-----------|-------|
-| CatBoost | 3.01% | 3.37% | ✅ Production-ready (603 trees, early stopping) |
-| Prophet | 4.14% | 4.48% | ✅ Production-ready (14 regressor, v2 config, bias -1.8 MWh) |
-| TFT | 5.94% | 2.57% | Debug tamamlandı (2-fold, 2-epoch, quantile calibration bozuk, production training gerekli) |
-| Ensemble | — | — | Eğitim bekleniyor, hedef < %3 |
+> Yeni production HPO sonrası güncellenecek.
 
 ## Bilinen Sorunlar
 
@@ -200,8 +196,6 @@ src/energy_forecast/utils/prophet_utils.py  # Shared to_prophet_format (DRY)
 | EPIAS duplicate timestamps | Cache'te duplicate satırlar olabiliyor | `~df.index.duplicated(keep='first')` ile temizle |
 | Windows cp1254 codec | Unicode box-drawing karakterler çalışmaz | ASCII karakterler kullan |
 | Prophet cmdstanpy | Bazı ortamlarda kurulum sorunu | `pip install cmdstanpy` sonra `cmdstanpy.install_cmdstan()` |
-| Sistematik under-prediction | Gündüz +24 MWh (CatBoost), -6.5 MWh overpredict (Prophet) | Bias correction veya trend ratio feature |
-| CatBoost feature pruning | 85/161 feature near-zero importance | Opsiyonel prune, ensemble'da farklı modeller farklı feature kullanabilir |
 
 ## Detaylı Bilgi
 @SPEC.md — Proje spesifikasyonu (forecast akışı, model mimarisi, API tasarımı)

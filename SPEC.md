@@ -1,7 +1,7 @@
 # SPEC.md — Energy Forecast
 
 > Proje anayasası. Claude Code ve geliştirici bu dosyayı tek kaynak olarak referans alır.
-> Son güncelleme: 2026-02-21
+> Son güncelleme: 2026-03-06
 
 ---
 
@@ -185,7 +185,7 @@ Weather forecast ve solar hesaplamaları (lead dahil) data leakage DEĞİLDİR:
 | Solar | pvlib hesaplamaları | GHI/DNI/DHI, POA, clearness index, cloud proxy |
 | EPIAS | EPİAŞ piyasa verileri | Lag, rolling, expanding (türetilmiş değerler) |
 
-**Toplam feature sayısı:** ~162
+**Toplam feature sayısı:** ~153
 
 ### 4.2 Data Leakage Kuralları
 
@@ -231,8 +231,8 @@ Feature pipeline training ve prediction için AYNI şekilde çalışır. Ayrı "
 Bu sayede uzun lag'ler (consumption_lag_720 gibi) forecast satırlarında da doğru hesaplanır.
 
 **Çıktı dosyaları:**
-- `data/processed/features_historical.parquet` (~48K satır)
-- `data/processed/features_forecast.parquet` (48 satır)
+- `data/processed/features_historical.parquet` (~48K satır, ~153 feature)
+- `data/processed/features_forecast.parquet` (48 satır, ~153 feature)
 
 ---
 
@@ -268,7 +268,7 @@ Input (feature-engineered DataFrame)
 | Loss function | RMSE / MAE / MAPE | Optuna ile seç |
 | Early stopping | 50 rounds | Validation metric'e göre |
 | has_time | true | Zaman sırası korunur |
-| Kategorik kolonlar | 36 adet, configs/models/catboost.yaml'da tanımlı | 6 grup: Time, Holiday, Interaction, Time-period, Weather, Season/Solar |
+| Kategorik kolonlar | 28 adet, configs/models/catboost.yaml'da tanımlı | 6 grup: Time, Holiday, Interaction, Time-period, Weather, Season/Solar |
 
 **Güçlü yanı:** Feature etkileşimleri (tatil × saat × mevsim), tabular data'da en iyi performans.
 
@@ -285,7 +285,7 @@ Input (feature-engineered DataFrame)
 | Changepoint prior scale | 0.001-1.0 (Optuna ile optimize) |
 | n_changepoints | 15-50 (Optuna ile optimize) |
 
-**Prophet Regressors (14 adet):**
+**Prophet Regressors (14 adet, R2 güncel):**
 
 | # | Regressor | Mode |
 |---|-----------|------|
@@ -293,50 +293,62 @@ Input (feature-engineered DataFrame)
 | 2 | consumption_lag_48 | multiplicative |
 | 3 | consumption_lag_720 | multiplicative |
 | 4 | temperature_2m | multiplicative |
-| 5 | relative_humidity_2m | additive |
-| 6 | wind_speed_10m | additive |
+| 5 | apparent_temperature | multiplicative |
+| 6 | relative_humidity_2m | additive |
 | 7 | shortwave_radiation | multiplicative |
 | 8 | wth_cdd | multiplicative |
 | 9 | wth_hdd | multiplicative |
 | 10 | is_weekend | multiplicative |
-| 11 | is_holiday | multiplicative |
-| 12 | is_business_hours | multiplicative |
-| 13 | is_peak | multiplicative |
+| 11 | is_sunday | multiplicative |
+| 12 | is_holiday | multiplicative |
+| 13 | is_business_hours | multiplicative |
 | 14 | sol_elevation | multiplicative |
 
 **Güçlü yanı:** Trend + mevsimsellik yapısal ayrıştırma, tatil etkilerini doğal modelleme.
 
-### 5.4 TFT (Temporal Fusion Transformer)
+### 5.4 TFT (Temporal Fusion Transformer — NeuralForecast)
 
 | Parametre | Değer |
 |-----------|-------|
-| Hidden size | 64 |
-| Attention heads | 4 |
-| LSTM layers | 2 |
+| Framework | NeuralForecast (nixtla) |
+| Hidden size | 128 (prod) |
+| Attention heads (n_head) | 2 |
+| RNN layers (n_rnn_layers) | 1 |
 | Dropout | 0.1 |
 | Encoder length | 168 saat (7 gün) |
-| Prediction length | 48 saat |
-| Quantiles | [0.02, 0.1, 0.25, 0.5, 0.75, 0.9, 0.98] |
-| Loss | Quantile Loss |
-| time_varying_unknown_reals | Config'den okunur (consumption lag + EPIAS lag feature'ları) |
+| Prediction length (h) | 48 saat |
+| max_steps | 10000 (prod) |
+| windows_batch_size | 2048 (prod) |
+| Loss | MAE |
+| Covariates | futr_exog_list (known), hist_exog_list (unknown) |
 
-**Güçlü yanı:** Uncertainty quantification (P10-P90), attention-based interpretability,
+**Güçlü yanı:** Attention-based interpretability, GPU utilization %96+,
 hangi feature'ın hangi saatte önemli olduğunu gösterir.
 
 ### 5.5 Ensemble
 
-- Ağırlıklar (w₁, w₂, w₃) validation seti üzerinde optimize edilir
-- Optimizasyon: `scipy.optimize.minimize` (constraint: Σwᵢ = 1, wᵢ ≥ 0)
+İki mod desteklenir:
+
+**Stacking (varsayılan):**
+- CatBoost meta-learner (depth=2) OOF val predictions üzerinde eğitilir
+- Context features: hour, day_of_week, is_weekend, month, is_holiday
+- Temporal 80/20 split ile meta-learner validation
+
+**Weighted Average (fallback):**
+- `scipy.optimize.minimize` SLSQP (constraint: Σwᵢ = 1, wᵢ ≥ 0)
 - Metrik: MAPE(y, Σwᵢ·predᵢ) — blended predictions üzerinden
-- NOT: MAPE(blended) ≠ Σwᵢ·MAPE(predᵢ). Ağırlıklar prediction seviyesinde optimize edilir.
+- NOT: MAPE(blended) ≠ Σwᵢ·MAPE(predᵢ)
+
+**Ortak:**
 - Graceful degradation: Bir model başarısız olursa kalanlarla devam eder
+- Stacking < 2 model ile çalışamaz → otomatik weighted_average'a düşer
 
 **Faz Planı:**
 
-| Faz | Modeller | Ensemble |
-|-----|----------|----------|
-| Faz 1 | CatBoost + Prophet | w₁·CB + w₂·P |
-| Faz 2 | CatBoost + Prophet + TFT | w₁·CB + w₂·P + w₃·TFT |
+| Faz | Modeller | Durum |
+|-----|----------|-------|
+| Faz 1 | CatBoost + Prophet | ✅ Tamamlandı |
+| Faz 2 | CatBoost + Prophet + TFT | ✅ Tamamlandı (3-model production HPO pending) |
 
 ---
 
@@ -578,9 +590,9 @@ configs/
 ├── openmeteo.yaml          # Hava durumu: lokasyonlar, ağırlıklar, değişkenler
 ├── api.yaml                # API: CORS, rate limit
 ├── models/
-│   ├── catboost.yaml       # CatBoost: 36 kategorik kolon, eğitim parametreleri
+│   ├── catboost.yaml       # CatBoost: 28 kategorik kolon, eğitim parametreleri
 │   ├── prophet.yaml        # Prophet: seasonality, holidays, 14 regressor
-│   ├── tft.yaml            # TFT: architecture, training, quantiles
+│   ├── tft.yaml            # TFT: NeuralForecast architecture, training
 │   ├── ensemble.yaml       # Ensemble: ağırlıklar, aktif modeller
 │   └── hyperparameters.yaml # Optuna arama uzayı (tüm modeller)
 └── features/
@@ -643,9 +655,9 @@ DATABASE_URL=postgresql+asyncpg://user:pass@host:5432/db
 | Unit tests | Her public fonksiyon/class test edilmeli |
 | Integration tests | End-to-end pipeline (Excel → prediction) |
 | Hızlı test | YAML'da değer düşür → run.py çalıştır → geri al |
-| Coverage hedefi | %80+ (eski projedeki %5'ten büyük iyileşme) |
+| Coverage hedefi | %90+ (mevcut: %91) |
 | Mock kuralı | Sadece external API'ler mock'lanır (EPİAŞ, OpenMeteo) |
-| Test sayısı | 480+ (aktif) |
+| Test sayısı | 594 (aktif) |
 
 ### 10.3 Git Workflow
 
@@ -668,9 +680,9 @@ Commit format: `feat(scope): description` / `fix(scope): description`
 |--------|-------|--------|
 | Tahmin üretme süresi | < 30 saniye | Ölçülüyor (latency_ms metadata'da) |
 | API response time | < 60 saniye | — |
-| CatBoost Val MAPE | < %5 | %3.01 ✅ |
-| Prophet Val MAPE | < %6 | %4.14 ✅ |
-| Ensemble Val MAPE | < %3 (hedef) | Eğitim bekleniyor |
+| CatBoost Val MAPE | < %5 | Yeni HPO sonrası güncellenecek |
+| Prophet Val MAPE | < %6 | Yeni HPO sonrası güncellenecek |
+| Ensemble Val MAPE | < %3 (hedef) | Yeni HPO sonrası güncellenecek |
 
 ### 11.2 Güvenilirlik
 
@@ -690,8 +702,6 @@ Commit format: `feat(scope): description` / `fix(scope): description`
 | EPIAS duplicate timestamps | Yıllık cache dosyalarında duplicate satırlar | `df[~df.index.duplicated(keep='first')]` ile temizle |
 | Windows cp1254 codec | Unicode box-drawing karakterler encode edilemiyor | ASCII karakterler kullan |
 | Prophet cmdstanpy | Bazı ortamlarda kurulum sorunu | `pip install cmdstanpy` sonra `cmdstanpy.install_cmdstan()` |
-| Sistematik under-prediction | Gündüz +24 MWh (CatBoost), -6.5 MWh overpredict (Prophet) | Bias correction veya trend ratio feature |
-| CatBoost feature pruning | 85/161 feature near-zero importance | Opsiyonel prune |
 
 ---
 
