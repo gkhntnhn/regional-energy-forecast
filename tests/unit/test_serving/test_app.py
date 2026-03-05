@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 from io import BytesIO
 from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock
 
 import pandas as pd
@@ -71,6 +73,51 @@ def test_client(
     app.state.api_key = TEST_API_KEY
 
     return TestClient(app, raise_server_exceptions=False)
+
+
+class TestFindLatestModelDir:
+    """Tests for _find_latest_model_dir utility."""
+
+    def test_returns_latest_subdir(self, tmp_path: Any) -> None:
+        from energy_forecast.serving.app import _find_latest_model_dir
+
+        (tmp_path / "catboost_2025-01-01_10-00").mkdir()
+        (tmp_path / "catboost_2025-06-01_10-00").mkdir()
+        (tmp_path / "catboost_2025-12-01_10-00").mkdir()
+
+        result = _find_latest_model_dir(tmp_path, "catboost")
+        assert result is not None
+        assert result.name == "catboost_2025-12-01_10-00"
+
+    def test_returns_none_for_empty_dir(self, tmp_path: Any) -> None:
+        from energy_forecast.serving.app import _find_latest_model_dir
+
+        result = _find_latest_model_dir(tmp_path, "catboost")
+        assert result is None
+
+    def test_returns_none_for_nonexistent_dir(self, tmp_path: Any) -> None:
+        from energy_forecast.serving.app import _find_latest_model_dir
+
+        result = _find_latest_model_dir(tmp_path / "nonexistent", "catboost")
+        assert result is None
+
+    def test_ignores_files(self, tmp_path: Any) -> None:
+        from energy_forecast.serving.app import _find_latest_model_dir
+
+        (tmp_path / "catboost_2025-01-01.txt").write_text("not a dir")
+        (tmp_path / "catboost_2025-06-01_10-00").mkdir()
+
+        result = _find_latest_model_dir(tmp_path, "catboost")
+        assert result is not None
+        assert result.name == "catboost_2025-06-01_10-00"
+
+    def test_ignores_non_matching_prefix(self, tmp_path: Any) -> None:
+        from energy_forecast.serving.app import _find_latest_model_dir
+
+        (tmp_path / "prophet_2025-01-01_10-00").mkdir()
+
+        result = _find_latest_model_dir(tmp_path, "catboost")
+        assert result is None
 
 
 class TestHealthEndpoint:
@@ -301,3 +348,141 @@ class TestJobsEndpoint:
         assert len(data["jobs"]) == 1
         # Email should be masked
         assert "***" in data["jobs"][0]["email"]
+
+
+class TestApiKeyNotConfigured:
+    """Tests for verify_api_key when API key is not set on server (line 84)."""
+
+    def test_empty_api_key_returns_401(self, test_client: TestClient) -> None:
+        """Test that empty server API key rejects all authenticated requests."""
+        from energy_forecast.serving.app import app
+
+        original_key = app.state.api_key
+        try:
+            app.state.api_key = ""
+            response = test_client.get("/models", headers=AUTH_HEADER)
+            assert response.status_code == 401
+            assert "not configured" in response.json()["detail"].lower()
+        finally:
+            app.state.api_key = original_key
+
+
+class TestRateLimitHandler:
+    """Tests for _rate_limit_exceeded_handler (lines 103-104)."""
+
+    def test_returns_429_json_response(self) -> None:
+        """Test handler returns 429 with structured JSON body."""
+        from energy_forecast.serving.app import _rate_limit_exceeded_handler
+
+        mock_request = MagicMock()
+        mock_exc = MagicMock()
+        mock_exc.detail = "Rate limit exceeded"
+
+        response = _rate_limit_exceeded_handler(mock_request, mock_exc)
+
+        assert response.status_code == 429
+        # JSONResponse body is bytes; decode and check
+        import json
+
+        body = json.loads(bytes(response.body).decode())
+        assert body["success"] is False
+        assert "rate limit" in body["error"].lower()
+        assert body["detail"] == "Rate limit exceeded"
+
+    def test_exc_without_detail_attribute(self) -> None:
+        """Test handler works when exception has no .detail attribute."""
+        from energy_forecast.serving.app import _rate_limit_exceeded_handler
+
+        mock_request = MagicMock()
+        exc = RuntimeError("too many requests")
+        # RuntimeError has no .detail, so getattr should fall back to str(exc)
+
+        response = _rate_limit_exceeded_handler(mock_request, exc)
+
+        assert response.status_code == 429
+        import json
+
+        body = json.loads(bytes(response.body).decode())
+        assert "too many requests" in body["detail"]
+
+
+class TestApiErrorHandler:
+    """Tests for api_error_handler (line 270)."""
+
+    def test_returns_structured_error_response(self) -> None:
+        """Test handler returns JSONResponse with correct status and body."""
+        from energy_forecast.serving.app import api_error_handler
+        from energy_forecast.serving.exceptions import APIError
+
+        mock_request = MagicMock()
+        exc = APIError(detail="Something went wrong", status_code=400)
+
+        loop = asyncio.new_event_loop()
+        try:
+            response = loop.run_until_complete(api_error_handler(mock_request, exc))
+        finally:
+            loop.close()
+
+        assert response.status_code == 400
+        import json
+
+        body = json.loads(bytes(response.body).decode())
+        assert body["success"] is False
+        assert body["error"] == "APIError"
+        assert body["detail"] == "Something went wrong"
+
+    def test_handles_subclass_exceptions(self) -> None:
+        """Test handler works with APIError subclasses not caught by specific handlers."""
+        from energy_forecast.serving.app import api_error_handler
+        from energy_forecast.serving.exceptions import PredictionError
+
+        mock_request = MagicMock()
+        exc = PredictionError(detail="Pipeline failed")
+
+        loop = asyncio.new_event_loop()
+        try:
+            response = loop.run_until_complete(api_error_handler(mock_request, exc))
+        finally:
+            loop.close()
+
+        assert response.status_code == 500
+        import json
+
+        body = json.loads(bytes(response.body).decode())
+        assert body["error"] == "PredictionError"
+        assert body["detail"] == "Pipeline failed"
+
+
+class TestStatusUnexpectedError:
+    """Tests for get_status unexpected exception path (lines 390-392)."""
+
+    def test_get_status_unexpected_error_returns_500(
+        self, test_client: TestClient
+    ) -> None:
+        """Test that a non-JobNotFoundError exception returns 500."""
+        from energy_forecast.serving.app import app
+
+        # Replace job_manager.get_job with a function that raises RuntimeError
+        original_manager = app.state.job_manager
+        mock_manager = MagicMock()
+        mock_manager.get_job = MagicMock(side_effect=RuntimeError("DB connection lost"))
+        app.state.job_manager = mock_manager
+
+        try:
+            response = test_client.get("/status/some-job-id", headers=AUTH_HEADER)
+            assert response.status_code == 500
+            assert "internal server error" in response.json()["detail"].lower()
+        finally:
+            app.state.job_manager = original_manager
+
+
+class TestRootEndpoint:
+    """Tests for root endpoint / (line 442)."""
+
+    def test_root_serves_dashboard(self, test_client: TestClient) -> None:
+        """Test that GET / returns the dashboard HTML file."""
+        response = test_client.get("/")
+
+        # The static file exists, so it should return 200 with HTML content
+        assert response.status_code == 200
+        assert "html" in response.headers.get("content-type", "").lower()

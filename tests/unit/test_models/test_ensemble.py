@@ -382,3 +382,169 @@ class TestEdgeCases:
         assert forecaster._catboost_model is not None
         assert forecaster._prophet_model is None
         assert forecaster._tft_model is None
+
+    def test_mode_property(self) -> None:
+        """Test mode property returns current mode."""
+        config = {"mode": "stacking"}
+        forecaster = EnsembleForecaster(config)
+        assert forecaster.mode == "stacking"
+
+    def test_set_meta_model(self) -> None:
+        """Test setting meta-learner model."""
+        forecaster = EnsembleForecaster({})
+        meta = MagicMock()
+        forecaster.set_meta_model(meta)
+        assert forecaster._meta_model is meta
+
+    def test_none_config_uses_defaults(self) -> None:
+        """Test None config falls back to defaults."""
+        forecaster = EnsembleForecaster(None)
+        assert len(forecaster.active_models) > 0
+
+
+# ---------------------------------------------------------------------------
+# Stacking predict
+# ---------------------------------------------------------------------------
+
+
+class TestStackingPredict:
+    """Tests for stacking prediction mode."""
+
+    def test_predict_stacking_with_meta_model(self) -> None:
+        config = {
+            "active_models": ["catboost", "prophet"],
+            "mode": "stacking",
+            "context_features": ["hour", "day_of_week", "is_weekend", "month"],
+        }
+        forecaster = EnsembleForecaster(config)
+        forecaster.set_models(
+            catboost_model=_make_mock_catboost(),
+            prophet_model=_make_mock_prophet(),
+        )
+
+        # Mock meta-learner
+        meta = MagicMock()
+        meta.predict.return_value = np.array([950.0] * 48)
+        forecaster.set_meta_model(meta)
+
+        df = _make_feature_df()
+        result = forecaster.predict(df)
+
+        assert "consumption_mwh" in result.columns
+        assert result["consumption_mwh"].iloc[0] == pytest.approx(950.0)
+        meta.predict.assert_called_once()
+
+    def test_predict_stacking_with_is_holiday(self) -> None:
+        config = {
+            "active_models": ["catboost", "prophet"],
+            "mode": "stacking",
+            "context_features": ["hour", "day_of_week", "is_weekend", "month", "is_holiday"],
+        }
+        forecaster = EnsembleForecaster(config)
+        forecaster.set_models(
+            catboost_model=_make_mock_catboost(),
+            prophet_model=_make_mock_prophet(),
+        )
+
+        meta = MagicMock()
+        meta.predict.return_value = np.array([960.0] * 48)
+        forecaster.set_meta_model(meta)
+
+        df = _make_feature_df()
+        df["is_holiday"] = 0
+        result = forecaster.predict(df)
+
+        assert len(result) == 48
+
+    def test_predict_stacking_fallback_to_weighted_avg(self) -> None:
+        """Without meta-model, stacking falls back to weighted average."""
+        config = {
+            "active_models": ["catboost", "prophet"],
+            "mode": "stacking",
+        }
+        forecaster = EnsembleForecaster(config)
+        forecaster.set_models(
+            catboost_model=_make_mock_catboost(),
+            prophet_model=_make_mock_prophet(),
+        )
+        # No meta-model set → should use weighted average fallback
+
+        df = _make_feature_df()
+        result = forecaster.predict(df)
+
+        assert "consumption_mwh" in result.columns
+        assert len(result) == 48
+
+
+# ---------------------------------------------------------------------------
+# Save with meta-model
+# ---------------------------------------------------------------------------
+
+
+class TestSaveWithMetaModel:
+    """Tests for save/load with meta-model."""
+
+    def test_save_with_meta_model(self, tmp_path: Any) -> None:
+        config = {"mode": "stacking"}
+        forecaster = EnsembleForecaster(config)
+
+        # Create minimal meta-model
+        from catboost import CatBoostRegressor
+
+        meta = CatBoostRegressor(iterations=1, verbose=0)
+        meta.fit([[1, 2], [3, 4]], [100, 200])
+        forecaster.set_meta_model(meta)
+
+        forecaster.save(tmp_path)
+
+        assert (tmp_path / "ensemble_weights.json").exists()
+        assert (tmp_path / "meta_model.cbm").exists()
+
+    def test_load_with_meta_model(self, tmp_path: Any) -> None:
+        from catboost import CatBoostRegressor
+
+        # Save with meta-model
+        f1 = EnsembleForecaster({"mode": "stacking"})
+        meta = CatBoostRegressor(iterations=1, verbose=0)
+        meta.fit([[1, 2], [3, 4]], [100, 200])
+        f1.set_meta_model(meta)
+        f1.save(tmp_path)
+
+        # Load into new forecaster
+        f2 = EnsembleForecaster({})
+        f2.load(tmp_path)
+
+        assert f2.mode == "stacking"
+        assert f2._meta_model is not None
+
+
+# ---------------------------------------------------------------------------
+# TFT prediction with history
+# ---------------------------------------------------------------------------
+
+
+class TestTFTPrediction:
+    """Tests for TFT prediction within ensemble."""
+
+    def test_predict_with_tft_and_history(self) -> None:
+        config = {"active_models": ["tft"]}
+        forecaster = EnsembleForecaster(config)
+
+        mock_tft = MagicMock()
+        mock_tft._tft_config.training.encoder_length = 24
+        idx = pd.date_range("2024-01-01", periods=48, freq="h")
+        mock_tft.predict.return_value = pd.DataFrame(
+            {"consumption_mwh": [1000.0] * 48}, index=idx
+        )
+        forecaster.set_models(tft_model=mock_tft)
+
+        # Feature df (48 hours) + history (168 hours)
+        df = _make_feature_df(n_rows=48)
+        hist_idx = pd.date_range("2023-12-24", periods=168, freq="h")
+        rng = np.random.default_rng(42)
+        history = pd.DataFrame(
+            {"consumption": 800.0 + rng.random(168) * 400}, index=hist_idx
+        )
+
+        result = forecaster.predict(df, history=history)
+        assert "consumption_mwh" in result.columns

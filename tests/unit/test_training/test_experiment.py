@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -113,3 +113,48 @@ class TestEnabledTracker:
         logged = mock_mlflow.log_metrics.call_args[0][0]
         assert "split_00_val_mape" in logged
         assert "split_00_test_mae" in logged
+
+    @patch("pickle.dump")
+    def test_log_prophet_model_when_enabled(
+        self, mock_dump: MagicMock, mock_mlflow: MagicMock
+    ) -> None:
+        tracker = ExperimentTracker(enabled=False)
+        tracker._enabled = True
+        tracker._mlflow = mock_mlflow
+        model = MagicMock()
+        tracker.log_prophet_model(model, artifact_path="prophet")
+        mock_dump.assert_called_once()
+        mock_mlflow.log_artifact.assert_called_once()
+
+    def test_log_tft_model_when_enabled(
+        self, mock_mlflow: MagicMock
+    ) -> None:
+        tracker = ExperimentTracker(enabled=False)
+        tracker._enabled = True
+        tracker._mlflow = mock_mlflow
+        model = MagicMock()
+        tracker.log_tft_model(model, artifact_path="tft")
+        model.save.assert_called_once()
+        mock_mlflow.log_artifacts.assert_called_once()
+
+    def test_log_ensemble_weights_when_enabled(
+        self, mock_mlflow: MagicMock
+    ) -> None:
+        tracker = ExperimentTracker(enabled=False)
+        tracker._enabled = True
+        tracker._mlflow = mock_mlflow
+        weights = {"catboost": 0.6, "prophet": 0.4}
+        tracker.log_ensemble_weights(weights)
+        assert mock_mlflow.log_metric.call_count == 2
+
+    def test_disabled_log_prophet_model(self) -> None:
+        tracker = ExperimentTracker(enabled=False)
+        tracker.log_prophet_model(object())
+
+    def test_disabled_log_tft_model(self) -> None:
+        tracker = ExperimentTracker(enabled=False)
+        tracker.log_tft_model(object())
+
+    def test_disabled_log_ensemble_weights(self) -> None:
+        tracker = ExperimentTracker(enabled=False)
+        tracker.log_ensemble_weights({"catboost": 0.5})

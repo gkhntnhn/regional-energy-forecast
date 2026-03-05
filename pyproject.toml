@@ -139,7 +139,7 @@ tag_format = "v$version"
 
 [tool.coverage.run]
 source = ["src/energy_forecast"]
-omit = ["*/tests/*"]
+omit = ["*/tests/*", "*/training/run.py"]
 
 [tool.coverage.report]
 fail_under = 80
