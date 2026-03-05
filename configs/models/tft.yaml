@@ -1,40 +1,37 @@
-# Temporal Fusion Transformer configuration
-# R2: Architecture defaults updated from smoke (8) to HPO midpoint (64)
+# Temporal Fusion Transformer configuration (NeuralForecast)
+# R2 → R3: Migrated from pytorch-forecasting to NeuralForecast API
 architecture:
-  hidden_size: 64             # 8→64 (HPO midpoint, search [32, 128])
-  attention_head_size: 2      # 1→2 (multi-head exploration)
-  lstm_layers: 1
+  hidden_size: 8              # LOCAL SMOKE TEST (RunPod: 128)
+  n_head: 2                   # attention_head_size → n_head (NF naming)
+  n_rnn_layers: 1             # lstm_layers → n_rnn_layers (NF naming)
   dropout: 0.1
-  hidden_continuous_size: 32  # 8→32 (larger continuous embedding)
 
 training:
-  encoder_length: 168  # 7 days
-  prediction_length: 48
-  batch_size: 128             # GPU-optimized
-  max_epochs: 2               # SMOKE TEST (prod: 50)
+  encoder_length: 168  # 7 days → input_size
+  prediction_length: 48       # h (forecast horizon)
+  max_steps: 5                # LOCAL SMOKE TEST (prod: 10000)
+  windows_batch_size: 512     # LOCAL SMOKE TEST (RunPod: 2048)
   learning_rate: 0.001
-  early_stop_patience: 7      # 5→7 (allow longer convergence plateau)
+  early_stop_patience_steps: 100  # Step-based early stopping
+  val_check_steps: 50         # Validate every N steps
   gradient_clip_val: 0.1
   random_seed: 42
-  accelerator: "auto"         # SMOKE TEST (prod: gpu)
-  num_workers: 4              # pod has 16+ vCPU for data loading
-  enable_progress_bar: true   # true for local dev, false for RunPod/log files
-  precision: "bf16-mixed"       # bfloat16 test — RTX 4060 Ti (Ada) supports bf16
+  accelerator: "cpu"          # LOCAL SMOKE TEST (RunPod: gpu)
+  num_workers: 4              # Data loading workers
+  enable_progress_bar: true   # true for visibility
+  precision: "32-true"        # LOCAL SMOKE TEST (RunPod: bf16-mixed)
+  scaler_type: "robust"       # NF built-in normalizer (robust/standard/identity)
+  rnn_type: "lstm"            # lstm or gru
 
 optimization:
-  # fast_epochs: no longer used — epoch-level Optuna pruning replaces the
-  # fast_epochs/retrain pattern.  All trials now train at max_epochs; bad
-  # trials are pruned early by MedianPruner via PyTorchLightningPruningCallback.
-  optuna_splits: 3            # 3 splits for HPO evaluation
-  n_jobs: 1                   # Local: 1 (serial), RunPod A100: 8 (parallel)
+  optuna_splits: 2            # LOCAL SMOKE TEST (prod: 12)
+  n_jobs: 1                   # MUST be 1 — parallel trials on single GPU = slowdown
   val_size_hours: 720  # ~1 month (24 * 30) for final model validation
 
 # R2: Covariates pruned via CatBoost feature importance (top-75, >= 0.1%)
-# FIXES: hdd_x_hour moved unknown→known (forecast-derivable)
-# ADDS: wth_cdd, wth_hdd, temp_x_hour, cdd_x_hour to known (all forecast-derivable)
-# REMOVES: 3 low-importance unknowns with high NaN rates
+# NeuralForecast mapping: time_varying_known → futr_exog_list, time_varying_unknown → hist_exog_list
 covariates:
-  # Deterministic or forecast-available — enters both encoder AND decoder
+  # Deterministic or forecast-available — enters both encoder AND decoder (futr_exog_list)
   time_varying_known:
     # Cyclical time encodings
     - hour_cos              # 0.23% importance
@@ -59,14 +56,14 @@ covariates:
     - shortwave_radiation   # 0.23%
     # Solar (deterministic, astronomic)
     - sol_elevation         # 0.11%
-    # R2 NEW: Weather-derived features (forecast-derivable, all known at prediction time)
+    # R2: Weather-derived features (forecast-derivable, all known at prediction time)
     - wth_cdd              # cooling degree days, forecast-derived
     - wth_hdd              # heating degree days, forecast-derived
-    - hdd_x_hour           # FIX: was in unknown, but wth_hdd*hour = forecast*deterministic = KNOWN
+    - hdd_x_hour           # wth_hdd*hour = forecast*deterministic = KNOWN
     - temp_x_hour          # temperature*hour interaction, forecast-derived
     - cdd_x_hour           # CDD*hour interaction, forecast-derived
 
-  # Observed only in past (lagged >= 48h) — enters ONLY encoder
+  # Observed only in past (lagged >= 48h) — enters ONLY encoder (hist_exog_list)
   time_varying_unknown:
     # Consumption lags (core autoregressive signal, 42.5% total)
     - consumption_lag_48          # 6.09%
@@ -83,14 +80,10 @@ covariates:
     - consumption_window_720_std  # 1.15%
     - consumption_window_48_max   # 0.38%
     - consumption_window_336_max  # 0.37%
-    # DROPPED R2: consumption_window_720_mean (0.13%, high NaN from 720h window)
-    # DROPPED R2: consumption_window_336_min (0.11%, moderate NaN)
-    # DROPPED R2: consumption_q75_168 (0.14%, single quantile not informative alone)
     # Weather windows (observed, not forecast)
     - temperature_2m_window_24_max   # 2.24%
     - temperature_2m_window_12_max   # 1.49%
     - temperature_2m_window_6_mean   # 1.48%
-    # MOVED R2: hdd_x_hour → time_varying_known (forecast-derivable)
 
 quantiles:
   - 0.02

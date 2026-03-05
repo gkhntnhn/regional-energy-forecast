@@ -5,9 +5,9 @@ mode: "stacking"
 
 # Active models (can be overridden via CLI --models flag)
 active_models:
+  - tft
   - catboost
   - prophet
-  - tft
 
 # Default weights (used when mode=weighted_average or as fallback)
 # Weights are auto-normalized to sum=1 based on active models

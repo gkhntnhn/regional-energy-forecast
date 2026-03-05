@@ -137,34 +137,33 @@ class TFTTrainer:
 
         base = self._tft_config
 
-        # Override architecture params
+        # Override architecture params (NeuralForecast naming)
         arch_params = {
             "hidden_size": params.get("hidden_size", base.architecture.hidden_size),
-            "attention_head_size": params.get(
-                "attention_head_size", base.architecture.attention_head_size
-            ),
-            "lstm_layers": params.get("lstm_layers", base.architecture.lstm_layers),
+            "n_head": params.get("n_head", base.architecture.n_head),
+            "n_rnn_layers": params.get("n_rnn_layers", base.architecture.n_rnn_layers),
             "dropout": params.get("dropout", base.architecture.dropout),
-            "hidden_continuous_size": params.get(
-                "hidden_continuous_size", base.architecture.hidden_continuous_size
-            ),
         }
 
         # Override training params (carry ALL fields from base config)
         train_params = {
             "encoder_length": base.training.encoder_length,
             "prediction_length": base.training.prediction_length,
-            "batch_size": params.get("batch_size", base.training.batch_size),
-            "max_epochs": base.training.max_epochs,
+            "windows_batch_size": params.get(
+                "windows_batch_size", base.training.windows_batch_size
+            ),
+            "max_steps": base.training.max_steps,
             "learning_rate": params.get("learning_rate", base.training.learning_rate),
-            "early_stop_patience": base.training.early_stop_patience,
+            "early_stop_patience_steps": base.training.early_stop_patience_steps,
+            "val_check_steps": base.training.val_check_steps,
             "gradient_clip_val": base.training.gradient_clip_val,
             "random_seed": base.training.random_seed,
             "accelerator": base.training.accelerator,
             "num_workers": base.training.num_workers,
             "enable_progress_bar": base.training.enable_progress_bar,
-            "enable_model_summary": base.training.enable_model_summary,
             "precision": base.training.precision,
+            "scaler_type": base.training.scaler_type,
+            "rnn_type": base.training.rnn_type,
         }
 
         return TFTConfig(
@@ -187,7 +186,7 @@ class TFTTrainer:
         val_df: pd.DataFrame,
         test_df: pd.DataFrame,
         params: dict[str, Any],
-        max_epochs: int | None = None,
+        max_steps: int | None = None,
         trial: Trial | None = None,
     ) -> TFTSplitResult:
         """Train TFT on a single CV split.
@@ -198,25 +197,26 @@ class TFTTrainer:
             val_df: Validation data.
             test_df: Test data.
             params: Hyperparameters.
-            max_epochs: Override max epochs (for faster optimization).
-            trial: Optuna trial for epoch-level pruning callback.
+            max_steps: Override max training steps.
+            trial: Optuna trial for step-level pruning callback.
 
         Returns:
             TFTSplitResult with metrics.
 
         Raises:
-            TrialPruned: When epoch-level pruning determines the trial is unpromising.
+            TrialPruned: When step-level pruning determines the trial is unpromising.
         """
         # Build config with suggested params
         tft_config = self._build_tft_config(params)
 
-        # Create pruning callback for epoch-level Optuna integration
+        # Create pruning callback for step-level Optuna integration
+        # NeuralForecast reports "valid_loss" (not "val_loss")
         callbacks: list[Any] = []
         if trial is not None:
             from optuna.integration import PyTorchLightningPruningCallback
 
             callbacks.append(
-                PyTorchLightningPruningCallback(trial, monitor="val_loss")
+                PyTorchLightningPruningCallback(trial, monitor="valid_loss")
             )
 
         # Create and train model (try/finally ensures GPU memory cleanup on pruning)
@@ -226,7 +226,7 @@ class TFTTrainer:
                 train_df,
                 val_df,
                 target_col=self._target_col,
-                max_epochs=max_epochs,
+                max_steps=max_steps,
                 callbacks=callbacks or None,
             )
 
@@ -276,14 +276,14 @@ class TFTTrainer:
         self,
         df: pd.DataFrame,
         params: dict[str, Any],
-        max_epochs: int | None = None,
+        max_steps: int | None = None,
     ) -> TFTTrainingResult:
         """Train on all TSCV splits and aggregate results.
 
         Args:
             df: Full feature-engineered DataFrame.
             params: Hyperparameters.
-            max_epochs: Override max epochs (for faster optimization).
+            max_steps: Override max training steps.
 
         Returns:
             TFTTrainingResult with aggregated metrics.
@@ -292,7 +292,7 @@ class TFTTrainer:
 
         for info, train_df, val_df, test_df in self._splitter.iter_splits(df):
             result = self._train_split(
-                info, train_df, val_df, test_df, params, max_epochs
+                info, train_df, val_df, test_df, params, max_steps
             )
             results.append(result)
             logger.info(
@@ -322,10 +322,10 @@ class TFTTrainer:
     ) -> tuple[Callable[[Trial], float], dict[int, list[TFTSplitResult]]]:
         """Create Optuna objective using dynamic YAML search space.
 
-        Uses ``optuna_splits`` CV splits with epoch-level pruning via
+        Uses ``optuna_splits`` CV splits with step-level pruning via
         ``PyTorchLightningPruningCallback``.  All trials train at full
-        ``max_epochs``; bad trials are pruned early by the MedianPruner
-        based on ``val_loss`` reported each epoch.
+        ``max_steps``; bad trials are pruned early by the MedianPruner
+        based on ``valid_loss`` reported every ``val_check_steps``.
 
         Returns:
             Tuple of (objective function, trial split results cache).
@@ -346,7 +346,7 @@ class TFTTrainer:
             selected_splits = [all_splits[i] for i in indices]
 
         logger.info(
-            "TFT Optuna: using {}/{} CV splits, epoch-level pruning active",
+            "TFT Optuna: using {}/{} CV splits, step-level pruning active",
             len(selected_splits),
             len(all_splits),
         )
@@ -413,7 +413,7 @@ class TFTTrainer:
             sampler=TPESampler(seed=self._tft_config.training.random_seed),
             pruner=MedianPruner(
                 n_startup_trials=2,  # First 2 trials run uninterrupted (reference)
-                n_warmup_steps=3,    # First 3 epochs per trial safe (model stabilization)
+                n_warmup_steps=3,    # First 3 val checks per trial safe (model stabilization)
             ),
         )
 
@@ -435,7 +435,7 @@ class TFTTrainer:
             study.best_params,
         )
 
-        # Epoch-level pruning means all trials run at max_epochs, so the best
+        # Step-level pruning means all trials run at max_steps, so the best
         # trial's cached results are production-quality — no retrain needed.
         best_trial_num = study.best_trial.number
 

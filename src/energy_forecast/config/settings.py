@@ -921,35 +921,36 @@ class ProphetConfig(BaseModel, frozen=True):
 
 
 class TFTArchitectureConfig(BaseModel, frozen=True):
-    """TFT network architecture."""
+    """TFT network architecture (NeuralForecast API)."""
 
     hidden_size: int = Field(default=64, ge=1)
-    attention_head_size: int = Field(default=4, ge=1)
-    lstm_layers: int = Field(default=2, ge=1)
+    n_head: int = Field(default=2, ge=1)
+    n_rnn_layers: int = Field(default=1, ge=1)
     dropout: float = Field(default=0.1, ge=0.0, lt=1.0)
-    hidden_continuous_size: int = Field(default=16, ge=1)
 
 
 class TFTTrainingConfig(BaseModel, frozen=True):
-    """TFT training parameters."""
+    """TFT training parameters (NeuralForecast API)."""
 
     encoder_length: int = Field(default=168, ge=1)
     prediction_length: int = Field(default=48, ge=1)
-    batch_size: int = Field(default=64, ge=1)
-    max_epochs: int = Field(default=100, ge=1)
+    max_steps: int = Field(default=2000, ge=1)
+    windows_batch_size: int = Field(default=1024, ge=1)
     learning_rate: float = Field(default=0.001, gt=0.0)
-    early_stop_patience: int = Field(default=10, ge=1)
+    early_stop_patience_steps: int = Field(default=200, ge=-1)  # -1 disables
+    val_check_steps: int = Field(default=50, ge=1)
     gradient_clip_val: float = Field(default=0.1, gt=0.0)
     random_seed: int = 42
     accelerator: Literal["cpu", "gpu", "auto"] = "auto"
-    num_workers: int = Field(default=0, ge=0)
+    num_workers: int = Field(default=4, ge=0)
     enable_progress_bar: bool = True
-    enable_model_summary: bool = False
-    precision: str = "32-true"
+    precision: str = "bf16-mixed"
+    scaler_type: str = "robust"
+    rnn_type: str = "lstm"
 
 
 class TFTCovariatesConfig(BaseModel, frozen=True):
-    """TFT covariate specification for TimeSeriesDataSet."""
+    """TFT covariate specification (futr_exog_list / hist_exog_list)."""
 
     time_varying_known: list[str] = Field(
         default_factory=lambda: [
@@ -1003,7 +1004,6 @@ class TFTCovariatesConfig(BaseModel, frozen=True):
 class TFTOptimizationConfig(BaseModel, frozen=True):
     """TFT optimization settings."""
 
-    fast_epochs: int = Field(default=10, ge=1)  # Deprecated: epoch-level pruning replaces this
     optuna_splits: int = Field(default=2, ge=1)
     n_jobs: int = Field(default=1, ge=1)  # Parallel Optuna trials (1=serial, 8=RunPod A100)
     val_size_hours: int = Field(default=720, ge=24)  # ~1 month (24 * 30)
