@@ -1,7 +1,7 @@
 # Temporal Fusion Transformer configuration (NeuralForecast)
 # R2 → R3: Migrated from pytorch-forecasting to NeuralForecast API
 architecture:
-  hidden_size: 128            # v4: 64→128 for richer attention weights
+  hidden_size: 8              # LOCAL SMOKE TEST (RunPod: 128)
   n_head: 2                   # attention_head_size → n_head (NF naming)
   n_rnn_layers: 1             # lstm_layers → n_rnn_layers (NF naming)
   dropout: 0.1
@@ -9,22 +9,22 @@ architecture:
 training:
   encoder_length: 168  # 7 days → input_size
   prediction_length: 48       # h (forecast horizon)
-  max_steps: 500              # SMOKE TEST (prod: 10000)
-  windows_batch_size: 2048    # H200 141GB sweet spot (4096+hidden128=OOM)
+  max_steps: 5                # LOCAL SMOKE TEST (prod: 10000)
+  windows_batch_size: 512     # LOCAL SMOKE TEST (RunPod: 2048)
   learning_rate: 0.001
   early_stop_patience_steps: 100  # Step-based early stopping
   val_check_steps: 50         # Validate every N steps
   gradient_clip_val: 0.1
   random_seed: 42
-  accelerator: "gpu"          # RunPod GPU (local: cpu)
+  accelerator: "cpu"          # LOCAL SMOKE TEST (RunPod: gpu)
   num_workers: 4              # Data loading workers
   enable_progress_bar: true   # true for visibility
-  precision: "bf16-mixed"     # bfloat16 on A100/H100/H200
+  precision: "32-true"        # LOCAL SMOKE TEST (RunPod: bf16-mixed)
   scaler_type: "robust"       # NF built-in normalizer (robust/standard/identity)
   rnn_type: "lstm"            # lstm or gru
 
 optimization:
-  optuna_splits: 12           # All splits for HPO evaluation
+  optuna_splits: 2            # LOCAL SMOKE TEST (prod: 12)
   n_jobs: 1                   # MUST be 1 — parallel trials on single GPU = slowdown
   val_size_hours: 720  # ~1 month (24 * 30) for final model validation
 
