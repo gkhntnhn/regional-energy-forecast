@@ -83,7 +83,7 @@ class TFTForecaster(BaseForecaster):
             c for c in list(cfg.time_varying_known) + list(cfg.time_varying_unknown)
             if c in nf_df.columns
         ]
-        keep_cols = ["unique_id", "ds", "y"] + covariate_cols
+        keep_cols = ["unique_id", "ds", "y", *covariate_cols]
         nf_df = nf_df[keep_cols]
 
         # Drop NaN covariates (lag features have NaN at start)
@@ -145,10 +145,7 @@ class TFTForecaster(BaseForecaster):
             from pytorch_lightning.callbacks import TQDMProgressBar
 
             progress_callbacks = [TQDMProgressBar(refresh_rate=100)]
-            if callbacks:
-                callbacks = list(callbacks) + progress_callbacks
-            else:
-                callbacks = progress_callbacks
+            callbacks = list(callbacks) + progress_callbacks if callbacks else progress_callbacks
         if callbacks:
             extra_trainer_kwargs["callbacks"] = callbacks
 

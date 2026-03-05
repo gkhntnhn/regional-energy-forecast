@@ -73,6 +73,7 @@ def tft_config() -> TFTConfig:
                 "day_of_week_cos",
                 "temperature_2m",
             ],
+            time_varying_unknown=[],
         ),
         quantiles=[0.10, 0.50, 0.90],
         loss="quantile",
