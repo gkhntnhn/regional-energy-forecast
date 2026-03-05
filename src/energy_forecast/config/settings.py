@@ -1357,10 +1357,7 @@ def _build_settings_dict(config_dir: Path) -> dict[str, Any]:
 
     # API config (optional, use defaults if not found)
     api_yaml_path = config_dir / "api.yaml"
-    if api_yaml_path.exists():
-        api_data = _load_yaml(api_yaml_path)
-    else:
-        api_data = {}
+    api_data = _load_yaml(api_yaml_path) if api_yaml_path.exists() else {}
 
     # Feature configs
     features_dir = config_dir / "features"

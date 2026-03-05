@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 import openmeteo_requests
@@ -365,7 +365,9 @@ class OpenMeteoClient:
 
         # --- Categorical variables: dominant city (highest weight, NaN fallback) ---
         for var in categorical_vars:
-            result[var] = self._dominant_city_value(city_dfs, base_index, var)
+            result[var] = self._dominant_city_value(
+                city_dfs, cast(pd.DatetimeIndex, base_index), var,
+            )
 
         return result
 
@@ -374,7 +376,7 @@ class OpenMeteoClient:
         city_dfs: list[tuple[CityConfig, pd.DataFrame]],
         base_index: pd.DatetimeIndex,
         var: str,
-    ) -> pd.Series:  # type: ignore[type-arg]
+    ) -> pd.Series:
         """Pick the value from the highest-weight city, with NaN fallback.
 
         Iterates cities in descending weight order.  For each timestep the
@@ -393,7 +395,7 @@ class OpenMeteoClient:
         sorted_pairs = sorted(city_dfs, key=lambda pair: pair[0].weight, reverse=True)
 
         result = pd.Series(np.nan, index=base_index, name=var)
-        for city, df in sorted_pairs:
+        for _city, df in sorted_pairs:
             aligned = df.reindex(base_index)
             if var in aligned.columns:
                 result = result.fillna(aligned[var])

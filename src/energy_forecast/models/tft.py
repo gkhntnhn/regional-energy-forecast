@@ -315,6 +315,7 @@ class TFTForecaster(BaseForecaster):
                 nf_context["y"] = nf_context["y"].ffill().fillna(0)
 
         # Generate predictions
+        assert self._nf is not None, "Model not fitted"
         preds = self._nf.predict(df=nf_context, futr_df=futr_df)
 
         # Extract median prediction
@@ -361,7 +362,7 @@ class TFTForecaster(BaseForecaster):
                 col = f"TFT-hi-{level:.1f}"
 
             if col in preds.columns:
-                result[q] = preds[col].values.astype(np.float64)
+                result[q] = np.asarray(preds[col].values, dtype=np.float64)
 
         self._all_quantile_predictions = result if result else None
 
@@ -393,6 +394,7 @@ class TFTForecaster(BaseForecaster):
         logger.info("Saving TFT model to {}", path)
 
         # NeuralForecast save (handles ckpt + config internally)
+        assert self._nf is not None, "Model not fitted"
         self._nf.save(path=str(path), overwrite=True)
 
         # Strip training callbacks from checkpoint — they hold dataset references
@@ -506,6 +508,11 @@ class TFTForecaster(BaseForecaster):
 
         # Load NeuralForecast model
         self._nf = NeuralForecast.load(path=str(path))
+
+        # Strip training callbacks to prevent duplicate EarlyStopping crash
+        for model in self._nf.models:
+            if hasattr(model, "hparams") and "callbacks" in model.hparams:
+                model.hparams["callbacks"] = []
 
         # Load metadata
         metadata_path = path / self.METADATA_FILENAME

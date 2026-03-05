@@ -72,7 +72,7 @@ _bearer_scheme = HTTPBearer(auto_error=False)
 
 async def verify_api_key(
     request: Request,
-    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
+    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),  # noqa: B008
 ) -> HTTPAuthorizationCredentials:
     """Validate Bearer token against configured API key.
 
@@ -155,7 +155,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         catboost_path = final_dir / "catboost" / "model.cbm"
         prophet_path = final_dir / "prophet" / "prophet_model.pkl"
         tft_path = final_dir / "tft"
-        ensemble_dir = final_dir / "ensemble"
+        ensemble_dir: Path | None = final_dir / "ensemble"
         logger.info("Serving from final_models/ directory")
     else:
         catboost_dir = _find_latest_model_dir(models_dir / "catboost", "catboost")
@@ -304,7 +304,7 @@ async def predict(
     background_tasks: BackgroundTasks,
     file: UploadFile,
     email: Annotated[EmailStr, Form()],
-    _auth: HTTPAuthorizationCredentials = Depends(verify_api_key),
+    _auth: HTTPAuthorizationCredentials = Depends(verify_api_key),  # noqa: B008
 ) -> JobResponse:
     """Submit a prediction job.
 
@@ -370,7 +370,7 @@ async def predict(
 async def get_status(
     request: Request,
     job_id: str,
-    _auth: HTTPAuthorizationCredentials = Depends(verify_api_key),
+    _auth: HTTPAuthorizationCredentials = Depends(verify_api_key),  # noqa: B008
 ) -> JobStatusResponse:
     """Get job status by ID.
 
@@ -404,7 +404,7 @@ async def get_status(
 @app.get("/models")
 async def get_models(
     request: Request,
-    _auth: HTTPAuthorizationCredentials = Depends(verify_api_key),
+    _auth: HTTPAuthorizationCredentials = Depends(verify_api_key),  # noqa: B008
 ) -> dict[str, object]:
     """Get information about loaded models."""
     prediction_service: PredictionService = request.app.state.prediction_service
@@ -414,7 +414,7 @@ async def get_models(
 @app.get("/jobs")
 async def list_jobs(
     request: Request,
-    _auth: HTTPAuthorizationCredentials = Depends(verify_api_key),
+    _auth: HTTPAuthorizationCredentials = Depends(verify_api_key),  # noqa: B008
 ) -> dict[str, object]:
     """List all jobs (for debugging/admin)."""
     job_manager: JobManager = request.app.state.job_manager

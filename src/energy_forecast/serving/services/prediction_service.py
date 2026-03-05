@@ -210,7 +210,8 @@ class PredictionService:
             except Exception as e:
                 raise FeaturePipelineError(f"Feature pipeline failed: {e}") from e
 
-            # Step 6: Extract forecast rows (last 48 hours with NaN consumption, filtered to T+1 in output)
+            # Step 6: Extract forecast rows
+            # (last 48 hours with NaN consumption, filtered to T+1 in output)
             forecast_mask = features_df.index > last_timestamp
             forecast_features = features_df.loc[forecast_mask].copy()
 

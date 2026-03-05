@@ -159,11 +159,11 @@ class CalendarFeatureEngineer(BaseFeatureEngineer):
             # Holiday type classification: dini / resmi / none
             df = self._add_holiday_type(df, holidays_df, date_series)
 
-            # Holiday × hour interaction (captures different hourly patterns)
+            # Holiday x hour interaction (captures different hourly patterns)
             idx = cast(pd.DatetimeIndex, df.index)
             df["is_holiday_x_hour"] = df["is_holiday"] * idx.hour
 
-            # Ramadan × hour interaction (captures shifted eating/activity patterns)
+            # Ramadan x hour interaction (captures shifted eating/activity patterns)
             df["is_ramadan_x_hour"] = df["is_ramadan"] * idx.hour
 
             # Bridge days (extended detection for holiday+weekend adjacency)

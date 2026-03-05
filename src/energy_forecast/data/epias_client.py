@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -432,10 +433,8 @@ class EpiasClient:
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:
             detail = ""
-            try:
+            with contextlib.suppress(Exception):
                 detail = f" — {exc.response.text[:500]}"
-            except Exception:
-                pass
             msg = f"EPIAS generation API error: {exc.response.status_code}{detail}"
             raise EpiasApiError(msg) from exc
         except httpx.HTTPError as exc:
