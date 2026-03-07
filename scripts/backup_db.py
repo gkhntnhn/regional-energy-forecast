@@ -87,8 +87,9 @@ def backup_database(output_dir: Path | None = None) -> Path:
             from energy_forecast.storage.gdrive import GoogleDriveStorage
 
             gdrive = GoogleDriveStorage(creds_path, folder_id)
+            backup_folder = gdrive._get_or_create_month_folder("backups")
             file_id = gdrive._upload_file(
-                gz_file.name, gz_file, folder_id
+                gz_file.name, gz_file, backup_folder
             )
             logger.info("Uploaded to Google Drive: {}", file_id)
             gz_file.unlink()
