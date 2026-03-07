@@ -18,6 +18,7 @@ from pathlib import Path
 from loguru import logger
 
 from energy_forecast.config.settings import EnvConfig, EpiasApiConfig
+from energy_forecast.utils import TZ_ISTANBUL
 from energy_forecast.data.epias_client import EpiasClient
 from energy_forecast.data.exceptions import EpiasApiError
 
@@ -36,7 +37,7 @@ def main(
         generation: Also backfill generation data cache.
     """
     if end_year is None:
-        end_year = datetime.now().year
+        end_year = datetime.now(tz=TZ_ISTANBUL).year
 
     env = EnvConfig()
     if not env.epias_username or not env.epias_password:

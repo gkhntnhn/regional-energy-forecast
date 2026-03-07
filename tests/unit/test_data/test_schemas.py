@@ -69,11 +69,10 @@ class TestEpiasSchema:
     """Tests for EpiasSchema validation."""
 
     def test_valid_data_passes(self) -> None:
-        """Valid EPIAS data with all 5 columns passes."""
+        """Valid EPIAS data with all 4 active columns passes."""
         idx = pd.date_range("2024-01-01", periods=3, freq="h", name="datetime")
         df = pd.DataFrame(
             {
-                "FDPP": [100.0, 200.0, 300.0],
                 "Real_Time_Consumption": [100.0, 200.0, 300.0],
                 "DAM_Purchase": [100.0, 200.0, 300.0],
                 "Bilateral_Agreement_Purchase": [100.0, 200.0, 300.0],

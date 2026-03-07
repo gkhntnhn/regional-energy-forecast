@@ -9,7 +9,7 @@ import pandas as pd
 from catboost import CatBoostRegressor
 from loguru import logger
 
-from energy_forecast.models.base import BaseForecaster
+from energy_forecast.models.base import PREDICTION_COL, BaseForecaster
 
 
 class CatBoostForecaster(BaseForecaster):
@@ -92,7 +92,7 @@ class CatBoostForecaster(BaseForecaster):
             for col in cat_cols:
                 x[col] = x[col].fillna("missing").astype(str)
         predictions: Any = self.model.predict(x)
-        return pd.DataFrame({"consumption_mwh": predictions}, index=x.index)
+        return pd.DataFrame({PREDICTION_COL: predictions}, index=x.index)
 
     def save(self, path: Path) -> None:
         """Save CatBoost model (.cbm format).

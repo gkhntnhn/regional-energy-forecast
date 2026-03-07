@@ -18,6 +18,7 @@ from energy_forecast.serving.schemas import (
     PredictionStatistics,
     PredictRequest,
 )
+from energy_forecast.utils import TZ_ISTANBUL
 
 
 class TestJobStatus:
@@ -95,7 +96,7 @@ class TestJobResponse:
             job_id="abc123",
             status=JobStatus.PENDING,
             message="Job queued",
-            created_at=datetime.now(),
+            created_at=datetime.now(tz=TZ_ISTANBUL),
         )
         assert resp.job_id == "abc123"
         assert resp.status == JobStatus.PENDING
@@ -109,7 +110,7 @@ class TestJobStatusResponse:
         resp = JobStatusResponse(
             job_id="abc123",
             status=JobStatus.PENDING,
-            created_at=datetime.now(),
+            created_at=datetime.now(tz=TZ_ISTANBUL),
         )
         assert resp.progress is None
         assert resp.error is None
@@ -117,7 +118,7 @@ class TestJobStatusResponse:
 
     def test_completed_response(self) -> None:
         """Test completed job status response."""
-        now = datetime.now()
+        now = datetime.now(tz=TZ_ISTANBUL)
         resp = JobStatusResponse(
             job_id="abc123",
             status=JobStatus.COMPLETED,
@@ -136,7 +137,7 @@ class TestHealthResponse:
         """Test valid health response."""
         resp = HealthResponse(
             status="ok",
-            timestamp=datetime.now(),
+            timestamp=datetime.now(tz=TZ_ISTANBUL),
             version="0.1.0",
         )
         assert resp.status == "ok"

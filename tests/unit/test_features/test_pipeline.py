@@ -74,7 +74,6 @@ class TestFeaturePipeline:
     ) -> None:
         """Raw EPIAS columns are not in pipeline output."""
         raw_epias_cols = [
-            "FDPP",
             "Real_Time_Consumption",
             "DAM_Purchase",
             "Bilateral_Agreement_Purchase",

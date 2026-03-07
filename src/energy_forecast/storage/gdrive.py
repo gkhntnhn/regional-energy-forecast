@@ -213,8 +213,9 @@ class GoogleDriveStorage:
     def _find_folder(self, name: str, parent_id: str) -> str | None:
         """Find existing folder by name under parent."""
         service = self._get_service()
+        safe_name = name.replace("'", "\\'")
         query = (
-            f"name='{name}' and "
+            f"name='{safe_name}' and "
             f"'{parent_id}' in parents and "
             f"mimeType='application/vnd.google-apps.folder' and "
             f"trashed=false"

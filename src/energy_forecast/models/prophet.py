@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any
 import pandas as pd
 from loguru import logger
 
-from energy_forecast.models.base import BaseForecaster
+from energy_forecast.models.base import PREDICTION_COL, BaseForecaster
 from energy_forecast.utils.prophet_utils import to_prophet_format
 
 if TYPE_CHECKING:
@@ -97,7 +97,7 @@ class ProphetForecaster(BaseForecaster):
         forecast = self._model.predict(future_df)
 
         return pd.DataFrame(
-            {"consumption_mwh": forecast["yhat"].values},
+            {PREDICTION_COL: forecast["yhat"].values},
             index=X.index,
         )
 

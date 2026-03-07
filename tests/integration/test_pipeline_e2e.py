@@ -122,7 +122,7 @@ class TestPipelineE2E:
         result = pipeline.run(full_df)
 
         # Only check consumption and EPIAS/generation lags (not weather/solar)
-        leakage_prefixes = ("consumption_", "FDPP_", "Real_Time_", "DAM_", "Bilateral_",
+        leakage_prefixes = ("consumption_", "Real_Time_", "DAM_", "Bilateral_",
                             "Load_Forecast_", "gen_")
         lag_cols = [
             c for c in result.columns

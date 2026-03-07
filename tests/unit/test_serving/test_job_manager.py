@@ -52,7 +52,7 @@ class TestJob:
 
     def test_job_custom_values(self) -> None:
         """Test job with custom values."""
-        now = datetime.now()
+        now = datetime.now(tz=TZ_ISTANBUL)
         job = Job(
             id="custom123",
             email="test@test.com",

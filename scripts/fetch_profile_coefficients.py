@@ -32,6 +32,7 @@ from tenacity import (
 
 from energy_forecast.config.settings import EnvConfig
 from energy_forecast.data.exceptions import EpiasApiError, EpiasAuthError
+from energy_forecast.utils import TZ_ISTANBUL
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -194,7 +195,7 @@ def get_distribution_id(tgt: str, target: str = DISTRIBUTION_TARGET) -> int:
     Returns:
         Distribution company ID.
     """
-    period = f"{datetime.now().year}-01-01T00:00:00+03:00"
+    period = f"{datetime.now(tz=TZ_ISTANBUL).year}-01-01T00:00:00+03:00"
     items = _api_request(
         "/consumption/data/multiple-factor-distribution",
         tgt,
@@ -428,7 +429,7 @@ def main(start_year: int = 2020, end_year: int | None = None) -> None:
         end_year: Last year to fetch (default: current year).
     """
     if end_year is None:
-        end_year = datetime.now().year
+        end_year = datetime.now(tz=TZ_ISTANBUL).year
 
     env = EnvConfig()
     if not env.epias_username or not env.epias_password:

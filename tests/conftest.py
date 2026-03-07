@@ -192,12 +192,11 @@ def sample_weather_df() -> pd.DataFrame:
 
 @pytest.fixture()
 def sample_epias_df() -> pd.DataFrame:
-    """30 days × 24 hours = 720 rows with 5 EPIAS columns + DatetimeIndex."""
+    """30 days × 24 hours = 720 rows with 4 EPIAS columns + DatetimeIndex."""
     rng = np.random.default_rng(42)
     idx = pd.date_range("2024-01-01", periods=720, freq="h")
     data: dict[str, Any] = {}
     for var in [
-        "FDPP",
         "Real_Time_Consumption",
         "DAM_Purchase",
         "Bilateral_Agreement_Purchase",

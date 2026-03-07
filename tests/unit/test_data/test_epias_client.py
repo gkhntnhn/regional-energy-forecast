@@ -120,7 +120,7 @@ class TestFetch:
         """When cache exists, API is not called for that year."""
         # Pre-populate cache
         idx = pd.date_range("2024-01-01", periods=24, freq="h", name="datetime")
-        cached_df = pd.DataFrame({"FDPP": range(24)}, index=idx, dtype=float)
+        cached_df = pd.DataFrame({"Real_Time_Consumption": range(24)}, index=idx, dtype=float)
         client.save_cache(2024, cached_df)
 
         mock_post = MagicMock()
@@ -146,7 +146,7 @@ class TestFetch:
     def test_output_datetime_index(self, client: EpiasClient) -> None:
         """Output has correct DatetimeIndex name."""
         idx = pd.date_range("2024-01-01", periods=24, freq="h", name="datetime")
-        df = pd.DataFrame({"FDPP": range(24)}, index=idx, dtype=float)
+        df = pd.DataFrame({"Real_Time_Consumption": range(24)}, index=idx, dtype=float)
         client.save_cache(2024, df)
 
         loaded = client.load_cache(2024)
@@ -162,8 +162,8 @@ class TestCacheReadWrite:
         idx = pd.date_range("2024-01-01", periods=48, freq="h", name="datetime")
         df = pd.DataFrame(
             {
-                "FDPP": range(48),
                 "Real_Time_Consumption": range(48),
+                "DAM_Purchase": range(48),
             },
             index=idx,
             dtype=float,

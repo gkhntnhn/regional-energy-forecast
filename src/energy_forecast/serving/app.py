@@ -474,28 +474,10 @@ async def get_active_status(request: Request) -> dict[str, object]:
         session_factory = request.app.state.session_factory
         async with session_factory() as session:
             active = await job_manager.get_active_job_db(session)
-        if active:
-            return {
-                "busy": True,
-                "message": "Devam eden bir tahmin islemi bulunmaktadir...",
-                "job_id": active.id,
-                "status": active.status,
-                "progress": active.progress,
-                "started_at": active.created_at.isoformat(),
-            }
-        return {"busy": False}
+        return {"busy": active is not None, "queue_size": 1 if active else 0}
 
     active_mem = job_manager.get_active_job_in_memory()
-    if active_mem:
-        return {
-            "busy": True,
-            "message": "Devam eden bir tahmin islemi bulunmaktadir...",
-            "job_id": active_mem.id,
-            "status": active_mem.status.value,
-            "progress": active_mem.progress,
-            "started_at": active_mem.created_at.isoformat(),
-        }
-    return {"busy": False}
+    return {"busy": active_mem is not None, "queue_size": 1 if active_mem else 0}
 
 
 @app.get("/status/{job_id}", response_model=JobStatusResponse)

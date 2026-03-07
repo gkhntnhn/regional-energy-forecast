@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from energy_forecast.db.models import JobModel
@@ -121,9 +121,10 @@ class JobRepository:
         return list(result.scalars().all())
 
     async def get_stats(self) -> dict[str, int]:
-        """Return job count by status."""
-        jobs = await self.get_all()
-        stats: dict[str, int] = {}
-        for job in jobs:
-            stats[job.status] = stats.get(job.status, 0) + 1
-        return stats
+        """Return job count by status (SQL aggregation)."""
+        stmt = (
+            select(JobModel.status, func.count())
+            .group_by(JobModel.status)
+        )
+        result = await self._session.execute(stmt)
+        return dict(result.all())

@@ -12,7 +12,6 @@ from energy_forecast.config.settings import EpiasConfig, GenerationConfig
 from energy_forecast.features.epias import EpiasFeatureEngineer
 
 EPIAS_VARIABLES: list[str] = [
-    "FDPP",
     "Real_Time_Consumption",
     "DAM_Purchase",
     "Bilateral_Agreement_Purchase",
@@ -45,7 +44,7 @@ def engineer(epias_config: dict[str, Any]) -> EpiasFeatureEngineer:
 
 @pytest.fixture()
 def epias_df() -> pd.DataFrame:
-    """720-row DataFrame with 5 EPIAS columns and DatetimeIndex."""
+    """720-row DataFrame with 4 EPIAS columns and DatetimeIndex."""
     rng = np.random.default_rng(42)
     idx = pd.date_range("2024-01-01", periods=720, freq="h")
     data: dict[str, Any] = {}
@@ -62,9 +61,9 @@ class TestEpiasFeatureEngineer:
         engineer: EpiasFeatureEngineer,
         epias_df: pd.DataFrame,
     ) -> None:
-        """Lag feature FDPP_lag_48 is created."""
+        """Lag feature Real_Time_Consumption_lag_48 is created."""
         result = engineer.fit_transform(epias_df)
-        assert "FDPP_lag_48" in result.columns
+        assert "Real_Time_Consumption_lag_48" in result.columns
 
     def test_lag_min_lag_enforced(
         self,
@@ -100,7 +99,7 @@ class TestEpiasFeatureEngineer:
         engineer: EpiasFeatureEngineer,
         epias_df: pd.DataFrame,
     ) -> None:
-        """Expanding mean feature is created for FDPP."""
+        """Expanding mean feature is created for active EPIAS variables."""
         result = engineer.fit_transform(epias_df)
         expanding_cols = [c for c in result.columns if "expanding" in c.lower()]
         assert len(expanding_cols) > 0
@@ -131,10 +130,10 @@ class TestEpiasFeatureEngineer:
         """Missing column is skipped without error."""
         rng = np.random.default_rng(42)
         idx = pd.date_range("2024-01-01", periods=720, freq="h")
-        # Only include 2 of 5 variables
+        # Only include 2 of 4 variables
         df = pd.DataFrame(
             {
-                "FDPP": 500.0 + rng.random(720) * 1000,
+                "Real_Time_Consumption": 500.0 + rng.random(720) * 1000,
                 "Load_Forecast": 500.0 + rng.random(720) * 1000,
             },
             index=idx,
@@ -142,7 +141,7 @@ class TestEpiasFeatureEngineer:
 
         result = engineer.fit_transform(df)
         # Should have lag features for the 2 present variables
-        assert "FDPP_lag_48" in result.columns
+        assert "Real_Time_Consumption_lag_48" in result.columns
         assert "Load_Forecast_lag_48" in result.columns
         # Should not have lag features for missing variables
         assert "DAM_Purchase_lag_48" not in result.columns
@@ -152,7 +151,7 @@ class TestEpiasFeatureEngineer:
         engineer: EpiasFeatureEngineer,
         epias_df: pd.DataFrame,
     ) -> None:
-        """Lag features are created for all 5 EPIAS variables."""
+        """Lag features are created for all 4 active EPIAS variables."""
         result = engineer.fit_transform(epias_df)
         for var in EPIAS_VARIABLES:
             col = f"{var}_lag_48"
@@ -165,7 +164,7 @@ class TestEpiasFeatureEngineer:
     ) -> None:
         """Lag features are NaN in the first 48 rows."""
         result = engineer.fit_transform(epias_df)
-        lag_col = "FDPP_lag_48"
+        lag_col = "Real_Time_Consumption_lag_48"
         assert lag_col in result.columns
         # First 48 rows should all be NaN
         assert result[lag_col].iloc[:48].isna().all()

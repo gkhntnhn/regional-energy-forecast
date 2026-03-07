@@ -15,15 +15,21 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timedelta
+from typing import TYPE_CHECKING
 
 from loguru import logger
 
 from energy_forecast.utils import TZ_ISTANBUL
 
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+
+    from energy_forecast.config.settings import Settings
+
 
 async def fetch_and_store_actuals(
-    session_factory: object,
-    settings: object,
+    session_factory: async_sessionmaker | object,
+    settings: Settings | object,
 ) -> int:
     """Fetch actual weather for T-2 and store in DB.
 
@@ -103,8 +109,8 @@ async def fetch_and_store_actuals(
 
 
 async def run_scheduler(
-    session_factory: object,
-    settings: object,
+    session_factory: async_sessionmaker | object,
+    settings: Settings | object,
     run_hour: int = 4,
 ) -> None:
     """Background scheduler — runs fetch_and_store_actuals daily.
