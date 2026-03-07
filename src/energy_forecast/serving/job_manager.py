@@ -358,6 +358,93 @@ class JobManager:
                     await repo.update_progress(job_id, "email_done")
                     await session.commit()
 
+                # Archive features + upload to GDrive (non-fatal)
+                try:
+                    features_df = predictions.attrs.get("features_df")
+                    forecast_mask = predictions.attrs.get("forecast_mask")
+                    if features_df is not None and forecast_mask is not None:
+                        hist_path, fc_path = (
+                            prediction_service.archive_features(
+                                job_id, features_df, forecast_mask,
+                            )
+                        )
+                        meta_path = (
+                            prediction_service.write_metadata_json(
+                                job_id,
+                                {
+                                    "model_versions": (
+                                        prediction_service.get_model_info()
+                                    ),
+                                    "config_snapshot": (
+                                        predictions.attrs.get(
+                                            "epias_snapshot", {}
+                                        )
+                                    ),
+                                },
+                            )
+                        )
+
+                        # Upload to GDrive if configured
+                        import os
+
+                        creds = os.environ.get("GDRIVE_CREDENTIALS_PATH")
+                        folder_id = os.environ.get(
+                            "GDRIVE_BACKUP_FOLDER_ID"
+                        )
+                        if creds and folder_id:
+                            from energy_forecast.storage.gdrive import (
+                                GoogleDriveStorage,
+                            )
+
+                            files: dict[str, Path] = {}
+                            if hist_path:
+                                files["features_historical.parquet"] = (
+                                    hist_path
+                                )
+                            if fc_path:
+                                files["features_forecast.parquet"] = fc_path
+                            if meta_path:
+                                files["metadata.json"] = meta_path
+                            files[f"{file_stem}_forecast.xlsx"] = output_path
+
+                            gdrive = GoogleDriveStorage(creds, folder_id)
+                            uploaded = await asyncio.to_thread(
+                                gdrive.upload_job_artifacts,
+                                job_id,
+                                files,
+                            )
+
+                            # Update DB with GDrive paths
+                            async with session_factory() as session:
+                                job_repo = JobRepository(session)
+                                path_meta: dict[str, str] = {}
+                                if hist_path:
+                                    path_meta["historical_path"] = str(
+                                        hist_path
+                                    )
+                                if fc_path:
+                                    path_meta["forecast_path"] = str(
+                                        fc_path
+                                    )
+                                if uploaded:
+                                    path_meta["archive_path"] = str(
+                                        uploaded
+                                    )
+                                await job_repo.update_metadata(
+                                    job_id, path_meta
+                                )
+                                await session.commit()
+
+                            logger.info(
+                                "Archived {} files to GDrive for job {}",
+                                len(uploaded),
+                                job_id,
+                            )
+                except Exception as e:
+                    logger.warning(
+                        "Artifact archival failed (non-fatal): {}", e
+                    )
+
                 # Mark complete
                 async with session_factory() as session:
                     repo = JobRepository(session)

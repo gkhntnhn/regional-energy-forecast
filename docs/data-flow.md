@@ -86,6 +86,39 @@ Bu adimda DB'ye yazilmaz, RAM'de tutulur. Sonraki adimda persist edilir.
 
 ---
 
+## 5b. Artifact Arsivleme ve GDrive Upload
+
+Email sonrasi, feature dataset'leri ve cikti dosyasi arsivlenir.
+
+| Veri | Nerede | Detay |
+|------|--------|-------|
+| Historical features | Dosya sistemi (gecici) | `data/archive/jobs/{job_id}/features_historical.parquet` |
+| Forecast features | Dosya sistemi (gecici) | `data/archive/jobs/{job_id}/features_forecast.parquet` |
+| Metadata JSON | Dosya sistemi (gecici) | `data/archive/jobs/{job_id}/metadata.json` |
+| Tum artifact'lar | Google Drive | `{root}/{YYYY-MM}/{job_id}/` altinda yuklenir |
+| Artifact path'leri | PostgreSQL `jobs` | historical_path, forecast_path, archive_path |
+
+> GDrive klasor yapisi:
+> ```
+> GDrive Root/
+> +-- backups/
+> |   +-- energy_forecast_2026-03-07.sql.gz
+> +-- 2026-03/
+> |   +-- abc123def456/
+> |   |   +-- features_historical.parquet
+> |   |   +-- features_forecast.parquet
+> |   |   +-- test_forecast.xlsx
+> |   |   +-- metadata.json
+> +-- 2026-04/
+>     +-- ...
+> ```
+>
+> GDRIVE_CREDENTIALS_PATH ve GDRIVE_BACKUP_FOLDER_ID .env'de tanimli degilse
+> sadece lokal arsiv olusturulur, upload atlanir. Non-fatal: upload hatasi
+> pipeline'i kirmaz.
+
+---
+
 ## 6. Arka Plan Gorevleri (Musteri tetiklemez)
 
 ### 6a. Weather Actuals Scheduler (Otomatik, her gun 04:00)
@@ -114,14 +147,17 @@ Forecast vs actual karsilastirma icin kullanilir.
 | Job kaydi (durum, email, tarih) | `jobs` | — | — |
 | Tahmin degerleri (48 saatlik MWh) | `predictions` | — | — |
 | Tahmin dogruluk (MAPE) | `predictions.error_pct` | — | — |
-| Tahmin Excel ciktisi | — | `data/outputs/` | — |
+| Tahmin Excel ciktisi | — | `data/outputs/` | `{ay}/{job_id}/` |
 | Upload edilen Excel | — | `data/uploads/` | — |
+| Feature dataset (historical) | `jobs.historical_path` | `data/archive/` (gecici) | `{ay}/{job_id}/` |
+| Feature dataset (forecast) | `jobs.forecast_path` | `data/archive/` (gecici) | `{ay}/{job_id}/` |
+| Job metadata JSON | — | `data/archive/` (gecici) | `{ay}/{job_id}/` |
 | Hava durumu tahmini (job bazli) | `weather_snapshots` | — | — |
 | Gercek hava durumu (gunluk) | `weather_snapshots` | — | — |
 | EPIAS piyasa snapshot | `jobs.metadata` (JSONB) | — | — |
 | Audit log (kim ne yapti) | `audit_logs` | — | — |
 | Model dosyalari (.cbm, .pkl, .ckpt) | — | `final_models/` | — |
-| DB backup | — | gecici | `.sql.gz` |
+| DB backup | — | gecici | `backups/` |
 
 ---
 

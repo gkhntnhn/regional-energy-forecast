@@ -265,6 +265,8 @@ class PredictionService:
             result.attrs["latency_ms"] = round(latency_ms)
             result.attrs["weather_data"] = weather_df
             result.attrs["epias_snapshot"] = epias_meta
+            result.attrs["features_df"] = features_df
+            result.attrs["forecast_mask"] = forecast_mask
             return result
 
         except (ModelNotLoadedError, PredictionError, FeaturePipelineError):
