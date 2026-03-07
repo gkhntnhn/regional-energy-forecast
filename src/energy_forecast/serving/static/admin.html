@@ -1,0 +1,861 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard — Enerji Tahmin Sistemi</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        :root {
+            --primary: #4361ee;
+            --primary-light: #4895ef;
+            --primary-dim: #2d3a8c;
+            --secondary: #4cc9f0;
+            --accent: #f72585;
+            --accent-soft: rgba(247,37,133,.12);
+            --success: #38b000;
+            --warning: #ff9e00;
+            --danger: #ef233c;
+            --surface: #0f1123;
+            --surface-2: #171b36;
+            --surface-3: #1e2347;
+            --surface-4: #272d58;
+            --border: rgba(76,201,240,.12);
+            --text: #e8eaf6;
+            --text-dim: #8890b5;
+            --text-muted: #5c6291;
+            --glow: rgba(67,97,238,.25);
+        }
+        * { box-sizing: border-box; }
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--surface);
+            color: var(--text);
+            margin: 0;
+            min-height: 100vh;
+        }
+        /* ── Top bar ─────────────────────────────── */
+        .topbar {
+            background: var(--surface-2);
+            border-bottom: 1px solid var(--border);
+            padding: .75rem 1.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            backdrop-filter: blur(12px);
+        }
+        .topbar-left {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+        .topbar-logo {
+            width: 36px; height: 36px;
+            background: linear-gradient(135deg, var(--primary), var(--accent));
+            border-radius: 8px;
+            display: grid;
+            place-items: center;
+            color: #fff;
+            font-size: .9rem;
+            flex-shrink: 0;
+        }
+        .topbar h1 {
+            font-size: 1rem;
+            font-weight: 700;
+            margin: 0;
+            letter-spacing: -.02em;
+        }
+        .topbar h1 span { color: var(--text-dim); font-weight: 400; }
+        .topbar-actions {
+            display: flex;
+            align-items: center;
+            gap: .75rem;
+        }
+        .back-link {
+            color: var(--text-dim);
+            font-size: .8rem;
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: .35rem;
+            transition: color .2s;
+        }
+        .back-link:hover { color: var(--secondary); }
+
+        /* ── Auth gate ───────────────────────────── */
+        .auth-gate {
+            position: fixed;
+            inset: 0;
+            background: var(--surface);
+            z-index: 999;
+            display: grid;
+            place-items: center;
+        }
+        .auth-gate.hidden { display: none; }
+        .auth-box {
+            background: var(--surface-2);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 2.5rem;
+            width: min(400px, 90vw);
+            text-align: center;
+        }
+        .auth-box h2 {
+            font-size: 1.2rem;
+            font-weight: 700;
+            margin-bottom: .5rem;
+        }
+        .auth-box p { color: var(--text-dim); font-size: .85rem; margin-bottom: 1.5rem; }
+        .auth-input {
+            width: 100%;
+            padding: .65rem 1rem;
+            background: var(--surface-3);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: .85rem;
+            margin-bottom: 1rem;
+            outline: none;
+            transition: border-color .2s;
+        }
+        .auth-input:focus { border-color: var(--primary); }
+        .auth-btn {
+            width: 100%;
+            padding: .65rem;
+            background: linear-gradient(135deg, var(--primary), var(--primary-light));
+            border: none;
+            border-radius: 8px;
+            color: #fff;
+            font-weight: 600;
+            font-size: .9rem;
+            cursor: pointer;
+            transition: opacity .2s;
+        }
+        .auth-btn:hover { opacity: .9; }
+
+        /* ── Tabs ────────────────────────────────── */
+        .tab-bar {
+            display: flex;
+            gap: 2px;
+            padding: .5rem 1.5rem 0;
+            background: var(--surface-2);
+            overflow-x: auto;
+            scrollbar-width: none;
+        }
+        .tab-bar::-webkit-scrollbar { display: none; }
+        .tab-btn {
+            padding: .6rem 1.1rem;
+            font-size: .78rem;
+            font-weight: 600;
+            color: var(--text-dim);
+            background: transparent;
+            border: none;
+            border-bottom: 2px solid transparent;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: all .2s;
+            letter-spacing: .01em;
+        }
+        .tab-btn:hover { color: var(--text); }
+        .tab-btn.active {
+            color: var(--secondary);
+            border-bottom-color: var(--secondary);
+        }
+
+        /* ── Main content ────────────────────────── */
+        .main-content { padding: 1.25rem 1.5rem 3rem; }
+        .tab-panel { display: none; }
+        .tab-panel.active { display: block; animation: fadeUp .3s ease; }
+        @keyframes fadeUp {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* ── Cards ───────────────────────────────── */
+        .card-grid { display: grid; gap: 1.25rem; }
+        .card-grid-2 { grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); }
+        .card-grid-3 { grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+        .panel {
+            background: var(--surface-2);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.25rem;
+        }
+        .panel-title {
+            font-size: .78rem;
+            font-weight: 600;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: .06em;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: .5rem;
+        }
+        .panel-title i { color: var(--primary-light); font-size: .7rem; }
+
+        /* ── Chart container ─────────────────────── */
+        .chart-wrap { position: relative; width: 100%; height: 260px; }
+        .chart-wrap canvas { width: 100% !important; height: 100% !important; }
+
+        /* ── Tables ──────────────────────────────── */
+        .data-table {
+            width: 100%;
+            font-size: .8rem;
+            border-collapse: collapse;
+        }
+        .data-table th {
+            padding: .55rem .75rem;
+            font-weight: 600;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            font-size: .7rem;
+            letter-spacing: .05em;
+            border-bottom: 1px solid var(--border);
+            text-align: left;
+        }
+        .data-table td {
+            padding: .55rem .75rem;
+            border-bottom: 1px solid rgba(76,201,240,.06);
+            color: var(--text);
+        }
+        .data-table tr:hover td { background: rgba(67,97,238,.06); }
+        .data-table .mono {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: .78rem;
+        }
+
+        /* ── Status badges ───────────────────────── */
+        .badge-status {
+            display: inline-block;
+            padding: .15rem .55rem;
+            border-radius: 4px;
+            font-size: .7rem;
+            font-weight: 600;
+            letter-spacing: .02em;
+        }
+        .badge-ok { background: rgba(56,176,0,.15); color: var(--success); }
+        .badge-warn { background: rgba(255,158,0,.15); color: var(--warning); }
+        .badge-err { background: rgba(239,35,60,.15); color: var(--danger); }
+        .badge-info { background: rgba(67,97,238,.15); color: var(--primary-light); }
+
+        /* ── KPI strip ───────────────────────────── */
+        .kpi-strip {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: .75rem;
+            margin-bottom: 1.25rem;
+        }
+        .kpi {
+            background: var(--surface-3);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: .85rem 1rem;
+        }
+        .kpi-label {
+            font-size: .68rem;
+            font-weight: 500;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: .05em;
+        }
+        .kpi-value {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 1.4rem;
+            font-weight: 700;
+            color: var(--text);
+            margin-top: .15rem;
+        }
+        .kpi-value.good { color: var(--success); }
+        .kpi-value.warn { color: var(--warning); }
+        .kpi-value.bad { color: var(--danger); }
+
+        /* ── Loading / Empty ─────────────────────── */
+        .loading-state, .empty-state {
+            text-align: center;
+            padding: 2.5rem 1rem;
+            color: var(--text-muted);
+        }
+        .loading-state i { font-size: 1.5rem; margin-bottom: .5rem; }
+        .empty-state i { font-size: 2rem; margin-bottom: .5rem; opacity: .4; }
+
+        /* ── Pagination ──────────────────────────── */
+        .pagination-bar {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: .5rem;
+            margin-top: 1rem;
+        }
+        .pg-btn {
+            padding: .35rem .75rem;
+            background: var(--surface-3);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text-dim);
+            font-size: .78rem;
+            cursor: pointer;
+            transition: all .2s;
+        }
+        .pg-btn:hover { background: var(--surface-4); color: var(--text); }
+        .pg-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+        .pg-btn:disabled { opacity: .4; cursor: not-allowed; }
+        .pg-info { color: var(--text-dim); font-size: .75rem; }
+
+        /* ── Misc ────────────────────────────────── */
+        .accent-dot {
+            display: inline-block;
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            margin-right: .4rem;
+        }
+        .dot-green { background: var(--success); }
+        .dot-red { background: var(--danger); }
+        .dot-blue { background: var(--primary-light); }
+        .dot-yellow { background: var(--warning); }
+        .text-mono { font-family: 'JetBrains Mono', monospace; }
+        .mt-section { margin-top: 1.25rem; }
+    </style>
+</head>
+<body>
+    <!-- ══════════════ AUTH GATE ══════════════ -->
+    <div id="authGate" class="auth-gate">
+        <div class="auth-box">
+            <div class="topbar-logo" style="margin:0 auto 1rem;width:48px;height:48px;font-size:1.2rem;">
+                <i class="fas fa-shield-halved"></i>
+            </div>
+            <h2>Admin Giris</h2>
+            <p>Dashboard'a erisim icin API anahtarinizi girin.</p>
+            <input id="authInput" class="auth-input" type="password" placeholder="API Key" autocomplete="off">
+            <button class="auth-btn" onclick="doAuth()">
+                <i class="fas fa-arrow-right-to-bracket me-1"></i> Giris Yap
+            </button>
+        </div>
+    </div>
+
+    <!-- ══════════════ TOPBAR ══════════════ -->
+    <div class="topbar">
+        <div class="topbar-left">
+            <div class="topbar-logo"><i class="fas fa-chart-area"></i></div>
+            <h1>Admin Dashboard <span>/ Enerji Tahmin Sistemi</span></h1>
+        </div>
+        <div class="topbar-actions">
+            <a href="/" class="back-link"><i class="fas fa-arrow-left"></i> Ana Sayfa</a>
+            <button class="pg-btn" onclick="doLogout()" title="Cikis"><i class="fas fa-right-from-bracket"></i></button>
+        </div>
+    </div>
+
+    <!-- ══════════════ TAB BAR ══════════════ -->
+    <div class="tab-bar">
+        <button class="tab-btn active" data-tab="mape"><i class="fas fa-chart-line me-1"></i>Uretim MAPE</button>
+        <button class="tab-btn" data-tab="models"><i class="fas fa-cubes me-1"></i>Model Karsilastirma</button>
+        <button class="tab-btn" data-tab="weather"><i class="fas fa-cloud-sun me-1"></i>Hava Durumu</button>
+        <button class="tab-btn" data-tab="features"><i class="fas fa-layer-group me-1"></i>Feature Onemi</button>
+        <button class="tab-btn" data-tab="training"><i class="fas fa-flask me-1"></i>Egitim Gecmisi</button>
+        <button class="tab-btn" data-tab="system"><i class="fas fa-server me-1"></i>Sistem</button>
+    </div>
+
+    <!-- ══════════════ CONTENT ══════════════ -->
+    <div class="main-content">
+
+        <!-- ── TAB 1: MAPE ─────────────────── -->
+        <div id="tab-mape" class="tab-panel active">
+            <div id="mape-kpi" class="kpi-strip"></div>
+            <div class="card-grid card-grid-2">
+                <div class="panel">
+                    <div class="panel-title"><i class="fas fa-chart-line"></i> Gunluk MAPE (Son 30 Gun)</div>
+                    <div class="chart-wrap"><canvas id="chart-daily-mape"></canvas></div>
+                </div>
+                <div class="panel">
+                    <div class="panel-title"><i class="fas fa-calendar-week"></i> Haftalik MAPE (T vs T+1)</div>
+                    <div class="chart-wrap"><canvas id="chart-weekly-mape"></canvas></div>
+                </div>
+            </div>
+            <div class="panel mt-section">
+                <div class="panel-title"><i class="fas fa-clock"></i> Saatlik MAPE Dagilimi</div>
+                <div class="chart-wrap"><canvas id="chart-hourly-mape"></canvas></div>
+            </div>
+        </div>
+
+        <!-- ── TAB 2: MODELS ──────────────── -->
+        <div id="tab-models" class="tab-panel">
+            <div class="card-grid card-grid-2">
+                <div class="panel">
+                    <div class="panel-title"><i class="fas fa-ranking-star"></i> Model MAPE Karsilastirma</div>
+                    <div class="chart-wrap"><canvas id="chart-model-mape"></canvas></div>
+                </div>
+                <div class="panel">
+                    <div class="panel-title"><i class="fas fa-table-cells"></i> Istatistikler</div>
+                    <div id="model-comparison-table"></div>
+                </div>
+            </div>
+            <div class="panel mt-section">
+                <div class="panel-title"><i class="fas fa-th"></i> Saatlik Model Performansi</div>
+                <div class="chart-wrap" style="height:300px"><canvas id="chart-model-hourly"></canvas></div>
+            </div>
+        </div>
+
+        <!-- ── TAB 3: WEATHER ─────────────── -->
+        <div id="tab-weather" class="tab-panel">
+            <div class="card-grid card-grid-2">
+                <div class="panel">
+                    <div class="panel-title"><i class="fas fa-arrows-left-right"></i> T vs T+1 Horizon Dogrulugu</div>
+                    <div class="chart-wrap"><canvas id="chart-weather-horizon"></canvas></div>
+                </div>
+                <div class="panel">
+                    <div class="panel-title"><i class="fas fa-temperature-half"></i> Degisken Bazli MAE</div>
+                    <div id="weather-var-table"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ── TAB 4: FEATURES ────────────── -->
+        <div id="tab-features" class="tab-panel">
+            <div class="panel">
+                <div class="panel-title"><i class="fas fa-chart-area"></i> Top-10 Feature Importance Trendi</div>
+                <div class="chart-wrap" style="height:340px"><canvas id="chart-feature-trend"></canvas></div>
+            </div>
+        </div>
+
+        <!-- ── TAB 5: TRAINING ────────────── -->
+        <div id="tab-training" class="tab-panel">
+            <div class="card-grid card-grid-2">
+                <div class="panel">
+                    <div class="panel-title"><i class="fas fa-medal"></i> Promote Edilmis Modeller</div>
+                    <div id="promoted-table"></div>
+                </div>
+                <div class="panel">
+                    <div class="panel-title"><i class="fas fa-chart-scatter"></i> MAPE Dagilimi</div>
+                    <div class="chart-wrap"><canvas id="chart-mape-scatter"></canvas></div>
+                </div>
+            </div>
+            <div class="panel mt-section">
+                <div class="panel-title"><i class="fas fa-list-ol"></i> Son Egitim Calistirmalari</div>
+                <div id="model-runs-table"></div>
+            </div>
+        </div>
+
+        <!-- ── TAB 6: SYSTEM ──────────────── -->
+        <div id="tab-system" class="tab-panel">
+            <div class="card-grid card-grid-2">
+                <div class="panel">
+                    <div class="panel-title"><i class="fas fa-heartbeat"></i> Sistem Sagligi</div>
+                    <div id="system-health"></div>
+                </div>
+                <div class="panel">
+                    <div class="panel-title"><i class="fas fa-bell"></i> Son Drift Uyarilari</div>
+                    <div id="drift-alerts"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ── FOOTER: JOB HISTORY ────────── -->
+        <div class="panel mt-section">
+            <div class="panel-title"><i class="fas fa-history"></i> Is Gecmisi</div>
+            <div id="job-history-table"></div>
+            <div id="job-pagination" class="pagination-bar"></div>
+        </div>
+    </div>
+
+<script>
+// ═══════════════════════════════════════════════════
+// GLOBALS
+// ═══════════════════════════════════════════════════
+let API_TOKEN = localStorage.getItem('admin_token') || '';
+const charts = {};
+let jobPage = 1;
+
+// ─── Auth ──────────────────────────────────────────
+function checkAuth() {
+    const gate = document.getElementById('authGate');
+    if (API_TOKEN) { gate.classList.add('hidden'); loadActiveTab(); loadJobHistory(); }
+    else gate.classList.remove('hidden');
+}
+function doAuth() {
+    const v = document.getElementById('authInput').value.trim();
+    if (!v) return;
+    API_TOKEN = v;
+    localStorage.setItem('admin_token', v);
+    checkAuth();
+}
+function doLogout() {
+    API_TOKEN = '';
+    localStorage.removeItem('admin_token');
+    checkAuth();
+}
+document.getElementById('authInput').addEventListener('keydown', e => { if (e.key === 'Enter') doAuth(); });
+
+// ─── Fetch helper ──────────────────────────────────
+async function api(path) {
+    const r = await fetch(path, { headers: { 'Authorization': 'Bearer ' + API_TOKEN } });
+    if (r.status === 401) { doLogout(); throw new Error('Unauthorized'); }
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return r.json();
+}
+
+// ─── Tab switching ─────────────────────────────────
+const tabBtns = document.querySelectorAll('.tab-btn');
+const tabPanels = document.querySelectorAll('.tab-panel');
+tabBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+        tabBtns.forEach(b => b.classList.remove('active'));
+        tabPanels.forEach(p => p.classList.remove('active'));
+        btn.classList.add('active');
+        document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+        loadActiveTab();
+    });
+});
+function activeTab() {
+    const a = document.querySelector('.tab-btn.active');
+    return a ? a.dataset.tab : 'mape';
+}
+
+// ─── Chart defaults ────────────────────────────────
+Chart.defaults.color = '#8890b5';
+Chart.defaults.borderColor = 'rgba(76,201,240,.08)';
+Chart.defaults.font.family = "'Inter', sans-serif";
+Chart.defaults.font.size = 11;
+Chart.defaults.plugins.legend.labels.usePointStyle = true;
+Chart.defaults.plugins.legend.labels.pointStyleWidth = 8;
+
+const COLORS = {
+    primary: '#4361ee', primaryLight: '#4895ef', secondary: '#4cc9f0',
+    accent: '#f72585', success: '#38b000', warning: '#ff9e00',
+    catboost: '#4895ef', prophet: '#f72585', tft: '#4cc9f0', ensemble: '#38b000',
+};
+function alpha(hex, a) {
+    const r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16);
+    return `rgba(${r},${g},${b},${a})`;
+}
+function getOrCreate(id, type, cfg) {
+    if (charts[id]) { charts[id].destroy(); }
+    charts[id] = new Chart(document.getElementById(id), { type, ...cfg });
+    return charts[id];
+}
+
+// ─── Loading / Empty helpers ───────────────────────
+function loadingHTML() { return '<div class="loading-state"><i class="fas fa-circle-notch fa-spin"></i><div>Yukleniyor...</div></div>'; }
+function emptyHTML(msg) { return `<div class="empty-state"><i class="fas fa-inbox"></i><div>${msg || 'Veri bulunamadi'}</div></div>`; }
+
+// ═══════════════════════════════════════════════════
+// TAB LOADERS
+// ═══════════════════════════════════════════════════
+const loaded = {};
+async function loadActiveTab() {
+    const tab = activeTab();
+    if (loaded[tab]) return;
+    try {
+        if (tab === 'mape') await loadMapeTab();
+        else if (tab === 'models') await loadModelsTab();
+        else if (tab === 'weather') await loadWeatherTab();
+        else if (tab === 'features') await loadFeaturesTab();
+        else if (tab === 'training') await loadTrainingTab();
+        else if (tab === 'system') await loadSystemTab();
+        loaded[tab] = true;
+    } catch(e) {
+        console.error('Tab load error:', e);
+    }
+}
+
+// ── 1. MAPE TAB ────────────────────────────────────
+async function loadMapeTab() {
+    const [daily, weekly, hourly] = await Promise.all([
+        api('/admin/analytics/mape/daily?days=30'),
+        api('/admin/analytics/mape/weekly?weeks=12'),
+        api('/admin/analytics/mape/hourly'),
+    ]);
+
+    // KPI strip
+    const kpiEl = document.getElementById('mape-kpi');
+    if (daily.length) {
+        const latest = daily[daily.length-1];
+        const avg = daily.reduce((s,d) => s+d.mape, 0) / daily.length;
+        const totalHours = daily.reduce((s,d) => s+d.n_hours, 0);
+        kpiEl.innerHTML = `
+            <div class="kpi"><div class="kpi-label">Son Gun MAPE</div><div class="kpi-value ${latest.mape < 4 ? 'good' : latest.mape < 6 ? 'warn' : 'bad'}">${latest.mape.toFixed(1)}%</div></div>
+            <div class="kpi"><div class="kpi-label">30 Gun Ortalama</div><div class="kpi-value">${avg.toFixed(1)}%</div></div>
+            <div class="kpi"><div class="kpi-label">Toplam Saat</div><div class="kpi-value">${totalHours}</div></div>
+            <div class="kpi"><div class="kpi-label">Gun Sayisi</div><div class="kpi-value">${daily.length}</div></div>
+        `;
+    } else {
+        kpiEl.innerHTML = '';
+    }
+
+    // Daily line chart
+    if (daily.length) {
+        getOrCreate('chart-daily-mape', 'line', {
+            data: {
+                labels: daily.map(d => d.day.slice(5)),
+                datasets: [{
+                    label: 'MAPE %',
+                    data: daily.map(d => d.mape),
+                    borderColor: COLORS.primary,
+                    backgroundColor: alpha(COLORS.primary, .1),
+                    fill: true, tension: .3, pointRadius: 2, borderWidth: 2,
+                }, {
+                    label: 'Min',
+                    data: daily.map(d => d.min_error),
+                    borderColor: alpha(COLORS.success, .5),
+                    borderDash: [4,4], pointRadius: 0, borderWidth: 1,
+                }, {
+                    label: 'Max',
+                    data: daily.map(d => d.max_error),
+                    borderColor: alpha(COLORS.accent, .5),
+                    borderDash: [4,4], pointRadius: 0, borderWidth: 1,
+                }]
+            },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top' } } }
+        });
+    }
+
+    // Weekly bar
+    if (weekly.length) {
+        const datasets = [{ label: 'Genel', data: weekly.map(w => w.weekly_mape), backgroundColor: alpha(COLORS.primary, .7) }];
+        if (weekly.some(w => w.t_mape)) datasets.push({ label: 'T (Gun Ici)', data: weekly.map(w => w.t_mape || 0), backgroundColor: alpha(COLORS.secondary, .7) });
+        if (weekly.some(w => w.t1_mape)) datasets.push({ label: 'T+1 (Gun Oncesi)', data: weekly.map(w => w.t1_mape || 0), backgroundColor: alpha(COLORS.accent, .7) });
+        getOrCreate('chart-weekly-mape', 'bar', {
+            data: { labels: weekly.map(w => w.week), datasets },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top' } } }
+        });
+    }
+
+    // Hourly bar
+    if (hourly.length) {
+        getOrCreate('chart-hourly-mape', 'bar', {
+            data: {
+                labels: hourly.map(h => h.hour + ':00'),
+                datasets: [{
+                    label: 'Ort. MAPE %',
+                    data: hourly.map(h => h.avg_mape),
+                    backgroundColor: hourly.map(h => h.avg_mape > 5 ? alpha(COLORS.accent, .7) : alpha(COLORS.primary, .7)),
+                    borderRadius: 4,
+                }]
+            },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+        });
+    }
+}
+
+// ── 2. MODELS TAB ──────────────────────────────────
+async function loadModelsTab() {
+    const [mape, comparison, hourly] = await Promise.all([
+        api('/admin/analytics/models/mape?days=30'),
+        api('/admin/analytics/models/comparison'),
+        api('/admin/analytics/models/hourly'),
+    ]);
+
+    if (mape.length) {
+        getOrCreate('chart-model-mape', 'bar', {
+            data: {
+                labels: mape.map(m => m.model_source),
+                datasets: [{
+                    label: 'MAPE %',
+                    data: mape.map(m => m.mape),
+                    backgroundColor: mape.map(m => alpha(COLORS[m.model_source] || COLORS.primary, .8)),
+                    borderRadius: 6,
+                }]
+            },
+            options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } } }
+        });
+    }
+
+    const cmpEl = document.getElementById('model-comparison-table');
+    if (comparison.length) {
+        cmpEl.innerHTML = `<table class="data-table"><thead><tr><th>Model</th><th>Ort. MAPE</th><th>Median</th><th>P95</th><th>Saat</th></tr></thead><tbody>${comparison.map(c =>
+            `<tr><td><span class="accent-dot" style="background:${COLORS[c.model_source]||COLORS.primary}"></span>${c.model_source}</td><td class="mono">${c.avg_mape.toFixed(2)}%</td><td class="mono">${c.median_mape.toFixed(2)}%</td><td class="mono">${c.p95_mape.toFixed(2)}%</td><td class="mono">${c.n_hours}</td></tr>`
+        ).join('')}</tbody></table>`;
+    } else { cmpEl.innerHTML = emptyHTML(); }
+
+    // Hourly model heatmap as grouped bar
+    if (hourly.length) {
+        const models = [...new Set(hourly.map(h => h.model_source))];
+        const hours = [...new Set(hourly.map(h => h.hour))].sort((a,b) => a-b);
+        getOrCreate('chart-model-hourly', 'bar', {
+            data: {
+                labels: hours.map(h => h + ':00'),
+                datasets: models.map(m => ({
+                    label: m,
+                    data: hours.map(h => { const r = hourly.find(x => x.hour === h && x.model_source === m); return r ? r.mape : 0; }),
+                    backgroundColor: alpha(COLORS[m] || COLORS.primary, .7),
+                    borderRadius: 3,
+                }))
+            },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top' } } }
+        });
+    }
+}
+
+// ── 3. WEATHER TAB ─────────────────────────────────
+async function loadWeatherTab() {
+    const [horizon, vars] = await Promise.all([
+        api('/admin/analytics/weather/horizon?weeks=8'),
+        api('/admin/analytics/weather/variables'),
+    ]);
+
+    if (horizon.length) {
+        const cols = Object.keys(horizon[0]).filter(k => k.endsWith('_mae'));
+        const labels = cols.map(c => c.replace('_mae','').replace(/_/g,' '));
+        getOrCreate('chart-weather-horizon', 'bar', {
+            data: {
+                labels,
+                datasets: horizon.map((h, i) => ({
+                    label: h.horizon,
+                    data: cols.map(c => h[c] || 0),
+                    backgroundColor: alpha(i === 0 ? COLORS.primary : COLORS.accent, .7),
+                    borderRadius: 4,
+                }))
+            },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top' } } }
+        });
+    }
+
+    const varEl = document.getElementById('weather-var-table');
+    if (vars.length) {
+        varEl.innerHTML = `<table class="data-table"><thead><tr><th>Degisken</th><th>MAE</th><th>Ornek</th></tr></thead><tbody>${vars.map(v =>
+            `<tr><td>${v.variable.replace(/_/g,' ')}</td><td class="mono">${v.mae.toFixed(2)}</td><td class="mono">${v.n_samples}</td></tr>`
+        ).join('')}</tbody></table>`;
+    } else { varEl.innerHTML = emptyHTML(); }
+}
+
+// ── 4. FEATURES TAB ────────────────────────────────
+async function loadFeaturesTab() {
+    const data = await api('/admin/analytics/features/trend?days=30');
+    if (!data.length) { document.getElementById('chart-feature-trend').parentElement.innerHTML = emptyHTML(); return; }
+
+    const days = [...new Set(data.map(d => d.day))].sort();
+    const features = [...new Set(data.map(d => d.feature))];
+    const palette = [COLORS.primary, COLORS.accent, COLORS.secondary, COLORS.success, COLORS.warning, '#9b5de5', '#00bbf9', '#fee440', '#f15bb5', '#00f5d4'];
+
+    getOrCreate('chart-feature-trend', 'line', {
+        data: {
+            labels: days.map(d => d.slice(5)),
+            datasets: features.map((f, i) => ({
+                label: f,
+                data: days.map(day => { const r = data.find(d => d.day === day && d.feature === f); return r ? r.importance : 0; }),
+                borderColor: palette[i % palette.length],
+                backgroundColor: alpha(palette[i % palette.length], .15),
+                fill: true, tension: .3, pointRadius: 2, borderWidth: 1.5,
+            }))
+        },
+        options: { responsive: true, maintainAspectRatio: false, scales: { y: { stacked: true } }, plugins: { legend: { position: 'right' } } }
+    });
+}
+
+// ── 5. TRAINING TAB ────────────────────────────────
+async function loadTrainingTab() {
+    const [runs, promoted] = await Promise.all([
+        api('/admin/models/runs'),
+        api('/admin/models/promoted'),
+    ]);
+
+    const promEl = document.getElementById('promoted-table');
+    if (promoted.length) {
+        promEl.innerHTML = `<table class="data-table"><thead><tr><th>Model</th><th>Val MAPE</th><th>Test MAPE</th><th>Tarih</th></tr></thead><tbody>${promoted.map(p =>
+            `<tr><td><span class="badge-status badge-ok">${p.model_type}</span></td><td class="mono">${p.val_mape?.toFixed(2) || '—'}%</td><td class="mono">${p.test_mape?.toFixed(2) || '—'}%</td><td class="mono">${p.promoted_at ? p.promoted_at.slice(0,10) : '—'}</td></tr>`
+        ).join('')}</tbody></table>`;
+    } else { promEl.innerHTML = emptyHTML('Henuz promote edilmis model yok'); }
+
+    // Scatter plot
+    if (runs.length) {
+        const completed = runs.filter(r => r.val_mape != null);
+        getOrCreate('chart-mape-scatter', 'scatter', {
+            data: {
+                datasets: [...new Set(completed.map(r => r.model_type))].map(mt => ({
+                    label: mt,
+                    data: completed.filter(r => r.model_type === mt).map(r => ({ x: r.id, y: r.val_mape })),
+                    backgroundColor: alpha(COLORS[mt] || COLORS.primary, .8),
+                    pointRadius: 5,
+                }))
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                scales: { x: { title: { display: true, text: 'Run ID' } }, y: { title: { display: true, text: 'Val MAPE %' } } },
+                plugins: { legend: { position: 'top' } }
+            }
+        });
+    }
+
+    // Runs table
+    const runsEl = document.getElementById('model-runs-table');
+    if (runs.length) {
+        runsEl.innerHTML = `<table class="data-table"><thead><tr><th>ID</th><th>Model</th><th>Durum</th><th>Val MAPE</th><th>Test MAPE</th><th>Trial</th><th>Split</th><th>Sure</th><th>Tarih</th></tr></thead><tbody>${runs.map(r => {
+            const badge = r.status === 'completed' ? 'badge-ok' : r.status === 'failed' ? 'badge-err' : 'badge-info';
+            const dur = r.duration_seconds ? (r.duration_seconds < 3600 ? Math.round(r.duration_seconds/60) + 'm' : (r.duration_seconds/3600).toFixed(1) + 'h') : '—';
+            return `<tr><td class="mono">${r.id}</td><td>${r.model_type}</td><td><span class="badge-status ${badge}">${r.status}</span></td><td class="mono">${r.val_mape?.toFixed(2) || '—'}%</td><td class="mono">${r.test_mape?.toFixed(2) || '—'}%</td><td class="mono">${r.n_trials || '—'}</td><td class="mono">${r.n_splits || '—'}</td><td class="mono">${dur}</td><td class="mono">${r.started_at ? r.started_at.slice(0,10) : '—'}</td></tr>`;
+        }).join('')}</tbody></table>`;
+    } else { runsEl.innerHTML = emptyHTML('Henuz egitim kaydi yok'); }
+}
+
+// ── 6. SYSTEM TAB ──────────────────────────────────
+async function loadSystemTab() {
+    const [health, drift] = await Promise.all([
+        api('/admin/system/health'),
+        api('/admin/models/drift/status'),
+    ]);
+
+    const hEl = document.getElementById('system-health');
+    const dbBadge = health.database === 'connected' ? '<span class="badge-status badge-ok">Bagli</span>' : '<span class="badge-status badge-err">Bagli Degil</span>';
+    const modelBadge = health.models_loaded ? '<span class="badge-status badge-ok">Yuklendi</span>' : '<span class="badge-status badge-err">Yuklenemedi</span>';
+    let modelInfo = '';
+    if (health.model_info && health.model_info.active_models) {
+        modelInfo = '<div style="margin-top:.75rem"><span class="kpi-label">Aktif Modeller</span><div style="margin-top:.25rem">' +
+            health.model_info.active_models.map(m => `<span class="badge-status badge-info" style="margin-right:.25rem">${m}</span>`).join('') + '</div></div>';
+    }
+    hEl.innerHTML = `
+        <table class="data-table"><tbody>
+            <tr><td>Veritabani</td><td>${dbBadge}</td></tr>
+            <tr><td>Modeller</td><td>${modelBadge}</td></tr>
+        </tbody></table>
+        ${modelInfo}
+    `;
+
+    const dEl = document.getElementById('drift-alerts');
+    if (drift.length) {
+        dEl.innerHTML = `<table class="data-table"><thead><tr><th>Tip</th><th>Detay</th><th>Tarih</th></tr></thead><tbody>${drift.map(d => {
+            const detail = d.details ? JSON.stringify(d.details).slice(0,80) : '—';
+            return `<tr><td><span class="badge-status badge-warn">${d.action.replace('drift_','')}</span></td><td class="mono" style="font-size:.72rem">${detail}</td><td class="mono">${d.created_at.slice(0,16)}</td></tr>`;
+        }).join('')}</tbody></table>`;
+    } else { dEl.innerHTML = emptyHTML('Drift uyarisi bulunamadi'); }
+}
+
+// ── JOB HISTORY (FOOTER) ──────────────────────────
+async function loadJobHistory(page) {
+    if (page) jobPage = page;
+    const el = document.getElementById('job-history-table');
+    el.innerHTML = loadingHTML();
+    try {
+        const data = await api(`/admin/jobs/history?page=${jobPage}&size=15`);
+        if (!data.jobs.length) { el.innerHTML = emptyHTML('Henuz is kaydi yok'); document.getElementById('job-pagination').innerHTML = ''; return; }
+        el.innerHTML = `<table class="data-table"><thead><tr><th>ID</th><th>E-posta</th><th>Durum</th><th>Ilerleme</th><th>Olusturulma</th><th>Tamamlanma</th></tr></thead><tbody>${data.jobs.map(j => {
+            const badge = j.status === 'completed' ? 'badge-ok' : j.status === 'failed' ? 'badge-err' : j.status === 'archived' ? 'badge-info' : 'badge-warn';
+            return `<tr><td class="mono">${j.id}</td><td>${j.email}</td><td><span class="badge-status ${badge}">${j.status}</span></td><td style="font-size:.72rem">${j.progress || '—'}</td><td class="mono">${j.created_at.slice(0,16).replace('T',' ')}</td><td class="mono">${j.completed_at ? j.completed_at.slice(0,16).replace('T',' ') : '—'}</td></tr>`;
+        }).join('')}</tbody></table>`;
+
+        // Pagination
+        const pgEl = document.getElementById('job-pagination');
+        let pgHTML = `<button class="pg-btn" ${jobPage<=1?'disabled':''} onclick="loadJobHistory(${jobPage-1})"><i class="fas fa-chevron-left"></i></button>`;
+        for (let i = 1; i <= data.pages; i++) {
+            pgHTML += `<button class="pg-btn ${i===jobPage?'active':''}" onclick="loadJobHistory(${i})">${i}</button>`;
+        }
+        pgHTML += `<button class="pg-btn" ${jobPage>=data.pages?'disabled':''} onclick="loadJobHistory(${jobPage+1})"><i class="fas fa-chevron-right"></i></button>`;
+        pgHTML += `<span class="pg-info">${data.total} kayit</span>`;
+        pgEl.innerHTML = pgHTML;
+    } catch(e) {
+        el.innerHTML = emptyHTML('Veri yuklenemedi');
+    }
+}
+
+// ═══════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════
+checkAuth();
+</script>
+</body>
+</html>

@@ -72,6 +72,12 @@ class JobRepository:
             return
         if "metadata" in metadata:
             job.metadata_ = metadata["metadata"]
+        if "feature_importance_top15" in metadata:
+            existing = job.metadata_ or {}
+            existing["feature_importance_top15"] = metadata[
+                "feature_importance_top15"
+            ]
+            job.metadata_ = existing
         if "config_snapshot" in metadata:
             job.config_snapshot = metadata["config_snapshot"]
         if "model_versions" in metadata:

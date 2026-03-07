@@ -293,6 +293,11 @@ app.add_middleware(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
+# Admin router (analytics dashboard) — import here due to FastAPI app init order
+from energy_forecast.serving.routers.admin import admin_router  # noqa: E402
+
+app.include_router(admin_router, dependencies=[Depends(verify_api_key)])
+
 # Static files for dashboard
 _static_dir = Path(__file__).parent / "static"
 if _static_dir.exists():
