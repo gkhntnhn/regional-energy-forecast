@@ -93,9 +93,9 @@ async def test_forecast_computes_hdd_cdd(
     # 10C: HDD = 18-10 = 8, CDD = 0
     assert rows[0].wth_hdd == pytest.approx(8.0)
     assert rows[0].wth_cdd == pytest.approx(0.0)
-    # 30C: HDD = 0, CDD = 30-22 = 8
+    # 30C: HDD = 0, CDD = 30-24 = 6
     assert rows[1].wth_hdd == pytest.approx(0.0)
-    assert rows[1].wth_cdd == pytest.approx(8.0)
+    assert rows[1].wth_cdd == pytest.approx(6.0)
 
 
 # ------------------------------------------------------------------
@@ -245,9 +245,9 @@ def test_build_snapshot_rows_naive_index() -> None:
     # 15C: HDD = 18-15 = 3, CDD = 0
     assert rows[0].wth_hdd == pytest.approx(3.0)
     assert rows[0].wth_cdd == pytest.approx(0.0)
-    # 25C: HDD = 0, CDD = 25-22 = 3
+    # 25C: HDD = 0, CDD = 25-24 = 1
     assert rows[2].wth_hdd == pytest.approx(0.0)
-    assert rows[2].wth_cdd == pytest.approx(3.0)
+    assert rows[2].wth_cdd == pytest.approx(1.0)
 
 
 # ------------------------------------------------------------------

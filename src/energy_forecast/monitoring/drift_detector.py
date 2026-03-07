@@ -247,7 +247,7 @@ async def _get_recent_bias(
         select(
             func.avg(
                 (PredictionModel.consumption_mwh - PredictionModel.actual_mwh)
-                / PredictionModel.actual_mwh
+                / func.nullif(PredictionModel.actual_mwh, 0)
                 * 100
             ),
             func.count(PredictionModel.id),

@@ -28,7 +28,7 @@ _WEATHER_COLS: list[str] = [
 
 # HDD/CDD base temperature (same as weather feature engineer)
 _HDD_BASE = 18.0
-_CDD_BASE = 22.0
+_CDD_BASE = 24.0
 
 
 class WeatherSnapshotRepository:

@@ -19,11 +19,14 @@ import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from loguru import logger
 
+_TZ_ISTANBUL = ZoneInfo("Europe/Istanbul")
 
-def backup_database(output_dir: Path | None = None) -> Path:
+
+def backup_database(output_dir: Path | None = None) -> Path | None:
     """Create a gzipped pg_dump of the database.
 
     Args:
@@ -37,7 +40,7 @@ def backup_database(output_dir: Path | None = None) -> Path:
         logger.error("DATABASE_URL_SYNC not set")
         sys.exit(1)
 
-    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
+    timestamp = datetime.now(tz=_TZ_ISTANBUL).strftime("%Y-%m-%d_%H-%M")
     if output_dir is None:
         output_dir = Path("data/backups")
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -61,7 +64,7 @@ def backup_database(output_dir: Path | None = None) -> Path:
 
     for cmd in [docker_cmd, local_cmd]:
         result = subprocess.run(
-            cmd, capture_output=True,
+            cmd, capture_output=True, timeout=300,
         )
         if result.returncode == 0:
             dump_file.write_bytes(result.stdout)
@@ -90,6 +93,7 @@ def backup_database(output_dir: Path | None = None) -> Path:
             gdrive.upload_backup(gz_file)
             gz_file.unlink()
             logger.info("Local backup removed after upload")
+            return None
         except Exception as e:
             logger.warning("GDrive upload failed (keeping local): {}", e)
     else:

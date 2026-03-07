@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import contextlib
 import time
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import httpx
 import pandas as pd
@@ -573,7 +574,7 @@ def _to_epias_timestamp(date_str: str, *, end_of_day: bool = False) -> str:
         ISO-8601 timestamp string with +03:00 timezone.
     """
     dt = datetime.strptime(date_str, "%Y-%m-%d").replace(
-        tzinfo=UTC,
+        tzinfo=ZoneInfo("Europe/Istanbul"),
     )
     if end_of_day:
         dt = dt.replace(hour=23, minute=0, second=0)
