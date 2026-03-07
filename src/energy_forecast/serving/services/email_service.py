@@ -166,6 +166,44 @@ class EmailService:
         except TimeoutError as e:
             raise EmailDeliveryError("SMTP connection timeout") from e
 
+    def send_with_retry(
+        self,
+        to_email: str,
+        attachment_path: Path,
+        job_id: str,
+        created_at: str,
+        max_retries: int = 2,
+    ) -> tuple[bool, int, str | None]:
+        """Send email with retry logic.
+
+        Returns:
+            (success, attempt_count, error_message_or_none)
+        """
+        if not self._enabled:
+            return False, 0, "Email service disabled"
+
+        last_error: str | None = None
+        for attempt in range(1, max_retries + 1):
+            try:
+                msg = self._create_message(
+                    to_email, attachment_path, job_id, created_at
+                )
+                self._send_message(msg, to_email)
+                logger.info(
+                    "Email sent to {} (attempt {})", to_email, attempt
+                )
+                return True, attempt, None
+            except Exception as e:
+                last_error = str(e)
+                logger.warning(
+                    "Email attempt {}/{} failed: {}",
+                    attempt,
+                    max_retries,
+                    e,
+                )
+
+        return False, max_retries, last_error
+
     def send_error_notification(
         self,
         to_email: str,

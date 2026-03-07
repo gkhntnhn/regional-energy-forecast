@@ -38,6 +38,13 @@ dependencies = [
     "slowapi>=0.1.9",
     "holidays>=0.40",
     "feature-engine>=1.8",
+    "sqlalchemy[asyncio]>=2.0.25",
+    "asyncpg>=0.29",
+    "alembic>=1.13",
+    "psycopg2-binary>=2.9",
+    "aiosqlite>=0.20",
+    "google-api-python-client>=2.100",
+    "google-auth>=2.25",
 ]
 
 [project.optional-dependencies]
@@ -121,6 +128,13 @@ module = [
     "feature_engine.*",
     "scipy.*",
     "slowapi.*",
+    "sqlalchemy.*",
+    "asyncpg.*",
+    "alembic.*",
+    "aiosqlite.*",
+    "googleapiclient.*",
+    "google.auth.*",
+    "google.oauth2.*",
 ]
 ignore_missing_imports = true
 

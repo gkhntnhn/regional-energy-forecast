@@ -71,6 +71,9 @@ def test_client(
     app.state.email_service = mock_email_service
     app.state.job_manager = JobManager()
     app.state.api_key = TEST_API_KEY
+    app.state.use_db = False
+    app.state.db_engine = None
+    app.state.session_factory = None
 
     return TestClient(app, raise_server_exceptions=False)
 
@@ -262,9 +265,12 @@ class TestPredictEndpoint:
         assert response1.status_code == 200
         job_id = response1.json()["job_id"]
 
-        # Manually set job to running state
+        # Manually set job to running state (in-memory mode)
         from energy_forecast.serving.app import app
-        app.state.job_manager._set_running(job_id)
+        from energy_forecast.serving.schemas import JobStatus
+
+        app.state.job_manager._jobs[job_id].status = JobStatus.RUNNING
+        app.state.job_manager._active_job_id = job_id
 
         # Second request - should fail with 429
         excel_content2 = BytesIO(b"fake excel content")
@@ -462,10 +468,12 @@ class TestStatusUnexpectedError:
         """Test that a non-JobNotFoundError exception returns 500."""
         from energy_forecast.serving.app import app
 
-        # Replace job_manager.get_job with a function that raises RuntimeError
+        # Replace job_manager with a mock that raises RuntimeError
         original_manager = app.state.job_manager
         mock_manager = MagicMock()
-        mock_manager.get_job = MagicMock(side_effect=RuntimeError("DB connection lost"))
+        mock_manager.get_job_in_memory = MagicMock(
+            side_effect=RuntimeError("DB connection lost")
+        )
         app.state.job_manager = mock_manager
 
         try:

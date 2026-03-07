@@ -27,6 +27,7 @@ from energy_forecast.serving.schemas import (
     ErrorResponse,
     HealthResponse,
     JobResponse,
+    JobStatus,
     JobStatusResponse,
 )
 from energy_forecast.serving.services.email_service import EmailService, EmailServiceConfig
@@ -202,6 +203,25 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Initialize job manager
     app.state.job_manager = JobManager()
 
+    # Initialize database (if DATABASE_URL is set)
+    if settings.env.database_url:
+        from energy_forecast.db import create_db_engine, create_session_factory
+
+        engine = create_db_engine(settings.env.database_url, settings.database)
+        session_factory = create_session_factory(engine)
+        app.state.db_engine = engine
+        app.state.session_factory = session_factory
+        app.state.use_db = True
+        masked_url = settings.env.database_url[:50] + "..."
+        logger.info("Database connected: {}", masked_url)
+    else:
+        app.state.db_engine = None
+        app.state.session_factory = None
+        app.state.use_db = False
+        logger.warning(
+            "DATABASE_URL not set — using in-memory job storage (dev mode)"
+        )
+
     logger.info("Energy Forecast API started successfully")
 
     yield
@@ -210,6 +230,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     logger.info("Shutting down Energy Forecast API...")
     app.state.file_service.cleanup_old_files()
     app.state.job_manager.cleanup_old_jobs()
+    if app.state.db_engine:
+        await app.state.db_engine.dispose()
     logger.info("Cleanup complete")
 
 
@@ -334,36 +356,102 @@ async def predict(
             detail="Models not loaded. Please contact administrator.",
         )
 
-    # Check if a job is already running (returns 429)
-    if job_manager.has_active_job():
-        active_job = job_manager.get_active_job()
+    # Save uploaded file
+    excel_path, file_stem = file_service.save_upload(file)
+
+    use_db: bool = getattr(request.app.state, "use_db", False)
+
+    if use_db:
+        session_factory = request.app.state.session_factory
+        async with session_factory() as session:
+            job = await job_manager.create_job_db(
+                session, email=str(email), excel_path=excel_path, file_stem=file_stem
+            )
+
+        background_tasks.add_task(
+            job_manager.process_job_db,
+            job_id=job.id,
+            excel_path=str(excel_path),
+            email=str(email),
+            file_stem=file_stem,
+            created_at=job.created_at,
+            session_factory=session_factory,
+            prediction_service=prediction_service,
+            file_service=file_service,
+            email_service=email_service,
+        )
+
+        return JobResponse(
+            job_id=job.id,
+            status=JobStatus(job.status),
+            message="Job queued successfully. Results will be sent to your email.",
+            created_at=job.created_at,
+        )
+
+    # In-memory fallback
+    if job_manager.has_active_job_in_memory():
+        active_job = job_manager.get_active_job_in_memory()
         job_id_str = active_job.id if active_job else "unknown"
         raise JobQueueFullError(
             f"A prediction job is currently running (ID: {job_id_str}). "
             "Please try again later."
         )
 
-    # Save uploaded file
-    excel_path, file_stem = file_service.save_upload(file)
+    job_mem = job_manager.create_job_in_memory(
+        email=str(email), excel_path=excel_path, file_stem=file_stem
+    )
 
-    # Create job
-    job = job_manager.create_job(email=str(email), excel_path=excel_path, file_stem=file_stem)
-
-    # Queue background task
     background_tasks.add_task(
-        job_manager.process_job,
-        job=job,
+        job_manager.process_job_in_memory,
+        job=job_mem,
         prediction_service=prediction_service,
         file_service=file_service,
         email_service=email_service,
     )
 
     return JobResponse(
-        job_id=job.id,
-        status=job.status,
+        job_id=job_mem.id,
+        status=job_mem.status,
         message="Job queued successfully. Results will be sent to your email.",
-        created_at=job.created_at,
+        created_at=job_mem.created_at,
     )
+
+
+@app.get("/status/active")
+async def get_active_status(request: Request) -> dict[str, object]:
+    """Check if a prediction job is currently running (no auth required).
+
+    Used by the frontend to disable the form when a job is in progress.
+    """
+    job_manager: JobManager = request.app.state.job_manager
+    use_db: bool = getattr(request.app.state, "use_db", False)
+
+    if use_db:
+        session_factory = request.app.state.session_factory
+        async with session_factory() as session:
+            active = await job_manager.get_active_job_db(session)
+        if active:
+            return {
+                "busy": True,
+                "message": "Devam eden bir tahmin islemi bulunmaktadir...",
+                "job_id": active.id,
+                "status": active.status,
+                "progress": active.progress,
+                "started_at": active.created_at.isoformat(),
+            }
+        return {"busy": False}
+
+    active_mem = job_manager.get_active_job_in_memory()
+    if active_mem:
+        return {
+            "busy": True,
+            "message": "Devam eden bir tahmin islemi bulunmaktadir...",
+            "job_id": active_mem.id,
+            "status": active_mem.status.value,
+            "progress": active_mem.progress,
+            "started_at": active_mem.created_at.isoformat(),
+        }
+    return {"busy": False}
 
 
 @app.get("/status/{job_id}", response_model=JobStatusResponse)
@@ -382,23 +470,35 @@ async def get_status(
         Job status with progress information.
     """
     job_manager: JobManager = request.app.state.job_manager
+    use_db: bool = getattr(request.app.state, "use_db", False)
 
     try:
-        job = job_manager.get_job(job_id)
+        if use_db:
+            session_factory = request.app.state.session_factory
+            async with session_factory() as session:
+                job = await job_manager.get_job_db(session, job_id)
+            return JobStatusResponse(
+                job_id=job.id,
+                status=JobStatus(job.status),
+                progress=job.progress,
+                error=job.error,
+                created_at=job.created_at,
+                completed_at=job.completed_at,
+            )
+        job_mem = job_manager.get_job_in_memory(job_id)
+        return JobStatusResponse(
+            job_id=job_mem.id,
+            status=job_mem.status,
+            progress=job_mem.progress,
+            error=job_mem.error,
+            created_at=job_mem.created_at,
+            completed_at=job_mem.completed_at,
+        )
     except JobNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as e:
         logger.error("Unexpected error fetching job {}: {}", job_id, e)
         raise HTTPException(status_code=500, detail="Internal server error") from e
-
-    return JobStatusResponse(
-        job_id=job.id,
-        status=job.status,
-        progress=job.progress,
-        error=job.error,
-        created_at=job.created_at,
-        completed_at=job.completed_at,
-    )
 
 
 @app.get("/models")
@@ -418,18 +518,46 @@ async def list_jobs(
 ) -> dict[str, object]:
     """List all jobs (for debugging/admin)."""
     job_manager: JobManager = request.app.state.job_manager
-    jobs = job_manager.get_all_jobs()
+    use_db: bool = getattr(request.app.state, "use_db", False)
 
+    if use_db:
+        from energy_forecast.db.repositories.job_repo import JobRepository
+
+        session_factory = request.app.state.session_factory
+        async with session_factory() as session:
+            repo = JobRepository(session)
+            db_jobs = await repo.get_all()
+            stats = await repo.get_stats()
+        return {
+            "count": len(db_jobs),
+            "stats": stats,
+            "jobs": [
+                {
+                    "id": j.id,
+                    "status": j.status,
+                    "email": j.email[:3] + "***",
+                    "created_at": j.created_at.isoformat(),
+                    "completed_at": (
+                        j.completed_at.isoformat() if j.completed_at else None
+                    ),
+                }
+                for j in db_jobs
+            ],
+        }
+
+    jobs = job_manager.get_all_jobs_in_memory()
     return {
         "count": len(jobs),
-        "stats": job_manager.get_stats(),
+        "stats": job_manager.get_stats_in_memory(),
         "jobs": [
             {
                 "id": j.id,
                 "status": j.status,
-                "email": j.email[:3] + "***",  # Mask email for privacy
+                "email": j.email[:3] + "***",
                 "created_at": j.created_at.isoformat(),
-                "completed_at": j.completed_at.isoformat() if j.completed_at else None,
+                "completed_at": (
+                    j.completed_at.isoformat() if j.completed_at else None
+                ),
             }
             for j in jobs
         ],

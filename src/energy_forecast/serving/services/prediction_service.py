@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import time
 from collections.abc import Callable
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -23,6 +26,7 @@ from energy_forecast.serving.exceptions import (
     ModelNotLoadedError,
     PredictionError,
 )
+from energy_forecast.utils import TZ_ISTANBUL
 
 
 class PredictionServiceConfig(BaseModel, frozen=True):
@@ -364,3 +368,80 @@ class PredictionService:
             "weights": self._ensemble.weights,
             "forecast_horizon": self._config.forecast_horizon,
         }
+
+    # ------------------------------------------------------------------
+    # L3 Data Lineage helpers
+    # ------------------------------------------------------------------
+
+    def get_lineage_metadata(self) -> dict[str, Any]:
+        """Return current config/model snapshot for DB storage."""
+        weights: dict[str, float] = {}
+        if self._ensemble:
+            weights = self._ensemble.weights
+        return {
+            "config_snapshot": {
+                "ensemble_method": "stacking",
+                "ensemble_weights": weights,
+                "feature_count": 153,
+            },
+            "model_versions": {
+                "catboost": str(self._config.catboost_path),
+                "prophet": str(self._config.prophet_path),
+                "tft": str(self._config.tft_path),
+            },
+        }
+
+    @staticmethod
+    def compute_excel_hash(excel_path: Path) -> str:
+        """Compute SHA256 hash of input Excel file."""
+        sha = hashlib.sha256()
+        with open(excel_path, "rb") as f:
+            for chunk in iter(lambda: f.read(8192), b""):
+                sha.update(chunk)
+        return sha.hexdigest()
+
+    @staticmethod
+    def archive_features(
+        job_id: str,
+        features_df: pd.DataFrame,
+        forecast_mask: pd.Series,
+    ) -> tuple[Path | None, Path | None]:
+        """Save feature datasets to archive directory (non-fatal)."""
+        try:
+            archive_dir = Path("data/archive/jobs") / job_id
+            archive_dir.mkdir(parents=True, exist_ok=True)
+
+            hist_path = archive_dir / "features_historical.parquet"
+            forecast_path = archive_dir / "features_forecast.parquet"
+
+            features_df.loc[~forecast_mask].to_parquet(hist_path)
+            features_df.loc[forecast_mask].to_parquet(forecast_path)
+
+            return hist_path, forecast_path
+        except Exception as e:
+            logger.warning("Feature archival failed: {}", e)
+            return None, None
+
+    @staticmethod
+    def write_metadata_json(
+        job_id: str, lineage_data: dict[str, Any]
+    ) -> Path | None:
+        """Write job metadata JSON to archive directory."""
+        try:
+            archive_dir = Path("data/archive/jobs") / job_id
+            archive_dir.mkdir(parents=True, exist_ok=True)
+
+            metadata = {
+                "job_id": job_id,
+                "created_at": datetime.now(tz=TZ_ISTANBUL).isoformat(),
+                "model_versions": lineage_data.get("model_versions", {}),
+                "config_snapshot": lineage_data.get("config_snapshot", {}),
+            }
+            path = archive_dir / "metadata.json"
+            path.write_text(
+                json.dumps(metadata, indent=2, ensure_ascii=False)
+            )
+            return path
+        except Exception as e:
+            logger.warning("Metadata JSON write failed: {}", e)
+            return None

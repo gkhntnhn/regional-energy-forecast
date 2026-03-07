@@ -92,3 +92,16 @@ tasks/
 runpod_data.tar.gz
 *_training.log
 configs/models/.dev_backup/
+
+# Database
+*.db
+*.sqlite3
+
+# Google Drive credentials
+credentials/
+
+# Alembic
+alembic/versions/__pycache__/
+
+# Job archive artifacts
+data/archive/

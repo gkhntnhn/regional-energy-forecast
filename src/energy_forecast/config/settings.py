@@ -1257,6 +1257,28 @@ class EnvConfig(BaseSettings):
     aws_s3_bucket: str = ""
     aws_region: str = "eu-west-1"
     database_url: str = ""
+    database_url_sync: str = ""
+
+    # Google Drive backup
+    gdrive_enabled: bool = False
+    gdrive_credentials_path: str = ""
+    gdrive_root_folder_id: str = ""
+
+
+# ---------------------------------------------------------------------------
+# Database Config
+# ---------------------------------------------------------------------------
+
+
+class DatabaseConfig(BaseModel, frozen=True):
+    """Database connection pool configuration."""
+
+    pool_size: int = Field(default=2, ge=1)
+    max_overflow: int = Field(default=2, ge=0)
+    pool_timeout: int = Field(default=30, ge=5)
+    pool_recycle: int = Field(default=300, ge=60)
+    pool_pre_ping: bool = True
+    echo: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -1329,6 +1351,7 @@ class Settings(BaseModel, frozen=True):
         default_factory=HyperparameterConfig,
     )
     api: ApiConfig = Field(default_factory=ApiConfig)
+    database: DatabaseConfig = Field(default_factory=DatabaseConfig)
     env: EnvConfig = Field(default_factory=EnvConfig)
 
 
@@ -1433,6 +1456,7 @@ def _build_settings_dict(config_dir: Path) -> dict[str, Any]:
             "files": api_data.get("files", {}),
             "email": api_data.get("email", {}),
         },
+        "database": api_data.get("database", {}),
     }
 
 

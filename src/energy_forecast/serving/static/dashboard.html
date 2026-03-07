@@ -135,6 +135,12 @@
                         <h5 class="card-title mb-4">
                             <i class="fas fa-cloud-upload-alt me-2"></i>Veri Yukleme & Tahmin
                         </h5>
+                        <div id="busyNotice" class="alert alert-warning d-none mb-3" role="alert">
+                            <i class="fas fa-hourglass-half me-2"></i>
+                            <strong>Devam eden bir tahmin islemi bulunmaktadir.</strong>
+                            <span id="busyJobInfo"></span>
+                            <br><small>Islem tamamlandiginda form otomatik olarak acilacaktir.</small>
+                        </div>
                         <form id="uploadForm" enctype="multipart/form-data">
                             <div id="dropZone" class="upload-area mb-3">
                                 <i class="fas fa-file-excel fa-3x mb-3" style="color: var(--primary);"></i>
@@ -212,6 +218,51 @@
         // ── Config ──────────────────────────────────────────
         const API_KEY = 'local-dev-secret-key';
         const POLL_INTERVAL_MS = 2000;
+        const BUSY_CHECK_MS = 5000;
+        let busyTimer = null;
+
+        // ── Busy-state check ────────────────────────────────
+        async function checkBusyState() {
+            try {
+                const res = await fetch('/status/active');
+                const data = await res.json();
+                if (data.busy) {
+                    disableForm(data);
+                    if (!busyTimer) {
+                        busyTimer = setInterval(checkBusyState, BUSY_CHECK_MS);
+                    }
+                } else {
+                    enableForm();
+                    if (busyTimer) {
+                        clearInterval(busyTimer);
+                        busyTimer = null;
+                    }
+                }
+            } catch (e) {
+                // Network error — don't block the form
+            }
+        }
+
+        function disableForm(data) {
+            const form = document.getElementById('uploadForm');
+            const submitBtn = document.getElementById('submitBtn');
+            const busyNotice = document.getElementById('busyNotice');
+            const busyJobInfo = document.getElementById('busyJobInfo');
+
+            submitBtn.disabled = true;
+            busyNotice.classList.remove('d-none');
+            busyJobInfo.textContent = data.job_id ? ' (Is No: ' + data.job_id + ')' : '';
+        }
+
+        function enableForm() {
+            const submitBtn = document.getElementById('submitBtn');
+            const busyNotice = document.getElementById('busyNotice');
+
+            submitBtn.disabled = false;
+            busyNotice.classList.add('d-none');
+        }
+
+        document.addEventListener('DOMContentLoaded', checkBusyState);
 
         // ── DOM refs ────────────────────────────────────────
         const dropZone = document.getElementById('dropZone');

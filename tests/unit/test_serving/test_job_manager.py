@@ -1,4 +1,4 @@
-"""Tests for job manager."""
+"""Tests for job manager (in-memory mode)."""
 
 from __future__ import annotations
 
@@ -65,15 +65,15 @@ class TestJob:
 
 
 class TestJobManager:
-    """Tests for JobManager."""
+    """Tests for JobManager (in-memory mode)."""
 
     def test_has_active_job_empty(self, job_manager: JobManager) -> None:
         """Test no active job initially."""
-        assert job_manager.has_active_job() is False
+        assert job_manager.has_active_job_in_memory() is False
 
     def test_create_job(self, job_manager: JobManager) -> None:
         """Test job creation."""
-        job = job_manager.create_job(
+        job = job_manager.create_job_in_memory(
             email="test@test.com",
             excel_path=Path("/tmp/test.xlsx"),
             file_stem="01-03-2026_12-00-00",
@@ -84,17 +84,16 @@ class TestJobManager:
 
     def test_create_job_when_active_raises(self, job_manager: JobManager) -> None:
         """Test job creation fails when another is active."""
-        # Create and mark as running
-        job = job_manager.create_job(
+        job = job_manager.create_job_in_memory(
             email="test@test.com",
             excel_path=Path("/tmp/test.xlsx"),
             file_stem="01-03-2026_12-00-00",
         )
-        job_manager._set_running(job.id)
+        job_manager._jobs[job.id].status = JobStatus.RUNNING
+        job_manager._active_job_id = job.id
 
-        # Try to create another
         with pytest.raises(JobQueueFullError):
-            job_manager.create_job(
+            job_manager.create_job_in_memory(
                 email="test2@test.com",
                 excel_path=Path("/tmp/test2.xlsx"),
                 file_stem="01-03-2026_12-00-01",
@@ -102,94 +101,40 @@ class TestJobManager:
 
     def test_get_job(self, job_manager: JobManager) -> None:
         """Test getting job by ID."""
-        created = job_manager.create_job(
+        created = job_manager.create_job_in_memory(
             email="test@test.com",
             excel_path=Path("/tmp/test.xlsx"),
             file_stem="01-03-2026_12-00-00",
         )
 
-        found = job_manager.get_job(created.id)
+        found = job_manager.get_job_in_memory(created.id)
         assert found.id == created.id
 
     def test_get_job_not_found(self, job_manager: JobManager) -> None:
         """Test getting nonexistent job."""
         with pytest.raises(JobNotFoundError):
-            job_manager.get_job("nonexistent")
-
-    def test_update_progress(self, job_manager: JobManager) -> None:
-        """Test progress update."""
-        job = job_manager.create_job(
-            email="test@test.com",
-            excel_path=Path("/tmp/test.xlsx"),
-            file_stem="01-03-2026_12-00-00",
-        )
-
-        job_manager.update_progress(job.id, "Step 1 of 3")
-
-        assert job_manager.get_job(job.id).progress == "Step 1 of 3"
-
-    def test_set_running(self, job_manager: JobManager) -> None:
-        """Test setting job to running."""
-        job = job_manager.create_job(
-            email="test@test.com",
-            excel_path=Path("/tmp/test.xlsx"),
-            file_stem="01-03-2026_12-00-00",
-        )
-
-        job_manager._set_running(job.id)
-
-        assert job_manager.get_job(job.id).status == JobStatus.RUNNING
-        assert job_manager.has_active_job() is True
-        assert job_manager._active_job_id == job.id
-
-    def test_complete_job(self, job_manager: JobManager) -> None:
-        """Test completing a job."""
-        job = job_manager.create_job(
-            email="test@test.com",
-            excel_path=Path("/tmp/test.xlsx"),
-            file_stem="01-03-2026_12-00-00",
-        )
-        job_manager._set_running(job.id)
-
-        result_path = Path("/tmp/result.xlsx")
-        job_manager._complete_job(job.id, result_path)
-
-        completed = job_manager.get_job(job.id)
-        assert completed.status == JobStatus.COMPLETED
-        assert completed.result_path == result_path
-        assert completed.completed_at is not None
-        assert job_manager.has_active_job() is False
-
-    def test_fail_job(self, job_manager: JobManager) -> None:
-        """Test failing a job."""
-        job = job_manager.create_job(
-            email="test@test.com",
-            excel_path=Path("/tmp/test.xlsx"),
-            file_stem="01-03-2026_12-00-00",
-        )
-        job_manager._set_running(job.id)
-
-        job_manager._fail_job(job.id, "Something went wrong")
-
-        failed = job_manager.get_job(job.id)
-        assert failed.status == JobStatus.FAILED
-        assert failed.error == "Something went wrong"
-        assert job_manager.has_active_job() is False
+            job_manager.get_job_in_memory("nonexistent")
 
     def test_get_stats(self, job_manager: JobManager) -> None:
         """Test job statistics."""
-        # Create jobs in different states
-        job1 = job_manager.create_job("a@a.com", Path("/tmp/a.xlsx"), "01-03-2026_12-00-00")
-        job_manager._set_running(job1.id)
-        job_manager._complete_job(job1.id, Path("/tmp/out.xlsx"))
+        job1 = job_manager.create_job_in_memory(
+            "a@a.com", Path("/tmp/a.xlsx"), "01-03-2026_12-00-00"
+        )
+        job1.status = JobStatus.COMPLETED
+        job1.completed_at = datetime.now(tz=TZ_ISTANBUL)
+        job_manager._active_job_id = None
 
-        job2 = job_manager.create_job("b@b.com", Path("/tmp/b.xlsx"), "01-03-2026_12-00-01")
-        job_manager._set_running(job2.id)
-        job_manager._fail_job(job2.id, "error")
+        job2 = job_manager.create_job_in_memory(
+            "b@b.com", Path("/tmp/b.xlsx"), "01-03-2026_12-00-01"
+        )
+        job2.status = JobStatus.FAILED
+        job2.completed_at = datetime.now(tz=TZ_ISTANBUL)
 
-        job_manager.create_job("c@c.com", Path("/tmp/c.xlsx"), "01-03-2026_12-00-02")
+        job_manager.create_job_in_memory(
+            "c@c.com", Path("/tmp/c.xlsx"), "01-03-2026_12-00-02"
+        )
 
-        stats = job_manager.get_stats()
+        stats = job_manager.get_stats_in_memory()
 
         assert stats["total"] == 3
         assert stats["completed"] == 1
@@ -198,13 +143,11 @@ class TestJobManager:
 
     def test_cleanup_old_jobs(self, job_manager: JobManager) -> None:
         """Test cleaning up old jobs."""
-        # Create an old completed job
-        job = job_manager.create_job("test@test.com", Path("/tmp/test.xlsx"), "01-03-2026_12-00-00")
-        job_manager._set_running(job.id)
-        job_manager._complete_job(job.id, Path("/tmp/out.xlsx"))
-
-        # Make it old
-        job_manager._jobs[job.id].completed_at = datetime.now(tz=TZ_ISTANBUL) - timedelta(hours=48)
+        job = job_manager.create_job_in_memory(
+            "test@test.com", Path("/tmp/test.xlsx"), "01-03-2026_12-00-00"
+        )
+        job.status = JobStatus.COMPLETED
+        job.completed_at = datetime.now(tz=TZ_ISTANBUL) - timedelta(hours=48)
 
         removed = job_manager.cleanup_old_jobs(max_age_hours=24)
 
@@ -213,16 +156,17 @@ class TestJobManager:
 
 
 class TestJobManagerProcessJob:
-    """Tests for JobManager.process_job()."""
+    """Tests for JobManager.process_job_in_memory()."""
 
     @pytest.mark.asyncio
     async def test_process_job_success(self, job_manager: JobManager) -> None:
         """Test successful job processing."""
         import pandas as pd
 
-        job = job_manager.create_job("test@test.com", Path("/tmp/test.xlsx"), "01-03-2026_12-00-00")
+        job = job_manager.create_job_in_memory(
+            "test@test.com", Path("/tmp/test.xlsx"), "01-03-2026_12-00-00"
+        )
 
-        # Mock services
         mock_prediction = MagicMock()
         mock_prediction.run_prediction.return_value = pd.DataFrame(
             {"prediction": [1000, 1100]},
@@ -235,26 +179,26 @@ class TestJobManagerProcessJob:
         mock_email = MagicMock()
         mock_email.send_prediction_result.return_value = True
 
-        await job_manager.process_job(
+        await job_manager.process_job_in_memory(
             job=job,
             prediction_service=mock_prediction,
             file_service=mock_file,
             email_service=mock_email,
         )
 
-        assert job_manager.get_job(job.id).status == JobStatus.COMPLETED
+        assert job_manager.get_job_in_memory(job.id).status == JobStatus.COMPLETED
         mock_prediction.run_prediction.assert_called_once()
-        # Verify file_stem is passed (not job_id)
         call_args = mock_file.create_output_xlsx.call_args
         assert call_args[0][1] == "01-03-2026_12-00-00"
         mock_email.send_prediction_result.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_process_job_failure(self, job_manager: JobManager) -> None:
-        """Test job processing with failure (error is captured, not re-raised)."""
-        job = job_manager.create_job("test@test.com", Path("/tmp/test.xlsx"), "01-03-2026_12-00-00")
+        """Test job processing with failure."""
+        job = job_manager.create_job_in_memory(
+            "test@test.com", Path("/tmp/test.xlsx"), "01-03-2026_12-00-00"
+        )
 
-        # Mock services with error
         mock_prediction = MagicMock()
         mock_prediction.run_prediction.side_effect = Exception("Prediction failed")
 
@@ -262,14 +206,14 @@ class TestJobManagerProcessJob:
         mock_email = MagicMock()
         mock_email.send_error_notification.return_value = True
 
-        # Background tasks should NOT re-raise — error is recorded in job state
-        await job_manager.process_job(
+        await job_manager.process_job_in_memory(
             job=job,
             prediction_service=mock_prediction,
             file_service=mock_file,
             email_service=mock_email,
         )
 
-        assert job_manager.get_job(job.id).status == JobStatus.FAILED
-        assert "Prediction failed" in job_manager.get_job(job.id).error  # type: ignore
+        result = job_manager.get_job_in_memory(job.id)
+        assert result.status == JobStatus.FAILED
+        assert "Prediction failed" in result.error  # type: ignore[operator]
         mock_email.send_error_notification.assert_called_once()

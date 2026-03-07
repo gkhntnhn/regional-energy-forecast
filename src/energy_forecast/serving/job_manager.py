@@ -1,4 +1,9 @@
-"""Job queue manager with single-worker guarantee."""
+"""Job queue manager with single-worker guarantee.
+
+Supports two modes:
+- **Database mode** (DATABASE_URL set): Jobs persist in PostgreSQL via repositories.
+- **In-memory mode** (DATABASE_URL empty): Jobs stored in a dict (dev/test only).
+"""
 
 from __future__ import annotations
 
@@ -6,7 +11,7 @@ import asyncio
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 from pydantic import BaseModel, Field
@@ -16,13 +21,15 @@ from energy_forecast.serving.schemas import JobStatus
 from energy_forecast.utils import TZ_ISTANBUL
 
 if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
     from energy_forecast.serving.services.email_service import EmailService
     from energy_forecast.serving.services.file_service import FileService
     from energy_forecast.serving.services.prediction_service import PredictionService
 
 
 class Job(BaseModel):
-    """Prediction job data."""
+    """In-memory job representation (used when DATABASE_URL is empty)."""
 
     id: str = Field(default_factory=lambda: uuid.uuid4().hex[:12])
     email: str
@@ -42,9 +49,7 @@ class JobManager:
     """Manages prediction jobs with single-worker queue.
 
     Uses asyncio.Lock to ensure only one prediction runs at a time.
-    Jobs are stored in-memory (suitable for single-instance deployment).
-
-    For multi-instance deployment, replace with Redis or database backend.
+    Operates in two modes depending on whether a session_factory is provided.
     """
 
     def __init__(self) -> None:
@@ -52,200 +57,49 @@ class JobManager:
         self._lock = asyncio.Lock()
         self._active_job_id: str | None = None
 
-    def has_active_job(self) -> bool:
-        """Check if a job is currently running.
+    # ------------------------------------------------------------------
+    # In-memory helpers (dev mode fallback)
+    # ------------------------------------------------------------------
 
-        Returns:
-            True if a job is in RUNNING status.
-        """
+    def has_active_job_in_memory(self) -> bool:
+        """Check if a job is currently running (in-memory mode)."""
         return self._active_job_id is not None
 
-    def get_active_job(self) -> Job | None:
-        """Get the currently running job if any."""
+    def get_active_job_in_memory(self) -> Job | None:
+        """Get the currently running job (in-memory mode)."""
         if self._active_job_id:
             return self._jobs.get(self._active_job_id)
         return None
 
-    def create_job(self, email: str, excel_path: Path, file_stem: str) -> Job:
-        """Create a new pending job.
-
-        Args:
-            email: Recipient email address.
-            excel_path: Path to uploaded Excel file.
-            file_stem: Shared timestamp stem for input/output file pairing.
-
-        Returns:
-            Created Job instance.
-
-        Raises:
-            JobQueueFullError: If a job is already running.
-        """
-        if self.has_active_job():
-            active = self.get_active_job()
+    def create_job_in_memory(
+        self, email: str, excel_path: Path, file_stem: str
+    ) -> Job:
+        """Create a new pending job in memory."""
+        if self.has_active_job_in_memory():
+            active = self.get_active_job_in_memory()
             raise JobQueueFullError(
-                f"A job is already running (ID: {active.id if active else 'unknown'}). "
+                f"A job is already running "
+                f"(ID: {active.id if active else 'unknown'}). "
                 "Please wait for it to complete."
             )
-
         job = Job(email=email, excel_path=excel_path, file_stem=file_stem)
         self._jobs[job.id] = job
         logger.info("Created job: {} for {}", job.id, email)
         return job
 
-    def get_job(self, job_id: str) -> Job:
-        """Get job by ID.
-
-        Args:
-            job_id: Job identifier.
-
-        Returns:
-            Job instance.
-
-        Raises:
-            JobNotFoundError: If job not found.
-        """
+    def get_job_in_memory(self, job_id: str) -> Job:
+        """Get job by ID (in-memory mode)."""
         job = self._jobs.get(job_id)
         if job is None:
             raise JobNotFoundError(f"Job not found: {job_id}")
         return job
 
-    def update_progress(self, job_id: str, progress: str) -> None:
-        """Update job progress message.
-
-        Args:
-            job_id: Job identifier.
-            progress: Progress message.
-        """
-        if job_id in self._jobs:
-            self._jobs[job_id].progress = progress
-            logger.debug("Job {} progress: {}", job_id, progress)
-
-    def _set_running(self, job_id: str) -> None:
-        """Mark job as running."""
-        if job_id in self._jobs:
-            self._jobs[job_id].status = JobStatus.RUNNING
-            self._active_job_id = job_id
-            logger.info("Job {} started", job_id)
-
-    def _complete_job(self, job_id: str, result_path: Path) -> None:
-        """Mark job as completed.
-
-        Args:
-            job_id: Job identifier.
-            result_path: Path to output file.
-        """
-        if job_id in self._jobs:
-            self._jobs[job_id].status = JobStatus.COMPLETED
-            self._jobs[job_id].result_path = result_path
-            self._jobs[job_id].completed_at = datetime.now(tz=TZ_ISTANBUL)
-            self._active_job_id = None
-            logger.info("Job {} completed", job_id)
-
-    def _fail_job(self, job_id: str, error: str) -> None:
-        """Mark job as failed.
-
-        Args:
-            job_id: Job identifier.
-            error: Error message.
-        """
-        if job_id in self._jobs:
-            self._jobs[job_id].status = JobStatus.FAILED
-            self._jobs[job_id].error = error
-            self._jobs[job_id].completed_at = datetime.now(tz=TZ_ISTANBUL)
-            self._active_job_id = None
-            logger.error("Job {} failed: {}", job_id, error)
-
-    async def process_job(
-        self,
-        job: Job,
-        prediction_service: PredictionService,
-        file_service: FileService,
-        email_service: EmailService,
-    ) -> None:
-        """Process a job with single-worker guarantee.
-
-        Acquires lock before processing to ensure only one job runs at a time.
-        Runs prediction, creates output file, and sends email.
-
-        Args:
-            job: Job to process.
-            prediction_service: Prediction service instance.
-            file_service: File service instance.
-            email_service: Email service instance.
-        """
-        async with self._lock:
-            self._set_running(job.id)
-
-            try:
-                # Run prediction (sync, but in thread pool via BackgroundTasks)
-                self.update_progress(job.id, "Running prediction pipeline...")
-                predictions = prediction_service.run_prediction(
-                    excel_path=job.excel_path,
-                    progress_callback=lambda msg: self.update_progress(job.id, msg),
-                )
-
-                # Create output file
-                self.update_progress(job.id, "Creating output file...")
-                output_path = file_service.create_output_xlsx(predictions, job.file_stem)
-
-                # Send email
-                self.update_progress(job.id, "Sending email...")
-                email_service.send_prediction_result(
-                    to_email=job.email,
-                    attachment_path=output_path,
-                    job_id=job.id,
-                    created_at=job.created_at.strftime("%Y-%m-%d %H:%M:%S"),
-                )
-
-                self._complete_job(job.id, output_path)
-
-            except Exception as e:
-                error_msg = str(e)
-                self._fail_job(job.id, error_msg)
-
-                # Try to send error notification
-                try:
-                    email_service.send_error_notification(
-                        to_email=job.email,
-                        job_id=job.id,
-                        error_message=error_msg,
-                    )
-                except Exception as email_err:
-                    logger.error("Failed to send error notification: {}", email_err)
-
-    def cleanup_old_jobs(self, max_age_hours: int = 24) -> int:
-        """Remove old completed/failed jobs from memory.
-
-        Args:
-            max_age_hours: Maximum age of jobs to keep.
-
-        Returns:
-            Number of jobs removed.
-        """
-        from datetime import timedelta
-
-        threshold = datetime.now(tz=TZ_ISTANBUL) - timedelta(hours=max_age_hours)
-        to_remove = []
-
-        for job_id, job in self._jobs.items():
-            is_finished = job.status in (JobStatus.COMPLETED, JobStatus.FAILED)
-            is_old = job.completed_at is not None and job.completed_at < threshold
-            if is_finished and is_old:
-                to_remove.append(job_id)
-
-        for job_id in to_remove:
-            del self._jobs[job_id]
-
-        if to_remove:
-            logger.info("Cleaned up {} old jobs", len(to_remove))
-        return len(to_remove)
-
-    def get_all_jobs(self) -> list[Job]:
-        """Get all jobs (for debugging/admin)."""
+    def get_all_jobs_in_memory(self) -> list[Job]:
+        """Get all jobs (in-memory mode)."""
         return list(self._jobs.values())
 
-    def get_stats(self) -> dict[str, int]:
-        """Get job statistics."""
+    def get_stats_in_memory(self) -> dict[str, int]:
+        """Get job statistics (in-memory mode)."""
         stats: dict[str, int] = {
             "total": len(self._jobs),
             "pending": 0,
@@ -256,3 +110,296 @@ class JobManager:
         for job in self._jobs.values():
             stats[job.status.value] += 1
         return stats
+
+    # ------------------------------------------------------------------
+    # DB helpers
+    # ------------------------------------------------------------------
+
+    async def has_active_job_db(self, session: AsyncSession) -> bool:
+        """Check if a job is currently running (DB mode)."""
+        from energy_forecast.db.repositories.job_repo import JobRepository
+
+        repo = JobRepository(session)
+        active = await repo.get_active_job()
+        return active is not None
+
+    async def get_active_job_db(
+        self, session: AsyncSession
+    ) -> Any:
+        """Get the currently active job from DB."""
+        from energy_forecast.db.repositories.job_repo import JobRepository
+
+        repo = JobRepository(session)
+        return await repo.get_active_job()
+
+    async def create_job_db(
+        self,
+        session: AsyncSession,
+        email: str,
+        excel_path: Path,
+        file_stem: str,
+    ) -> Any:
+        """Create a new pending job in DB."""
+        from energy_forecast.db.repositories.job_repo import JobRepository
+
+        repo = JobRepository(session)
+        active = await repo.get_active_job()
+        if active is not None:
+            raise JobQueueFullError(
+                f"A job is already running (ID: {active.id}). "
+                "Please wait for it to complete."
+            )
+
+        job_id = uuid.uuid4().hex[:12]
+        job_data = {
+            "id": job_id,
+            "email": email,
+            "excel_path": str(excel_path),
+            "file_stem": file_stem,
+            "status": "pending",
+            "email_status": "pending",
+        }
+        job = await repo.create(job_data)
+        await session.commit()
+        logger.info("Created job: {} for {}", job_id, email)
+        return job
+
+    async def get_job_db(
+        self, session: AsyncSession, job_id: str
+    ) -> Any:
+        """Get job by ID from DB."""
+        from energy_forecast.db.repositories.job_repo import JobRepository
+
+        repo = JobRepository(session)
+        job = await repo.get_by_id(job_id)
+        if job is None:
+            raise JobNotFoundError(f"Job not found: {job_id}")
+        return job
+
+    # ------------------------------------------------------------------
+    # Process job (DB mode)
+    # ------------------------------------------------------------------
+
+    async def process_job_db(
+        self,
+        job_id: str,
+        excel_path: str,
+        email: str,
+        file_stem: str,
+        created_at: datetime,
+        session_factory: async_sessionmaker[AsyncSession],
+        prediction_service: PredictionService,
+        file_service: FileService,
+        email_service: EmailService,
+    ) -> None:
+        """Process a job using DB for persistence.
+
+        Each checkpoint uses a separate session to avoid holding connections.
+        """
+        from energy_forecast.db.repositories.job_repo import JobRepository
+        from energy_forecast.db.repositories.prediction_repo import (
+            PredictionRepository,
+        )
+
+        async with self._lock:
+            # Mark running
+            async with session_factory() as session:
+                repo = JobRepository(session)
+                await repo.update_status(job_id, "running")
+                await session.commit()
+
+            try:
+                # Run prediction pipeline
+                async with session_factory() as session:
+                    repo = JobRepository(session)
+                    await repo.update_progress(
+                        job_id, "Running prediction pipeline..."
+                    )
+                    await session.commit()
+
+                predictions = prediction_service.run_prediction(
+                    excel_path=Path(excel_path),
+                    progress_callback=lambda msg: None,
+                )
+
+                # Store predictions (non-fatal)
+                try:
+                    async with session_factory() as session:
+                        pred_repo = PredictionRepository(session)
+                        pred_rows: list[dict[str, Any]] = []
+                        for _, row in predictions.iterrows():
+                            dt = row.name if hasattr(row, "name") else row.get(
+                                "datetime"
+                            )
+                            mwh = float(row["consumption_mwh"])
+                            period = str(row.get("period", "day_ahead"))
+                            pred_rows.append(
+                                {
+                                    "job_id": job_id,
+                                    "forecast_dt": dt,
+                                    "consumption_mwh": mwh,
+                                    "period": period,
+                                    "model_source": "ensemble",
+                                }
+                            )
+                        await pred_repo.bulk_create(pred_rows)
+                        job_repo = JobRepository(session)
+                        await job_repo.update_progress(
+                            job_id, "db_snapshot_done"
+                        )
+                        await session.commit()
+                except Exception as e:
+                    logger.warning("DB snapshot failed (non-fatal): {}", e)
+
+                # Create output file
+                async with session_factory() as session:
+                    repo = JobRepository(session)
+                    await repo.update_progress(
+                        job_id, "Creating output file..."
+                    )
+                    await session.commit()
+
+                output_path = file_service.create_output_xlsx(
+                    predictions, file_stem
+                )
+
+                # Send email
+                async with session_factory() as session:
+                    repo = JobRepository(session)
+                    await repo.update_progress(job_id, "Sending email...")
+                    await session.commit()
+
+                email_service.send_prediction_result(
+                    to_email=email,
+                    attachment_path=output_path,
+                    job_id=job_id,
+                    created_at=created_at.strftime("%Y-%m-%d %H:%M:%S"),
+                )
+
+                async with session_factory() as session:
+                    repo = JobRepository(session)
+                    await repo.update_email_status(
+                        job_id, "sent", attempts=1
+                    )
+                    await repo.update_progress(job_id, "email_done")
+                    await session.commit()
+
+                # Mark complete
+                async with session_factory() as session:
+                    repo = JobRepository(session)
+                    await repo.update_status(
+                        job_id, "completed", result_path=str(output_path)
+                    )
+                    await session.commit()
+
+            except Exception as e:
+                error_msg = str(e)
+                logger.error("Job {} failed: {}", job_id, error_msg)
+                async with session_factory() as session:
+                    repo = JobRepository(session)
+                    await repo.update_status(
+                        job_id, "failed", error=error_msg
+                    )
+                    await session.commit()
+
+                try:
+                    email_service.send_error_notification(
+                        to_email=email,
+                        job_id=job_id,
+                        error_message=error_msg,
+                    )
+                except Exception as email_err:
+                    logger.error(
+                        "Failed to send error notification: {}", email_err
+                    )
+
+    # ------------------------------------------------------------------
+    # Process job (in-memory mode)
+    # ------------------------------------------------------------------
+
+    async def process_job_in_memory(
+        self,
+        job: Job,
+        prediction_service: PredictionService,
+        file_service: FileService,
+        email_service: EmailService,
+    ) -> None:
+        """Process a job with in-memory storage (original behavior)."""
+        async with self._lock:
+            job.status = JobStatus.RUNNING
+            self._active_job_id = job.id
+            logger.info("Job {} started", job.id)
+
+            try:
+                self._jobs[job.id].progress = "Running prediction pipeline..."
+                predictions = prediction_service.run_prediction(
+                    excel_path=job.excel_path,
+                    progress_callback=lambda msg: setattr(
+                        self._jobs.get(job.id, job), "progress", msg
+                    ),
+                )
+
+                self._jobs[job.id].progress = "Creating output file..."
+                output_path = file_service.create_output_xlsx(
+                    predictions, job.file_stem
+                )
+
+                self._jobs[job.id].progress = "Sending email..."
+                email_service.send_prediction_result(
+                    to_email=job.email,
+                    attachment_path=output_path,
+                    job_id=job.id,
+                    created_at=job.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+                )
+
+                job.status = JobStatus.COMPLETED
+                job.result_path = output_path
+                job.completed_at = datetime.now(tz=TZ_ISTANBUL)
+                self._active_job_id = None
+                logger.info("Job {} completed", job.id)
+
+            except Exception as e:
+                error_msg = str(e)
+                job.status = JobStatus.FAILED
+                job.error = error_msg
+                job.completed_at = datetime.now(tz=TZ_ISTANBUL)
+                self._active_job_id = None
+                logger.error("Job {} failed: {}", job.id, error_msg)
+
+                try:
+                    email_service.send_error_notification(
+                        to_email=job.email,
+                        job_id=job.id,
+                        error_message=error_msg,
+                    )
+                except Exception as email_err:
+                    logger.error(
+                        "Failed to send error notification: {}", email_err
+                    )
+
+    def cleanup_old_jobs(self, max_age_hours: int = 24) -> int:
+        """Remove old completed/failed jobs from memory."""
+        from datetime import timedelta
+
+        threshold = datetime.now(tz=TZ_ISTANBUL) - timedelta(
+            hours=max_age_hours
+        )
+        to_remove = []
+
+        for job_id, job in self._jobs.items():
+            is_finished = job.status in (
+                JobStatus.COMPLETED,
+                JobStatus.FAILED,
+            )
+            is_old = (
+                job.completed_at is not None and job.completed_at < threshold
+            )
+            if is_finished and is_old:
+                to_remove.append(job_id)
+
+        for job_id in to_remove:
+            del self._jobs[job_id]
+
+        if to_remove:
+            logger.info("Cleaned up {} old jobs", len(to_remove))
+        return len(to_remove)

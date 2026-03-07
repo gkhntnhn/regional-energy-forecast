@@ -1,4 +1,4 @@
-.PHONY: install test lint format serve train-catboost train-prophet train-tft train-ensemble prepare-data clean generate-holidays backfill-epias help
+.PHONY: install test lint format serve train-catboost train-prophet train-tft train-ensemble prepare-data clean generate-holidays backfill-epias db-up db-down db-migrate db-revision db-downgrade help
 
 install: ## Install dependencies
 	uv sync --all-extras
@@ -37,6 +37,21 @@ generate-holidays: ## Generate Turkish holidays parquet
 
 backfill-epias: ## Backfill EPIAS market data cache
 	uv run python scripts/backfill_epias.py
+
+db-up: ## Start PostgreSQL (Docker Compose)
+	docker compose up -d db
+
+db-down: ## Stop PostgreSQL
+	docker compose down
+
+db-migrate: ## Run Alembic migrations (upgrade head)
+	uv run alembic upgrade head
+
+db-revision: ## Create new Alembic revision (MSG="description")
+	uv run alembic revision --autogenerate -m "$(MSG)"
+
+db-downgrade: ## Downgrade one migration
+	uv run alembic downgrade -1
 
 clean: ## Remove build/cache artifacts
 	find . -type d -name __pycache__ -exec rm -rf {} +
