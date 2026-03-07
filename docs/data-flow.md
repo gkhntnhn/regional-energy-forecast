@@ -95,22 +95,31 @@ Email sonrasi, feature dataset'leri ve cikti dosyasi arsivlenir.
 | Historical features | Dosya sistemi (gecici) | `data/archive/jobs/{job_id}/features_historical.parquet` |
 | Forecast features | Dosya sistemi (gecici) | `data/archive/jobs/{job_id}/features_forecast.parquet` |
 | Metadata JSON | Dosya sistemi (gecici) | `data/archive/jobs/{job_id}/metadata.json` |
-| Tum artifact'lar | Google Drive | `{root}/{YYYY-MM}/{job_id}/` altinda yuklenir |
+| Tum artifact'lar | Google Drive | `forecasts/YYYY/MM/DD/HH-MM_job_id/` altinda yuklenir |
 | Artifact path'leri | PostgreSQL `jobs` | historical_path, forecast_path, archive_path |
 
 > GDrive klasor yapisi:
 > ```
 > GDrive Root/
 > +-- backups/
-> |   +-- energy_forecast_2026-03-07.sql.gz
-> +-- 2026-03/
-> |   +-- abc123def456/
-> |   |   +-- features_historical.parquet
-> |   |   +-- features_forecast.parquet
-> |   |   +-- test_forecast.xlsx
-> |   |   +-- metadata.json
-> +-- 2026-04/
->     +-- ...
+> |   +-- 2026/
+> |       +-- 03/
+> |           +-- 07/
+> |               +-- 14-49/
+> |               |   +-- energy_forecast_2026-03-07_14-49.sql.gz
+> |               +-- 16-30/
+> |                   +-- energy_forecast_2026-03-07_16-30.sql.gz
+> +-- forecasts/
+>     +-- 2026/
+>         +-- 03/
+>             +-- 07/
+>                 +-- 14-34_5ec264086885/
+>                 |   +-- features_historical.parquet
+>                 |   +-- features_forecast.parquet
+>                 |   +-- metadata.json
+>                 |   +-- test_forecast.xlsx
+>                 +-- 14-45_4aa14df09e7c/
+>                     +-- ...
 > ```
 >
 > GDRIVE_CREDENTIALS_PATH ve GDRIVE_BACKUP_FOLDER_ID .env'de tanimli degilse

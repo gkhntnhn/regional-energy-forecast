@@ -32,7 +32,7 @@ class GoogleDriveStorage:
         self._credentials_path = credentials_path
         self._root_folder_id = root_folder_id
         self._service: Any = None
-        self._month_cache: dict[str, str] = {}
+        self._folder_cache: dict[str, str] = {}
 
     def _get_service(self) -> Any:
         """Lazy-init Google Drive API service.
@@ -102,29 +102,40 @@ class GoogleDriveStorage:
         return creds
 
     def upload_job_artifacts(
-        self, job_id: str, files: dict[str, Path]
+        self,
+        job_id: str,
+        files: dict[str, Path],
+        created_at: datetime | None = None,
     ) -> dict[str, str]:
-        """Upload multiple files to GDrive under month/job_id folder.
+        """Upload forecast artifacts to GDrive.
+
+        Structure: ``forecasts/YYYY/MM/DD/HH-MM_<job_id>/``
 
         Args:
-            job_id: Job identifier (used as subfolder name).
+            job_id: Job identifier.
             files: Mapping of filename -> local path.
+            created_at: Job creation timestamp (for folder hierarchy).
 
         Returns:
             Mapping of filename -> GDrive file ID.
         """
-        month = datetime.now(tz=TZ_ISTANBUL).strftime("%Y-%m")
-        month_folder_id = self._get_or_create_month_folder(month)
-        job_folder_id = self._create_folder(
-            job_id, month_folder_id
-        )
+        ts = created_at or datetime.now(tz=TZ_ISTANBUL)
+        leaf = f"{ts.strftime('%H-%M')}_{job_id}"
+        path_parts = [
+            "forecasts",
+            ts.strftime("%Y"),
+            ts.strftime("%m"),
+            ts.strftime("%d"),
+            leaf,
+        ]
+        target_folder_id = self._ensure_folder_path(path_parts)
 
         uploaded: dict[str, str] = {}
         for name, path in files.items():
             if path.exists():
                 try:
                     file_id = self._upload_file(
-                        name, path, job_folder_id
+                        name, path, target_folder_id
                     )
                     uploaded[name] = file_id
                 except Exception as e:
@@ -133,24 +144,78 @@ class GoogleDriveStorage:
                     )
 
         logger.info(
-            "GDrive: uploaded {}/{} files for job {}",
+            "GDrive: uploaded {}/{} files to forecasts/{}/{}/{}/{}",
             len(uploaded),
             len(files),
-            job_id,
+            *path_parts[1:],
         )
         return uploaded
 
-    def _get_or_create_month_folder(self, month: str) -> str:
-        """Get or create month folder (e.g. '2026-03')."""
-        if month in self._month_cache:
-            return self._month_cache[month]
+    def upload_backup(
+        self, file_path: Path, ts: datetime | None = None
+    ) -> str:
+        """Upload a DB backup file to GDrive.
 
+        Structure: ``backups/YYYY/MM/DD/HH-MM/``
+
+        Args:
+            file_path: Local path to the gzipped dump.
+            ts: Backup timestamp (for folder hierarchy).
+
+        Returns:
+            GDrive file ID.
+        """
+        ts = ts or datetime.now(tz=TZ_ISTANBUL)
+        path_parts = [
+            "backups",
+            ts.strftime("%Y"),
+            ts.strftime("%m"),
+            ts.strftime("%d"),
+            ts.strftime("%H-%M"),
+        ]
+        target_folder_id = self._ensure_folder_path(path_parts)
+        file_id = self._upload_file(
+            file_path.name, file_path, target_folder_id
+        )
+        logger.info(
+            "GDrive: backup uploaded to backups/{}/{}/{}/{}",
+            *path_parts[1:],
+        )
+        return file_id
+
+    def _ensure_folder_path(self, parts: list[str]) -> str:
+        """Create nested folder chain, caching each level.
+
+        Args:
+            parts: Folder names from root, e.g. ["forecasts", "2026", "03", "07", "14-45_abc"].
+
+        Returns:
+            GDrive folder ID of the deepest (leaf) folder.
+        """
+        parent_id = self._root_folder_id
+
+        for i, name in enumerate(parts):
+            cache_key = "/".join(parts[: i + 1])
+            if cache_key in self._folder_cache:
+                parent_id = self._folder_cache[cache_key]
+                continue
+
+            # Search for existing folder
+            folder_id = self._find_folder(name, parent_id)
+            if folder_id is None:
+                folder_id = self._create_folder(name, parent_id)
+
+            self._folder_cache[cache_key] = folder_id
+            parent_id = folder_id
+
+        return parent_id
+
+    def _find_folder(self, name: str, parent_id: str) -> str | None:
+        """Find existing folder by name under parent."""
         service = self._get_service()
-
-        # Search for existing folder
         query = (
-            f"name='{month}' and "
-            f"'{self._root_folder_id}' in parents and "
+            f"name='{name}' and "
+            f"'{parent_id}' in parents and "
             f"mimeType='application/vnd.google-apps.folder' and "
             f"trashed=false"
         )
@@ -160,16 +225,9 @@ class GoogleDriveStorage:
             .execute()
         )
         existing = results.get("files", [])
-
         if existing:
-            folder_id: str = existing[0]["id"]
-        else:
-            folder_id = self._create_folder(
-                month, self._root_folder_id
-            )
-
-        self._month_cache[month] = folder_id
-        return folder_id
+            return existing[0]["id"]  # type: ignore[no-any-return]
+        return None
 
     def _create_folder(self, name: str, parent_id: str) -> str:
         """Create a folder in GDrive."""

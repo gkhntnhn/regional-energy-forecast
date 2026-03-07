@@ -251,7 +251,7 @@
 
             submitBtn.disabled = true;
             busyNotice.classList.remove('d-none');
-            busyJobInfo.textContent = data.job_id ? ' (Is No: ' + data.job_id + ')' : '';
+            busyJobInfo.textContent = '';
         }
 
         function enableForm() {
@@ -311,6 +311,22 @@
             }
         }
 
+        // ── Progress mapping ──────────────────────────────────
+        const PROGRESS_MAP = {
+            'Veri analizi yapiliyor...':        { pct: 15, text: 'Veri analizi yapiliyor...' },
+            'Tahmin sonuclari kaydedildi':      { pct: 55, text: 'Tahmin sonuclari kaydediliyor...' },
+            'Rapor dosyasi olusturuluyor...':   { pct: 70, text: 'Rapor dosyasi hazirlaniyor...' },
+            'E-posta gonderiliyor...':          { pct: 85, text: 'E-posta gonderiliyor...' },
+            'Sonuclar gonderildi':              { pct: 95, text: 'Tamamlaniyor...' },
+        };
+
+        function resolveProgress(progressStr) {
+            if (!progressStr) return { pct: 10, text: 'Islem baslatiliyor...' };
+            const mapped = PROGRESS_MAP[progressStr];
+            if (mapped) return mapped;
+            return { pct: 30, text: progressStr };
+        }
+
         // ── UI helpers ──────────────────────────────────────
         function setLoading(loading) {
             submitBtn.disabled = loading;
@@ -335,7 +351,7 @@
         function updateProgress(pct, text) {
             progressBar.style.width = pct + '%';
             progressBar.setAttribute('aria-valuenow', pct);
-            progressText.textContent = text || ('Ilerleme: %' + pct);
+            progressText.textContent = text;
         }
 
         // ── API calls ───────────────────────────────────────
@@ -399,7 +415,7 @@
                 const job = await submitPrediction(formData);
                 const jobId = job.job_id;
 
-                showResult('running', 'Tahmin Isleniyor...', 'Is No: ' + jobId);
+                showResult('running', 'Tahmin Hazirlaniyor', 'Modeliniz isleniyor, lutfen bekleyin...');
                 updateProgress(5, 'Kuyruga alindi, islem basliyor...');
 
                 // Step 2: Poll for status
@@ -408,14 +424,15 @@
                         const status = await pollStatus(jobId);
 
                         if (status.status === 'running') {
-                            const pct = status.progress || 10;
-                            updateProgress(pct, 'Ilerleme: %' + pct + ' — islem devam ediyor...');
+                            const prog = resolveProgress(status.progress);
+                            updateProgress(prog.pct, prog.text);
                         } else if (status.status === 'completed') {
                             clearInterval(pollTimer);
                             pollTimer = null;
+                            const email = document.getElementById('emailInput').value;
                             showResult('success',
                                 'Tahmin Tamamlandi!',
-                                'Sonuclar ' + document.getElementById('emailInput').value + ' adresine gonderildi. Is No: ' + jobId
+                                'Sonuclar ' + email + ' adresine basariyla gonderildi.'
                             );
                             setLoading(false);
                         } else if (status.status === 'failed') {
@@ -423,7 +440,7 @@
                             pollTimer = null;
                             showResult('error',
                                 'Tahmin Basarisiz',
-                                status.error || 'Bilinmeyen bir hata olustu. Is No: ' + jobId
+                                status.error || 'Bilinmeyen bir hata olustu. Lutfen tekrar deneyin.'
                             );
                             setLoading(false);
                         }

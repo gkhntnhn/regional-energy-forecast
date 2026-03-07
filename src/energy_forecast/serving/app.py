@@ -116,6 +116,10 @@ def _rate_limit_exceeded_handler(
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Application lifespan: load models on startup, cleanup on shutdown."""
+    from dotenv import load_dotenv
+
+    load_dotenv()  # populate os.environ from .env (needed for GDrive, etc.)
+
     logger.info("Starting Energy Forecast API...")
 
     # Load configuration
@@ -602,4 +606,7 @@ async def list_jobs(
 @app.get("/", include_in_schema=False)
 async def root() -> FileResponse:
     """Serve the dashboard."""
-    return FileResponse(Path(__file__).parent / "static" / "dashboard.html")
+    return FileResponse(
+        Path(__file__).parent / "static" / "dashboard.html",
+        headers={"Cache-Control": "no-cache"},
+    )

@@ -214,7 +214,7 @@ class JobManager:
                 async with session_factory() as session:
                     repo = JobRepository(session)
                     await repo.update_progress(
-                        job_id, "Running prediction pipeline..."
+                        job_id, "Veri analizi yapiliyor..."
                     )
                     await session.commit()
 
@@ -278,7 +278,7 @@ class JobManager:
                         await pred_repo.bulk_create(pred_rows)
                         job_repo = JobRepository(session)
                         await job_repo.update_progress(
-                            job_id, "db_snapshot_done"
+                            job_id, "Tahmin sonuclari kaydedildi"
                         )
                         await session.commit()
                 except Exception as e:
@@ -329,7 +329,7 @@ class JobManager:
                 async with session_factory() as session:
                     repo = JobRepository(session)
                     await repo.update_progress(
-                        job_id, "Creating output file..."
+                        job_id, "Rapor dosyasi olusturuluyor..."
                     )
                     await session.commit()
 
@@ -340,7 +340,7 @@ class JobManager:
                 # Send email
                 async with session_factory() as session:
                     repo = JobRepository(session)
-                    await repo.update_progress(job_id, "Sending email...")
+                    await repo.update_progress(job_id, "E-posta gonderiliyor...")
                     await session.commit()
 
                 email_service.send_prediction_result(
@@ -355,7 +355,7 @@ class JobManager:
                     await repo.update_email_status(
                         job_id, "sent", attempts=1
                     )
-                    await repo.update_progress(job_id, "email_done")
+                    await repo.update_progress(job_id, "Sonuclar gonderildi")
                     await session.commit()
 
                 # Archive features + upload to GDrive (non-fatal)
@@ -406,12 +406,17 @@ class JobManager:
                             if meta_path:
                                 files["metadata.json"] = meta_path
                             files[f"{file_stem}_forecast.xlsx"] = output_path
+                            logger.info(
+                                "Uploading {} artifacts to GDrive...",
+                                len(files),
+                            )
 
                             gdrive = GoogleDriveStorage(creds, folder_id)
                             uploaded = await asyncio.to_thread(
                                 gdrive.upload_job_artifacts,
                                 job_id,
                                 files,
+                                created_at,
                             )
 
                             # Update DB with GDrive paths
@@ -439,6 +444,10 @@ class JobManager:
                                 "Archived {} files to GDrive for job {}",
                                 len(uploaded),
                                 job_id,
+                            )
+                        else:
+                            logger.debug(
+                                "GDrive not configured — skipping artifact upload"
                             )
                 except Exception as e:
                     logger.warning(
@@ -529,7 +538,7 @@ class JobManager:
             logger.info("Job {} started", job.id)
 
             try:
-                self._jobs[job.id].progress = "Running prediction pipeline..."
+                self._jobs[job.id].progress = "Veri analizi yapiliyor..."
                 predictions = prediction_service.run_prediction(
                     excel_path=job.excel_path,
                     progress_callback=lambda msg: setattr(
@@ -537,12 +546,12 @@ class JobManager:
                     ),
                 )
 
-                self._jobs[job.id].progress = "Creating output file..."
+                self._jobs[job.id].progress = "Rapor dosyasi olusturuluyor..."
                 output_path = file_service.create_output_xlsx(
                     predictions, job.file_stem
                 )
 
-                self._jobs[job.id].progress = "Sending email..."
+                self._jobs[job.id].progress = "E-posta gonderiliyor..."
                 email_service.send_prediction_result(
                     to_email=job.email,
                     attachment_path=output_path,
