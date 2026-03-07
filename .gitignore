@@ -105,3 +105,6 @@ alembic/versions/__pycache__/
 
 # Job archive artifacts
 data/archive/
+
+# Database backups
+data/backups/
