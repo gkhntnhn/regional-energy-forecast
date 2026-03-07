@@ -86,10 +86,11 @@ class PredictionRepository:
 
         # Normalize consumption index to naive for matching
         idx = consumption_df.index
-        if hasattr(idx, "tz") and idx.tz is not None:
-            naive_index = idx.tz_localize(None)  # type: ignore[attr-defined]
-        else:
-            naive_index = idx
+        naive_index = (
+            idx.tz_localize(None)  # type: ignore[attr-defined]
+            if hasattr(idx, "tz") and idx.tz is not None
+            else idx
+        )
         consumption_naive = consumption_df.set_index(naive_index)
 
         now = datetime.now(tz=TZ_ISTANBUL)

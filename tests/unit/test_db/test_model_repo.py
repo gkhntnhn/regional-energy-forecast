@@ -7,7 +7,6 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from energy_forecast.db.base import Base
-from energy_forecast.db.models import ModelRunModel
 from energy_forecast.db.repositories.model_repo import ModelRunRepository
 
 

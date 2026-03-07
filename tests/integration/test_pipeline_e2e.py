@@ -24,13 +24,13 @@ def configs_dir() -> Path:
 
 
 @pytest.fixture()
-def settings(configs_dir: Path):  # noqa: ANN201
+def settings(configs_dir: Path):
     """Load real Settings from project YAML files."""
     return load_config(configs_dir)
 
 
 @pytest.fixture()
-def full_df(settings) -> pd.DataFrame:  # noqa: ANN001
+def full_df(settings) -> pd.DataFrame:
     """Realistic 720-row DataFrame with consumption + weather + EPIAS + generation."""
     rng = np.random.default_rng(42)
     n = 720  # 30 days
@@ -73,7 +73,7 @@ class TestPipelineE2E:
 
     def test_pipeline_runs_with_real_config(
         self,
-        settings,  # noqa: ANN001
+        settings,
         full_df: pd.DataFrame,
     ) -> None:
         """Full pipeline executes without error using production YAML config."""
@@ -84,7 +84,7 @@ class TestPipelineE2E:
 
     def test_output_has_many_features(
         self,
-        settings,  # noqa: ANN001
+        settings,
         full_df: pd.DataFrame,
     ) -> None:
         """Pipeline generates 100+ features from raw input."""
@@ -97,7 +97,7 @@ class TestPipelineE2E:
 
     def test_no_raw_epias_in_output(
         self,
-        settings,  # noqa: ANN001
+        settings,
         full_df: pd.DataFrame,
     ) -> None:
         """Raw EPIAS market + generation columns are dropped."""
@@ -111,7 +111,7 @@ class TestPipelineE2E:
 
     def test_no_leakage_in_consumption_epias_lags(
         self,
-        settings,  # noqa: ANN001
+        settings,
         full_df: pd.DataFrame,
     ) -> None:
         """Consumption and EPIAS lag features have periods >= 48.
@@ -139,7 +139,7 @@ class TestPipelineE2E:
 
     def test_generation_composite_features(
         self,
-        settings,  # noqa: ANN001
+        settings,
         full_df: pd.DataFrame,
     ) -> None:
         """renewable_ratio_lag_48 and thermal_ratio_lag_48 are in output."""
@@ -150,7 +150,7 @@ class TestPipelineE2E:
 
     def test_historical_forecast_split(
         self,
-        settings,  # noqa: ANN001
+        settings,
         full_df: pd.DataFrame,
     ) -> None:
         """Simulates the historical/forecast split used in production.
@@ -184,7 +184,7 @@ class TestPipelineE2E:
 
     def test_datetime_index_preserved(
         self,
-        settings,  # noqa: ANN001
+        settings,
         full_df: pd.DataFrame,
     ) -> None:
         """DatetimeIndex is preserved through the pipeline."""

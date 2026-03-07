@@ -27,7 +27,11 @@ def sample_df() -> pd.DataFrame:
     rng = np.random.default_rng(42)
     df = pd.DataFrame(
         {
-            "consumption": 1000 + 200 * np.sin(np.arange(n_samples) * 2 * np.pi / 24) + rng.standard_normal(n_samples) * 50,
+            "consumption": (
+                1000
+                + 200 * np.sin(np.arange(n_samples) * 2 * np.pi / 24)
+                + rng.standard_normal(n_samples) * 50
+            ),
             "hour_sin": np.sin(np.arange(n_samples) % 24 * 2 * np.pi / 24),
             "hour_cos": np.cos(np.arange(n_samples) % 24 * 2 * np.pi / 24),
             "day_of_week_sin": np.sin(np.arange(n_samples) // 24 % 7 * 2 * np.pi / 7),
@@ -257,9 +261,10 @@ class TestTFTForecasterSaveLoad:
         """Test save raises if model not fitted."""
         model = TFTForecaster(tft_config)
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            with pytest.raises(ValueError, match="unfitted"):
-                model.save(Path(tmpdir))
+        with tempfile.TemporaryDirectory() as tmpdir, pytest.raises(
+            ValueError, match="unfitted"
+        ):
+            model.save(Path(tmpdir))
 
     @pytest.mark.slow
     def test_load_restores_model(

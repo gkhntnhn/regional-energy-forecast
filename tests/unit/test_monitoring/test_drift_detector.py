@@ -15,7 +15,6 @@ from energy_forecast.monitoring.drift_detector import (
 )
 from energy_forecast.utils import TZ_ISTANBUL
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
