@@ -202,6 +202,24 @@ class PredictionService:
             if not generation_df.empty:
                 merged_df = merged_df.join(generation_df, how="left")
 
+            # Build EPIAS snapshot metadata
+            epias_meta: dict[str, object] = {}
+            if not epias_df.empty:
+                epias_meta["data_range"] = {
+                    "start": str(epias_df.index.min()),
+                    "end": str(epias_df.index.max()),
+                }
+                epias_meta["row_count"] = len(epias_df)
+                epias_meta["last_values"] = {
+                    col: round(float(epias_df[col].iloc[-1]), 1)
+                    for col in epias_df.columns
+                    if pd.notna(epias_df[col].iloc[-1])
+                }
+                epias_meta["nan_summary"] = {
+                    col: int(epias_df[col].isna().sum())
+                    for col in epias_df.columns
+                }
+
             # Step 4: Fetch weather data (historical + forecast)
             update_progress("Fetching weather data...")
             weather_df = self._fetch_weather_data(extended_df)
@@ -243,8 +261,10 @@ class PredictionService:
             )
             update_progress("Prediction complete!")
 
-            # Attach latency metadata for API response
+            # Attach metadata for API response and DB persistence
             result.attrs["latency_ms"] = round(latency_ms)
+            result.attrs["weather_data"] = weather_df
+            result.attrs["epias_snapshot"] = epias_meta
             return result
 
         except (ModelNotLoadedError, PredictionError, FeaturePipelineError):

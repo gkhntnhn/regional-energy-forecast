@@ -1,4 +1,4 @@
-.PHONY: install test lint format serve train-catboost train-prophet train-tft train-ensemble prepare-data clean generate-holidays backfill-epias db-up db-down db-migrate db-revision db-downgrade help
+.PHONY: install test lint format serve train-catboost train-prophet train-tft train-ensemble prepare-data clean generate-holidays backfill-epias db-up db-down db-migrate db-revision db-downgrade fetch-weather-actuals db-backup help
 
 install: ## Install dependencies
 	uv sync --all-extras
@@ -52,6 +52,12 @@ db-revision: ## Create new Alembic revision (MSG="description")
 
 db-downgrade: ## Downgrade one migration
 	uv run alembic downgrade -1
+
+fetch-weather-actuals: ## Fetch weather actuals for T-2 day
+	uv run python -m energy_forecast.jobs.weather_actuals
+
+db-backup: ## Backup database to gzipped SQL dump
+	uv run python scripts/backup_db.py
 
 clean: ## Remove build/cache artifacts
 	find . -type d -name __pycache__ -exec rm -rf {} +

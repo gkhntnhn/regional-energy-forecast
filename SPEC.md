@@ -733,5 +733,6 @@ Commit format: `feat(scope): description` / `fix(scope): description`
 | `CLAUDE.md` | Claude Code context ve kurallar |
 | `PROJECT_KNOWLEDGE.md` | Eski projenin detaylı teknik analizi |
 | `docs/plans/M{N}.md` | Milestone planları |
+| `docs/data-flow.md` | Veri akış haritası (müşteri döngüsü, DB/Drive/dosya) |
 | `docs/decisions/ADR-*.md` | Architecture Decision Records |
 | Eski proje | `~/projects/distributed-energy-forecasting/` (read-only referans) |

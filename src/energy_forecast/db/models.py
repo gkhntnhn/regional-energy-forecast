@@ -7,13 +7,16 @@ from datetime import datetime
 from typing import Any
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     DateTime,
     ForeignKey,
     Index,
     Integer,
+    SmallInteger,
     String,
     Text,
+    UniqueConstraint,
     func,
 )
 from sqlalchemy.dialects.postgresql import JSONB
@@ -113,6 +116,9 @@ class JobModel(Base):
     predictions: Mapped[list[PredictionModel]] = relationship(
         back_populates="job", cascade="all, delete-orphan"
     )
+    weather_snapshots: Mapped[list[WeatherSnapshotModel]] = relationship(
+        back_populates="job"
+    )
 
     __table_args__ = (
         CheckConstraint(
@@ -166,4 +172,86 @@ class PredictionModel(Base):
         ),
         Index("idx_predictions_job_id", "job_id"),
         Index("idx_predictions_forecast_dt", "forecast_dt"),
+    )
+
+
+class WeatherSnapshotModel(Base):
+    """Weather snapshot — forecast or actual values per hour."""
+
+    __tablename__ = "weather_snapshots"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    job_id: Mapped[str | None] = mapped_column(
+        String(12), ForeignKey("jobs.id", ondelete="SET NULL"), nullable=True
+    )
+    forecast_dt: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    fetched_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    is_actual: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
+
+    # Weather variables (weighted averages across 4 cities)
+    temperature_2m: Mapped[float | None] = mapped_column(nullable=True)
+    apparent_temperature: Mapped[float | None] = mapped_column(nullable=True)
+    relative_humidity_2m: Mapped[float | None] = mapped_column(nullable=True)
+    dew_point_2m: Mapped[float | None] = mapped_column(nullable=True)
+    precipitation: Mapped[float | None] = mapped_column(nullable=True)
+    snow_depth: Mapped[float | None] = mapped_column(nullable=True)
+    surface_pressure: Mapped[float | None] = mapped_column(nullable=True)
+    wind_speed_10m: Mapped[float | None] = mapped_column(nullable=True)
+    wind_direction_10m: Mapped[float | None] = mapped_column(nullable=True)
+    shortwave_radiation: Mapped[float | None] = mapped_column(nullable=True)
+    weather_code: Mapped[int | None] = mapped_column(
+        SmallInteger, nullable=True
+    )
+
+    # Derived values
+    wth_hdd: Mapped[float | None] = mapped_column(nullable=True)
+    wth_cdd: Mapped[float | None] = mapped_column(nullable=True)
+
+    # Relationships
+    job: Mapped[JobModel | None] = relationship(
+        back_populates="weather_snapshots"
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "forecast_dt", "job_id", "is_actual",
+            name="uq_weather_snap_job_dt",
+        ),
+        Index("idx_weather_snap_job", "job_id"),
+        Index("idx_weather_snap_dt", "forecast_dt"),
+        # Partial unique index for actuals is PostgreSQL-only (in migration 003).
+        # Not defined here because SQLAlchemy create_all() would create a
+        # non-partial unique index on SQLite, breaking tests.
+    )
+
+
+class AuditLogModel(Base):
+    """Audit log entry for API actions."""
+
+    __tablename__ = "audit_logs"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    action: Mapped[str] = mapped_column(String(50), nullable=False)
+    user_email: Mapped[str | None] = mapped_column(
+        String(255), nullable=True
+    )
+    ip_address: Mapped[str | None] = mapped_column(
+        String(45), nullable=True
+    )
+    details: Mapped[dict | None] = mapped_column(  # type: ignore[type-arg]
+        _JSONBCompat(), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        Index("idx_audit_logs_action", "action"),
+        Index("idx_audit_logs_created_at", "created_at"),
     )

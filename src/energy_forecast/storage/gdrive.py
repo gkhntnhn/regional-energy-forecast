@@ -1,11 +1,15 @@
 """Google Drive storage for L3 artifact backup.
 
-Uses a service account with drive.file scope. All operations are synchronous
-(Google API client is sync) — caller must wrap with asyncio.to_thread().
+Supports two auth modes (auto-detected from credentials JSON):
+- OAuth2 user flow: personal Google accounts (first run opens browser)
+- Service account: Google Workspace with shared drives
+
+All operations are synchronous — caller must wrap with asyncio.to_thread().
 """
 
 from __future__ import annotations
 
+import json
 from datetime import datetime
 from pathlib import Path
 from typing import Any, ClassVar
@@ -31,16 +35,71 @@ class GoogleDriveStorage:
         self._month_cache: dict[str, str] = {}
 
     def _get_service(self) -> Any:
-        """Lazy-init Google Drive API service."""
-        if self._service is None:
-            from google.oauth2.service_account import Credentials
-            from googleapiclient.discovery import build
+        """Lazy-init Google Drive API service.
 
-            creds = Credentials.from_service_account_file(  # type: ignore[no-untyped-call]
-                self._credentials_path, scopes=self.SCOPES
-            )
-            self._service = build("drive", "v3", credentials=creds)
+        Auto-detects credential type from JSON file:
+        - {"type": "service_account"} → service account flow
+        - {"installed": ...} → OAuth2 desktop app flow
+        """
+        if self._service is not None:
+            return self._service
+
+        from googleapiclient.discovery import build
+
+        creds_path = Path(self._credentials_path)
+        with open(creds_path) as f:
+            cred_data = json.load(f)
+
+        if cred_data.get("type") == "service_account":
+            creds = self._auth_service_account()
+        else:
+            creds = self._auth_oauth2(creds_path)
+
+        self._service = build("drive", "v3", credentials=creds)
         return self._service
+
+    def _auth_service_account(self) -> Any:
+        """Authenticate via service account key file."""
+        from google.oauth2.service_account import Credentials
+
+        return Credentials.from_service_account_file(  # type: ignore[no-untyped-call]
+            self._credentials_path, scopes=self.SCOPES
+        )
+
+    def _auth_oauth2(self, creds_path: Path) -> Any:
+        """Authenticate via OAuth2 user consent flow.
+
+        First run opens browser for authorization. Token is saved to
+        ``credentials/gdrive_token.json`` for subsequent runs.
+        """
+        from google.auth.transport.requests import Request
+        from google.oauth2.credentials import (
+            Credentials as UserCredentials,
+        )
+        from google_auth_oauthlib.flow import InstalledAppFlow  # type: ignore[import-untyped]
+
+        token_path = creds_path.parent / "gdrive_token.json"
+        creds: Any = None
+
+        if token_path.exists():
+            creds = UserCredentials.from_authorized_user_file(  # type: ignore[no-untyped-call]
+                str(token_path), self.SCOPES
+            )
+
+        if not creds or not creds.valid:
+            if creds and creds.expired and creds.refresh_token:
+                creds.refresh(Request())
+            else:
+                flow = InstalledAppFlow.from_client_secrets_file(
+                    str(creds_path), self.SCOPES
+                )
+                creds = flow.run_local_server(port=0)
+                logger.info("OAuth2 authorization successful")
+
+            token_path.write_text(creds.to_json())
+            logger.info("Token saved to {}", token_path)
+
+        return creds
 
     def upload_job_artifacts(
         self, job_id: str, files: dict[str, Path]

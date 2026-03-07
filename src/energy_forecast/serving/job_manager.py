@@ -13,6 +13,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+import pandas as pd
 from loguru import logger
 from pydantic import BaseModel, Field
 
@@ -217,6 +218,34 @@ class JobManager:
                     )
                     await session.commit()
 
+                # Match previous predictions with actuals (non-fatal)
+                try:
+                    if prediction_service._data_loader is not None:
+                        consumption_df = (
+                            prediction_service._data_loader.load_excel(
+                                Path(excel_path)
+                            )
+                        )
+                        if not consumption_df.empty:
+                            async with session_factory() as session:
+                                pred_repo = PredictionRepository(session)
+                                matched = (
+                                    await pred_repo
+                                    .match_predictions_with_actuals(
+                                        consumption_df
+                                    )
+                                )
+                                await session.commit()
+                            if matched > 0:
+                                logger.info(
+                                    "Matched {} predictions with actuals",
+                                    matched,
+                                )
+                except Exception as e:
+                    logger.warning(
+                        "Prediction matching failed (non-fatal): {}", e
+                    )
+
                 predictions = prediction_service.run_prediction(
                     excel_path=Path(excel_path),
                     progress_callback=lambda msg: None,
@@ -228,11 +257,12 @@ class JobManager:
                         pred_repo = PredictionRepository(session)
                         pred_rows: list[dict[str, Any]] = []
                         for _, row in predictions.iterrows():
-                            dt = row.name if hasattr(row, "name") else row.get(
+                            raw_dt = row.name if hasattr(row, "name") else row.get(
                                 "datetime"
                             )
+                            dt = pd.Timestamp(raw_dt)  # type: ignore[arg-type]
                             # Ensure tz-aware for TIMESTAMPTZ columns
-                            if hasattr(dt, "tzinfo") and dt.tzinfo is None:
+                            if dt.tzinfo is None:
                                 dt = dt.tz_localize(TZ_ISTANBUL)
                             mwh = float(row["consumption_mwh"])
                             period = str(row.get("period", "day_ahead"))
@@ -253,6 +283,47 @@ class JobManager:
                         await session.commit()
                 except Exception as e:
                     logger.warning("DB snapshot failed (non-fatal): {}", e)
+
+                # Store weather snapshot (non-fatal)
+                try:
+                    weather_df = predictions.attrs.get("weather_data")
+                    if weather_df is not None and not weather_df.empty:
+                        from energy_forecast.db.repositories.weather_repo import (
+                            WeatherSnapshotRepository,
+                        )
+
+                        async with session_factory() as session:
+                            weather_repo = WeatherSnapshotRepository(session)
+                            count = await weather_repo.bulk_create_forecast(
+                                job_id=job_id,
+                                weather_df=weather_df,
+                                fetched_at=datetime.now(tz=TZ_ISTANBUL),
+                            )
+                            await session.commit()
+                        logger.info(
+                            "Stored {} weather snapshots for job {}",
+                            count, job_id,
+                        )
+                except Exception as e:
+                    logger.warning(
+                        "Weather snapshot failed (non-fatal): {}", e
+                    )
+
+                # Store EPIAS snapshot metadata (non-fatal)
+                try:
+                    epias_snap = predictions.attrs.get("epias_snapshot")
+                    if epias_snap:
+                        async with session_factory() as session:
+                            job_repo = JobRepository(session)
+                            await job_repo.update_metadata(
+                                job_id,
+                                {"epias_snapshot": epias_snap},
+                            )
+                            await session.commit()
+                except Exception as e:
+                    logger.warning(
+                        "EPIAS snapshot failed (non-fatal): {}", e
+                    )
 
                 # Create output file
                 async with session_factory() as session:
@@ -295,6 +366,23 @@ class JobManager:
                     )
                     await session.commit()
 
+                # Audit: job_complete (non-fatal)
+                try:
+                    from energy_forecast.db.repositories.audit_repo import (
+                        AuditRepository,
+                    )
+
+                    async with session_factory() as session:
+                        audit = AuditRepository(session)
+                        await audit.log(
+                            action="job_complete",
+                            user_email=email,
+                            details={"job_id": job_id},
+                        )
+                        await session.commit()
+                except Exception:
+                    pass  # audit failure is silent
+
             except Exception as e:
                 error_msg = str(e)
                 logger.error("Job {} failed: {}", job_id, error_msg)
@@ -304,6 +392,26 @@ class JobManager:
                         job_id, "failed", error=error_msg
                     )
                     await session.commit()
+
+                # Audit: job_failed (non-fatal)
+                try:
+                    from energy_forecast.db.repositories.audit_repo import (
+                        AuditRepository,
+                    )
+
+                    async with session_factory() as session:
+                        audit = AuditRepository(session)
+                        await audit.log(
+                            action="job_failed",
+                            user_email=email,
+                            details={
+                                "job_id": job_id,
+                                "error": error_msg[:500],
+                            },
+                        )
+                        await session.commit()
+                except Exception:
+                    pass  # audit failure is silent
 
                 try:
                     email_service.send_error_notification(

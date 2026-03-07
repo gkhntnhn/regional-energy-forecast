@@ -222,12 +222,26 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             "DATABASE_URL not set — using in-memory job storage (dev mode)"
         )
 
+    # Start weather actuals scheduler (DB mode only)
+    _scheduler_task = None
+    if app.state.use_db:
+        import asyncio
+
+        from energy_forecast.jobs.weather_actuals import run_scheduler
+
+        _scheduler_task = asyncio.create_task(
+            run_scheduler(app.state.session_factory, settings)
+        )
+        logger.info("Weather actuals scheduler started (daily at 04:00)")
+
     logger.info("Energy Forecast API started successfully")
 
     yield
 
     # Cleanup on shutdown
     logger.info("Shutting down Energy Forecast API...")
+    if _scheduler_task is not None:
+        _scheduler_task.cancel()
     app.state.file_service.cleanup_old_files()
     app.state.job_manager.cleanup_old_jobs()
     if app.state.db_engine:
@@ -367,6 +381,27 @@ async def predict(
             job = await job_manager.create_job_db(
                 session, email=str(email), excel_path=excel_path, file_stem=file_stem
             )
+
+        # Audit log (non-fatal)
+        try:
+            from energy_forecast.db.repositories.audit_repo import AuditRepository
+
+            async with session_factory() as session:
+                audit = AuditRepository(session)
+                await audit.log(
+                    action="predict_request",
+                    user_email=str(email),
+                    ip_address=(
+                        request.client.host if request.client else None
+                    ),
+                    details={
+                        "job_id": job.id,
+                        "file_name": file.filename,
+                    },
+                )
+                await session.commit()
+        except Exception as e:
+            logger.warning("Audit log failed: {}", e)
 
         background_tasks.add_task(
             job_manager.process_job_db,
