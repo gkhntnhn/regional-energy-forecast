@@ -241,6 +241,11 @@ class JobManager:
                                     "Matched {} predictions with actuals",
                                     matched,
                                 )
+                                # Drift check after successful matching
+                                await _run_drift_check(
+                                    session_factory,
+                                    email_service,
+                                )
                 except Exception as e:
                     logger.warning(
                         "Prediction matching failed (non-fatal): {}", e
@@ -610,3 +615,94 @@ class JobManager:
         if to_remove:
             logger.info("Cleaned up {} old jobs", len(to_remove))
         return len(to_remove)
+
+
+async def _run_drift_check(
+    session_factory: async_sessionmaker[AsyncSession],
+    email_service: EmailService | None,
+) -> None:
+    """Run drift detection after prediction matching (non-fatal).
+
+    Checks model drift, logs warnings, and sends email alerts
+    with cooldown to prevent spam.
+    """
+    import asyncio
+    import os
+
+    from energy_forecast.db.repositories.audit_repo import AuditRepository
+    from energy_forecast.monitoring.drift_detector import (
+        DriftConfig,
+        check_model_drift,
+    )
+
+    try:
+        # Load config
+        monitoring_yaml = Path("configs/monitoring.yaml")
+        if monitoring_yaml.exists():
+            import yaml
+
+            with open(monitoring_yaml, encoding="utf-8") as f:
+                data = yaml.safe_load(f) or {}
+            cfg = DriftConfig.from_dict(data.get("drift_detection", {}))
+        else:
+            cfg = DriftConfig()
+
+        if not cfg.enabled:
+            return
+
+        async with session_factory() as session:
+            alerts = await check_model_drift(session, config=cfg)
+
+            if not alerts:
+                return
+
+            audit_repo = AuditRepository(session)
+
+            for alert in alerts:
+                logger.warning("Drift alert: {}", alert.message)
+
+                # Determine if email should be sent
+                should_email = (
+                    alert.severity == "critical" or cfg.email_on_warning
+                )
+                if not should_email or email_service is None:
+                    continue
+
+                # Cooldown check
+                action_key = f"drift_alert_{alert.alert_type}"
+                last_alert = await audit_repo.get_last_action(action=action_key)
+                now = datetime.now(tz=TZ_ISTANBUL)
+
+                if last_alert is not None and last_alert.created_at is not None:
+                    elapsed = (now - last_alert.created_at).total_seconds()
+                    if elapsed < cfg.cooldown_hours * 3600:
+                        logger.info(
+                            "Drift alert suppressed (cooldown): {}",
+                            alert.alert_type,
+                        )
+                        continue
+
+                # Send email in thread (sync SMTP)
+                admin_email = cfg.admin_email or os.environ.get(
+                    "SMTP_USERNAME", ""
+                )
+                if admin_email:
+                    sent = await asyncio.to_thread(
+                        email_service.send_drift_alert,
+                        admin_email,
+                        alert,
+                    )
+                    if sent:
+                        await audit_repo.log(
+                            action=action_key,
+                            details={
+                                "severity": alert.severity,
+                                "value": alert.current_value,
+                                "threshold": alert.threshold,
+                            },
+                        )
+
+            await session.commit()
+
+    except Exception as e:
+        logger.warning("Drift check failed (non-fatal): {}", e)

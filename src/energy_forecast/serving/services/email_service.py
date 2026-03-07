@@ -8,11 +8,15 @@ from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from loguru import logger
 from pydantic import BaseModel, EmailStr, Field
 
 from energy_forecast.serving.exceptions import EmailDeliveryError
+
+if TYPE_CHECKING:
+    from energy_forecast.monitoring.drift_detector import DriftAlert
 
 
 class EmailServiceConfig(BaseModel, frozen=True):
@@ -248,4 +252,63 @@ Energy Forecast Sistemi"""
 
         except Exception as e:
             logger.error("Failed to send error notification: {}", e)
+            return False
+
+    def send_drift_alert(self, admin_email: str, alert: DriftAlert) -> bool:
+        """Send model drift notification email.
+
+        Args:
+            admin_email: Admin recipient address.
+            alert: Drift alert with type, severity, and message.
+
+        Returns:
+            True if sent successfully.
+        """
+        if not self._enabled:
+            logger.warning("Drift alert not sent (service disabled)")
+            return False
+
+        try:
+            msg = MIMEMultipart()
+            msg["From"] = (
+                f"{self._config.sender_name} <{self._config.sender_email}>"
+            )
+            msg["To"] = admin_email
+            msg["Subject"] = (
+                f"[Energy Forecast] Drift Alert: "
+                f"{alert.alert_type} ({alert.severity})"
+            )
+
+            action_map = {
+                "mape_threshold": "Model retrain degerlendir",
+                "mape_trend": "Feature/data kalitesi kontrol et",
+                "bias_shift": "Bolge tuketim profili degismis olabilir",
+            }
+            action = action_map.get(alert.alert_type, "Durumu inceleyin")
+
+            body = (
+                f"Model Drift Tespit Edildi\n"
+                f"========================\n\n"
+                f"Tip: {alert.alert_type}\n"
+                f"Ciddiyet: {alert.severity.upper()}\n"
+                f"Mevcut deger: {alert.current_value:.2f}\n"
+                f"Threshold: {alert.threshold:.2f}\n"
+                f"Pencere: Son {alert.window_days} gun\n\n"
+                f"Mesaj: {alert.message}\n\n"
+                f"Onerilen aksiyon: {action}\n\n"
+                f"Bu email otomatik uretilmistir."
+            )
+
+            msg.attach(MIMEText(body, "plain", "utf-8"))
+            self._send_message(msg, admin_email)
+            logger.info(
+                "Drift alert sent to {}: {} ({})",
+                admin_email,
+                alert.alert_type,
+                alert.severity,
+            )
+            return True
+
+        except Exception as e:
+            logger.error("Failed to send drift alert: {}", e)
             return False

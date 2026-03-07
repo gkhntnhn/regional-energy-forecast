@@ -1,0 +1,12 @@
+drift_detection:
+  enabled: true
+  mape_threshold_warning: 5.0
+  mape_threshold_critical: 8.0
+  mape_trend_threshold: 0.5      # %/hafta
+  bias_threshold: 3.0            # %
+  lookback_days: 7
+  trend_weeks: 4
+  min_samples: 24                # En az 24 eslesmis saat gerekli
+  cooldown_hours: 24             # Ayni alert tipi icin bekleme suresi
+  email_on_warning: false        # Warning seviyesinde email gonder?
+  admin_email: ""                # Bos ise .env SMTP_USERNAME kullanilir

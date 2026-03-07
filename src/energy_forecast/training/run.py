@@ -8,7 +8,9 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import os
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -392,7 +394,131 @@ def main(argv: list[str] | None = None) -> None:
 
         suppress_training_noise()
 
-    runner()
+    # DB recording (non-fatal)
+    model_run = _start_model_run(
+        args.model,
+        n_trials=args.n_trials or _get_n_trials(settings, args.model),
+        n_splits=settings.hyperparameters.cross_validation.n_splits,
+        feature_count=len(data.columns),
+    )
+
+    t0 = time.monotonic()
+    try:
+        runner()
+        duration = int(time.monotonic() - t0)
+        _complete_model_run(model_run, duration=duration)
+    except Exception:
+        duration = int(time.monotonic() - t0)
+        _fail_model_run(model_run, duration=duration)
+        raise
+
+
+def _get_n_trials(settings: Settings, model: str) -> int:
+    """Get n_trials for a model from settings."""
+    trial_map = {
+        "catboost": settings.hyperparameters.catboost.n_trials,
+        "prophet": settings.hyperparameters.prophet.n_trials,
+        "tft": settings.hyperparameters.tft.n_trials,
+        "ensemble": 0,
+    }
+    return trial_map.get(model, 0)
+
+
+def _start_model_run(
+    model_type: str,
+    *,
+    n_trials: int,
+    n_splits: int,
+    feature_count: int,
+) -> int | None:
+    """Record training start in DB (non-fatal, returns run ID or None)."""
+    db_url = os.environ.get("DATABASE_URL_SYNC", "")
+    if not db_url:
+        return None
+    try:
+        from energy_forecast.db.engine import (
+            create_sync_engine,
+            create_sync_session_factory,
+        )
+        from energy_forecast.db.repositories.model_repo import ModelRunRepository
+
+        engine = create_sync_engine(db_url)
+        factory = create_sync_session_factory(engine)
+        with factory() as session:
+            repo = ModelRunRepository(session)
+            run = repo.create_run(
+                model_type,
+                n_trials=n_trials,
+                n_splits=n_splits,
+                feature_count=feature_count,
+            )
+            session.commit()
+            run_id: int = run.id
+            logger.info("Model run #{} started ({})", run_id, model_type)
+        engine.dispose()
+        return run_id
+    except Exception as e:
+        logger.warning("Failed to record model run start (non-fatal): {}", e)
+        return None
+
+
+def _complete_model_run(run_id: int | None, *, duration: int) -> None:
+    """Record training completion in DB (non-fatal)."""
+    if run_id is None:
+        return
+    db_url = os.environ.get("DATABASE_URL_SYNC", "")
+    if not db_url:
+        return
+    try:
+        from energy_forecast.db.engine import (
+            create_sync_engine,
+            create_sync_session_factory,
+        )
+        from energy_forecast.db.repositories.model_repo import ModelRunRepository
+
+        engine = create_sync_engine(db_url)
+        factory = create_sync_session_factory(engine)
+        with factory() as session:
+            repo = ModelRunRepository(session)
+            repo.complete_run(
+                run_id,
+                metrics={},
+                model_path="",
+                duration_seconds=duration,
+            )
+            session.commit()
+            logger.info("Model run #{} completed ({}s)", run_id, duration)
+        engine.dispose()
+    except Exception as e:
+        logger.warning("Failed to record model run completion (non-fatal): {}", e)
+
+
+def _fail_model_run(run_id: int | None, *, duration: int) -> None:
+    """Record training failure in DB (non-fatal)."""
+    if run_id is None:
+        return
+    db_url = os.environ.get("DATABASE_URL_SYNC", "")
+    if not db_url:
+        return
+    try:
+        import traceback
+
+        from energy_forecast.db.engine import (
+            create_sync_engine,
+            create_sync_session_factory,
+        )
+        from energy_forecast.db.repositories.model_repo import ModelRunRepository
+
+        engine = create_sync_engine(db_url)
+        factory = create_sync_session_factory(engine)
+        with factory() as session:
+            repo = ModelRunRepository(session)
+            repo.fail_run(run_id, traceback.format_exc())
+            session.commit()
+            logger.info("Model run #{} failed ({}s)", run_id, duration)
+        engine.dispose()
+    except Exception as e:
+        logger.warning("Failed to record model run failure (non-fatal): {}", e)
 
 
 if __name__ == "__main__":

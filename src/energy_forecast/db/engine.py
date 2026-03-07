@@ -1,20 +1,28 @@
-"""Async database engine and session factory."""
+"""Database engine and session factories (async + sync)."""
 
 from __future__ import annotations
 
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Generator
 from typing import TYPE_CHECKING
 
+from sqlalchemy import create_engine
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     async_sessionmaker,
     create_async_engine,
 )
+from sqlalchemy.orm import Session, sessionmaker
 
 if TYPE_CHECKING:
+    from sqlalchemy import Engine
     from sqlalchemy.ext.asyncio import AsyncEngine
 
     from energy_forecast.config.settings import DatabaseConfig
+
+
+# ---------------------------------------------------------------------------
+# Async (serving pipeline — asyncpg)
+# ---------------------------------------------------------------------------
 
 
 def create_db_engine(
@@ -62,4 +70,41 @@ async def get_session(
             await session.commit()
         except Exception:
             await session.rollback()
+            raise
+
+
+# ---------------------------------------------------------------------------
+# Sync (training pipeline — psycopg2)
+# ---------------------------------------------------------------------------
+
+
+def create_sync_engine(database_url_sync: str) -> Engine:
+    """Create a sync SQLAlchemy engine for training pipeline.
+
+    Args:
+        database_url_sync: PostgreSQL connection string (psycopg2 driver).
+    """
+    return create_engine(
+        database_url_sync,
+        pool_size=1,
+        max_overflow=0,
+        pool_pre_ping=True,
+    )
+
+
+def create_sync_session_factory(engine: Engine) -> sessionmaker[Session]:
+    """Create a sync session factory bound to the engine."""
+    return sessionmaker(engine, expire_on_commit=False)
+
+
+def get_sync_session(
+    session_factory: sessionmaker[Session],
+) -> Generator[Session, None, None]:
+    """Yield a sync session with auto-commit/rollback."""
+    with session_factory() as session:
+        try:
+            yield session
+            session.commit()
+        except Exception:
+            session.rollback()
             raise

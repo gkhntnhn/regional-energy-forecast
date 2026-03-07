@@ -1,4 +1,4 @@
-.PHONY: install test lint format serve train-catboost train-prophet train-tft train-ensemble prepare-data clean generate-holidays backfill-epias db-up db-down db-migrate db-revision db-downgrade fetch-weather-actuals db-backup help
+.PHONY: install test lint format serve train-catboost train-prophet train-tft train-ensemble prepare-data clean generate-holidays backfill-epias db-up db-down db-migrate db-revision db-downgrade fetch-weather-actuals db-backup promote-model help
 
 install: ## Install dependencies
 	uv sync --all-extras
@@ -58,6 +58,9 @@ fetch-weather-actuals: ## Fetch weather actuals for T-2 day
 
 db-backup: ## Backup database to gzipped SQL dump
 	uv run python scripts/backup_db.py
+
+promote-model: ## Promote best model run to final_models/ (MODEL=catboost)
+	uv run python scripts/promote_model.py --model $(MODEL)
 
 clean: ## Remove build/cache artifacts
 	find . -type d -name __pycache__ -exec rm -rf {} +
