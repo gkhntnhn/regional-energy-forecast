@@ -1,0 +1,2 @@
+-- Initialize additional databases for MLflow and Optuna (optional, for Phase 3)
+-- Main energy_forecast database is created by POSTGRES_DB env var.

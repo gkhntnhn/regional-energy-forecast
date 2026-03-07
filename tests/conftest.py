@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncGenerator
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 import pandas as pd
 import pytest
+import pytest_asyncio
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from energy_forecast.config import Settings, get_default_config, load_config
 from energy_forecast.config.settings import (
@@ -15,6 +18,7 @@ from energy_forecast.config.settings import (
     OpenMeteoConfig,
     RegionConfig,
 )
+from energy_forecast.db.base import Base
 
 # ---------------------------------------------------------------------------
 # Project paths
@@ -214,4 +218,37 @@ def sample_full_df(
     return pd.concat(
         [sample_consumption_df, weather_extended, sample_epias_df],
         axis=1,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Database fixtures (SQLite in-memory via aiosqlite)
+# ---------------------------------------------------------------------------
+
+
+@pytest_asyncio.fixture
+async def db_engine():  # type: ignore[no-untyped-def]
+    """Create an async SQLite in-memory engine with schema."""
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    yield engine
+    await engine.dispose()
+
+
+@pytest_asyncio.fixture
+async def db_session(db_engine: Any) -> AsyncGenerator[AsyncSession, None]:
+    """Yield an async session for testing."""
+    factory = async_sessionmaker(
+        db_engine, class_=AsyncSession, expire_on_commit=False
+    )
+    async with factory() as session:
+        yield session
+
+
+@pytest_asyncio.fixture
+async def db_session_factory(db_engine: Any) -> async_sessionmaker[AsyncSession]:
+    """Return a session factory for testing process_job_db."""
+    return async_sessionmaker(
+        db_engine, class_=AsyncSession, expire_on_commit=False
     )
