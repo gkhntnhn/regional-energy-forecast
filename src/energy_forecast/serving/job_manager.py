@@ -231,6 +231,9 @@ class JobManager:
                             dt = row.name if hasattr(row, "name") else row.get(
                                 "datetime"
                             )
+                            # Ensure tz-aware for TIMESTAMPTZ columns
+                            if hasattr(dt, "tzinfo") and dt.tzinfo is None:
+                                dt = dt.tz_localize(TZ_ISTANBUL)
                             mwh = float(row["consumption_mwh"])
                             period = str(row.get("period", "day_ahead"))
                             pred_rows.append(

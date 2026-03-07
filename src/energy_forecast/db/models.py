@@ -8,6 +8,7 @@ from typing import Any
 
 from sqlalchemy import (
     CheckConstraint,
+    DateTime,
     ForeignKey,
     Index,
     Integer,
@@ -70,9 +71,11 @@ class JobModel(Base):
     file_stem: Mapped[str] = mapped_column(String(100), nullable=False)
     result_path: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        nullable=False, server_default=func.now()
+        DateTime(timezone=True), nullable=False, server_default=func.now()
     )
-    completed_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     # Data Lineage L3
     metadata_: Mapped[dict | None] = mapped_column(  # type: ignore[type-arg]
@@ -98,7 +101,9 @@ class JobModel(Base):
     email_status: Mapped[str] = mapped_column(
         String(20), nullable=False, default="pending"
     )
-    email_sent_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    email_sent_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     email_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     email_attempts: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0
@@ -132,20 +137,24 @@ class PredictionModel(Base):
     job_id: Mapped[str] = mapped_column(
         String(12), ForeignKey("jobs.id", ondelete="CASCADE"), nullable=False
     )
-    forecast_dt: Mapped[datetime] = mapped_column(nullable=False)
+    forecast_dt: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
     consumption_mwh: Mapped[float] = mapped_column(nullable=False)
     period: Mapped[str] = mapped_column(String(20), nullable=False)
     model_source: Mapped[str | None] = mapped_column(
         String(20), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(
-        nullable=False, server_default=func.now()
+        DateTime(timezone=True), nullable=False, server_default=func.now()
     )
 
     # Phase 2 columns (NULL until populated)
     actual_mwh: Mapped[float | None] = mapped_column(nullable=True)
     error_pct: Mapped[float | None] = mapped_column(nullable=True)
-    matched_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    matched_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     # Relationships
     job: Mapped[JobModel] = relationship(back_populates="predictions")
