@@ -13,6 +13,7 @@ Uses the same shared infrastructure as CatBoostTrainer and ProphetTrainer:
 from __future__ import annotations
 
 import gc
+import os
 import threading
 import time
 from collections.abc import Callable
@@ -21,6 +22,7 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+import optuna
 import pandas as pd
 import torch
 from loguru import logger
@@ -109,10 +111,16 @@ class TFTTrainer:
 
     # -- Optuna storage --
 
-    def _optuna_storage(self, model_name: str) -> str | None:
-        """Return SQLite storage URL for Optuna study persistence."""
+    def _optuna_storage(self, model_name: str) -> optuna.storages.RDBStorage | str | None:
+        """Return Optuna storage: PostgreSQL if available, else SQLite."""
         if self._search_config.n_trials <= 3:
             return None
+        db_url = os.environ.get("DATABASE_URL_SYNC", "")
+        if db_url:
+            return optuna.storages.RDBStorage(
+                url=db_url,
+                engine_kwargs={"pool_size": 1, "max_overflow": 0},
+            )
         studies_dir = Path(self._settings.paths.models_dir) / "optuna_studies"
         studies_dir.mkdir(parents=True, exist_ok=True)
         return f"sqlite:///{studies_dir / model_name}.db"

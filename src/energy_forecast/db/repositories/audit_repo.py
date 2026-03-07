@@ -1,9 +1,10 @@
-"""Audit log repository — write operations for audit_logs table."""
+"""Audit log repository — write and query operations for audit_logs table."""
 
 from __future__ import annotations
 
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from energy_forecast.db.models import AuditLogModel
@@ -32,3 +33,16 @@ class AuditRepository:
         self._session.add(entry)
         await self._session.flush()
         return entry
+
+    async def get_last_action(self, action: str) -> AuditLogModel | None:
+        """Get the most recent audit log entry for a given action.
+
+        Used for drift alert cooldown — checks when the last alert was sent.
+        """
+        result = await self._session.execute(
+            select(AuditLogModel)
+            .where(AuditLogModel.action == action)
+            .order_by(AuditLogModel.created_at.desc())
+            .limit(1)
+        )
+        return result.scalar_one_or_none()

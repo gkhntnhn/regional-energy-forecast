@@ -1270,6 +1270,30 @@ class EnvConfig(BaseSettings):
 # ---------------------------------------------------------------------------
 
 
+class DriftDetectionConfig(BaseModel, frozen=True):
+    """Model drift detection thresholds."""
+
+    enabled: bool = True
+    mape_threshold_warning: float = Field(default=5.0, ge=0)
+    mape_threshold_critical: float = Field(default=8.0, ge=0)
+    mape_trend_threshold: float = Field(default=0.5, ge=0)
+    bias_threshold: float = Field(default=3.0, ge=0)
+    lookback_days: int = Field(default=7, ge=1)
+    trend_weeks: int = Field(default=4, ge=2)
+    min_samples: int = Field(default=24, ge=1)
+    cooldown_hours: int = Field(default=24, ge=1)
+    email_on_warning: bool = False
+    admin_email: str = ""
+
+
+class MonitoringConfig(BaseModel, frozen=True):
+    """Monitoring configuration."""
+
+    drift_detection: DriftDetectionConfig = Field(
+        default_factory=DriftDetectionConfig
+    )
+
+
 class DatabaseConfig(BaseModel, frozen=True):
     """Database connection pool configuration."""
 
@@ -1352,6 +1376,7 @@ class Settings(BaseModel, frozen=True):
     )
     api: ApiConfig = Field(default_factory=ApiConfig)
     database: DatabaseConfig = Field(default_factory=DatabaseConfig)
+    monitoring: MonitoringConfig = Field(default_factory=MonitoringConfig)
     env: EnvConfig = Field(default_factory=EnvConfig)
 
 
@@ -1368,6 +1393,14 @@ _DEFAULT_REGION = RegionConfig(
         CityConfig(name="Canakkale", weight=0.06, latitude=40.146, longitude=26.402),
     ],
 )
+
+
+def _load_monitoring(config_dir: Path) -> dict[str, Any]:
+    """Load monitoring config (optional, defaults if missing)."""
+    path = config_dir / "monitoring.yaml"
+    if not path.exists():
+        return {}
+    return _load_yaml(path)
 
 
 def _build_settings_dict(config_dir: Path) -> dict[str, Any]:
@@ -1457,6 +1490,7 @@ def _build_settings_dict(config_dir: Path) -> dict[str, Any]:
             "email": api_data.get("email", {}),
         },
         "database": api_data.get("database", {}),
+        "monitoring": _load_monitoring(config_dir),
     }
 
 

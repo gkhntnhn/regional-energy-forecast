@@ -10,6 +10,7 @@ from sqlalchemy import (
     Boolean,
     CheckConstraint,
     DateTime,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -254,4 +255,59 @@ class AuditLogModel(Base):
     __table_args__ = (
         Index("idx_audit_logs_action", "action"),
         Index("idx_audit_logs_created_at", "created_at"),
+    )
+
+
+class ModelRunModel(Base):
+    """Training run record — lightweight log of model training results."""
+
+    __tablename__ = "model_runs"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    model_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    run_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="running"
+    )
+
+    # Metrics
+    val_mape: Mapped[float | None] = mapped_column(Float, nullable=True)
+    test_mape: Mapped[float | None] = mapped_column(Float, nullable=True)
+    val_rmse: Mapped[float | None] = mapped_column(Float, nullable=True)
+    test_rmse: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    # Config snapshot
+    hyperparameters: Mapped[dict | None] = mapped_column(  # type: ignore[type-arg]
+        _JSONBCompat(), nullable=True
+    )
+    n_trials: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    n_splits: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    feature_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    # Model artifact
+    model_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    is_promoted: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
+    promoted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    # Timestamps
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    duration_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('running', 'completed', 'failed')",
+            name="ck_model_runs_status",
+        ),
+        Index("idx_model_runs_type", "model_type"),
+        Index("idx_model_runs_status", "status"),
     )
