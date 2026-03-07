@@ -249,6 +249,8 @@ class PredictionService:
             )
 
             # Step 8: Prepare output DataFrame
+            # Keep raw predictions (with per-model columns) for DB storage
+            raw_predictions = predictions.copy()
             result = self._prepare_output(predictions, last_timestamp)
 
             latency_ms = (time.perf_counter() - start_time) * 1000
@@ -267,6 +269,7 @@ class PredictionService:
             result.attrs["epias_snapshot"] = epias_meta
             result.attrs["features_df"] = features_df
             result.attrs["forecast_mask"] = forecast_mask
+            result.attrs["raw_predictions"] = raw_predictions
             return result
 
         except (ModelNotLoadedError, PredictionError, FeaturePipelineError):
@@ -390,6 +393,30 @@ class PredictionService:
             "weights": self._ensemble.weights,
             "forecast_horizon": self._config.forecast_horizon,
         }
+
+    def get_feature_importance_top(self, n: int = 15) -> list[dict[str, Any]] | None:
+        """Get top-N CatBoost feature importance for analytics storage.
+
+        Returns:
+            List of {"feature": name, "importance": value} dicts, or None if unavailable.
+        """
+        if (
+            self._ensemble is None
+            or self._ensemble._catboost_model is None
+        ):
+            return None
+        try:
+            model = self._ensemble._catboost_model
+            importances = model.get_feature_importance()
+            feature_names = model.feature_names_
+            pairs = sorted(
+                zip(feature_names, importances, strict=True),
+                key=lambda x: x[1],
+                reverse=True,
+            )[:n]
+            return [{"feature": name, "importance": round(float(imp), 4)} for name, imp in pairs]
+        except Exception:
+            return None
 
     # ------------------------------------------------------------------
     # L3 Data Lineage helpers

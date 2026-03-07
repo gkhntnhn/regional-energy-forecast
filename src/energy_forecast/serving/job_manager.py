@@ -258,6 +258,7 @@ class JobManager:
 
                 # Store predictions (non-fatal)
                 try:
+                    raw_preds = predictions.attrs.get("raw_predictions")
                     async with session_factory() as session:
                         pred_repo = PredictionRepository(session)
                         pred_rows: list[dict[str, Any]] = []
@@ -280,6 +281,39 @@ class JobManager:
                                     "model_source": "ensemble",
                                 }
                             )
+
+                        # Per-model predictions for analytics (D1)
+                        if raw_preds is not None:
+                            ensemble_dts = {
+                                pd.Timestamp(r["forecast_dt"])
+                                for r in pred_rows
+                            }
+                            model_col_map = {
+                                "catboost": "catboost_prediction",
+                                "prophet": "prophet_prediction",
+                                "tft": "tft_prediction",
+                            }
+                            for model_name, col_name in model_col_map.items():
+                                if col_name not in raw_preds.columns:
+                                    continue
+                                for idx_val, raw_row in raw_preds.iterrows():
+                                    raw_dt = pd.Timestamp(idx_val)
+                                    if raw_dt.tzinfo is None:
+                                        raw_dt = raw_dt.tz_localize(TZ_ISTANBUL)
+                                    if raw_dt not in ensemble_dts:
+                                        continue
+                                    val = raw_row[col_name]
+                                    if pd.notna(val):
+                                        pred_rows.append(
+                                            {
+                                                "job_id": job_id,
+                                                "forecast_dt": raw_dt,
+                                                "consumption_mwh": float(val),
+                                                "period": "day_ahead",
+                                                "model_source": model_name,
+                                            }
+                                        )
+
                         await pred_repo.bulk_create(pred_rows)
                         job_repo = JobRepository(session)
                         await job_repo.update_progress(
@@ -314,20 +348,25 @@ class JobManager:
                         "Weather snapshot failed (non-fatal): {}", e
                     )
 
-                # Store EPIAS snapshot metadata (non-fatal)
+                # Store EPIAS snapshot + feature importance metadata (non-fatal)
                 try:
                     epias_snap = predictions.attrs.get("epias_snapshot")
+                    fi_top = prediction_service.get_feature_importance_top(15)
+                    meta_update: dict[str, Any] = {}
                     if epias_snap:
+                        meta_update["epias_snapshot"] = epias_snap
+                    if fi_top:
+                        meta_update["feature_importance_top15"] = fi_top
+                    if meta_update:
                         async with session_factory() as session:
                             job_repo = JobRepository(session)
                             await job_repo.update_metadata(
-                                job_id,
-                                {"epias_snapshot": epias_snap},
+                                job_id, meta_update,
                             )
                             await session.commit()
                 except Exception as e:
                     logger.warning(
-                        "EPIAS snapshot failed (non-fatal): {}", e
+                        "Metadata snapshot failed (non-fatal): {}", e
                     )
 
                 # Create output file

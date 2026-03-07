@@ -1,4 +1,4 @@
-.PHONY: install test lint format serve train-catboost train-prophet train-tft train-ensemble prepare-data clean generate-holidays backfill-epias db-up db-down db-migrate db-revision db-downgrade fetch-weather-actuals db-backup promote-model help
+.PHONY: install test lint format serve train-catboost train-prophet train-tft train-ensemble prepare-data clean generate-holidays backfill-epias db-up db-down db-migrate db-revision db-downgrade fetch-weather-actuals db-backup promote-model cleanup-old-data cleanup-dry-run help
 
 install: ## Install dependencies
 	uv sync --all-extras
@@ -61,6 +61,12 @@ db-backup: ## Backup database to gzipped SQL dump
 
 promote-model: ## Promote best model run to final_models/ (MODEL=catboost)
 	uv run python scripts/promote_model.py --model $(MODEL)
+
+cleanup-old-data: ## Apply retention policy (90 days default)
+	uv run python scripts/cleanup_jobs.py --days 90
+
+cleanup-dry-run: ## Show what would be deleted (dry run)
+	uv run python scripts/cleanup_jobs.py --days 90 --dry-run
 
 clean: ## Remove build/cache artifacts
 	find . -type d -name __pycache__ -exec rm -rf {} +
