@@ -28,12 +28,17 @@ env/
 # Data files
 data/raw/*.xlsx
 data/raw/*.csv
-data/processed/
-data/external/
+data/processed/*
+!data/processed/.gitkeep
+data/external/**
+!data/external/
+!data/external/*/
+!data/external/**/.gitkeep
 data/uploads/
 data/outputs/
 data/predictions/
-data/static/
+data/static/*
+!data/static/.gitkeep
 
 # Model artifacts (timestamped training outputs)
 models/*
