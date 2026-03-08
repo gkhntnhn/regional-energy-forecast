@@ -29,11 +29,14 @@ from datetime import timedelta
 from pathlib import Path
 
 import pandas as pd
+import pandera as pa
+import requests
 from dotenv import load_dotenv
 from loguru import logger
 
 from energy_forecast.config import Settings, load_config
 from energy_forecast.data.epias_client import EpiasClient
+from energy_forecast.data.exceptions import OpenMeteoApiError
 from energy_forecast.data.loader import DataLoader
 from energy_forecast.data.openmeteo_client import OpenMeteoClient
 from energy_forecast.data.schemas import ConsumptionSchema, EpiasSchema, WeatherSchema
@@ -262,7 +265,7 @@ def fetch_weather_data(
                 if historical_df is not None and "date" in historical_df.columns:
                     historical_df = historical_df.set_index("date").sort_index()
                 logger.info("Historical weather: {} rows", len(historical_df) if historical_df is not None else 0)
-            except Exception as e:
+            except (requests.RequestException, OpenMeteoApiError, ValueError) as e:
                 logger.warning("Historical weather fetch failed: {}", e)
                 historical_df = None
 
@@ -270,7 +273,7 @@ def fetch_weather_data(
             try:
                 forecast_df = client.fetch_forecast(forecast_days=3)
                 logger.info("Forecast weather: {} rows", len(forecast_df) if forecast_df is not None else 0)
-            except Exception as e:
+            except (requests.RequestException, OpenMeteoApiError, ValueError) as e:
                 logger.warning("Weather forecast fetch failed: {}", e)
                 forecast_df = None
 
@@ -293,7 +296,7 @@ def fetch_weather_data(
             logger.info("Weather data: {} rows total", len(weather_df))
             return weather_df
 
-    except Exception as e:
+    except (requests.RequestException, OpenMeteoApiError, ValueError) as e:
         logger.error("Weather fetch failed: {}", e)
 
     logger.warning("Weather data unavailable")
@@ -358,7 +361,7 @@ def fetch_generation_data(
         if gen_df is not None and not gen_df.empty:
             logger.info("Generation API: {} rows, {} columns", len(gen_df), len(gen_df.columns))
             return gen_df
-    except Exception as e:
+    except (requests.RequestException, ValueError, KeyError) as e:
         logger.warning("Generation fetch failed (continuing without): {}", e)
 
     logger.warning("Generation data unavailable")
@@ -529,7 +532,7 @@ def main() -> int:
     try:
         ConsumptionSchema.validate(consumption_df)
         logger.info("Consumption data validation passed")
-    except Exception as e:
+    except (pa.errors.SchemaError, pa.errors.SchemaErrors) as e:
         logger.error("Consumption data validation failed: {}", e)
         return 1
 
@@ -552,7 +555,7 @@ def main() -> int:
         try:
             EpiasSchema.validate(epias_df)
             logger.info("EPIAS data validation passed")
-        except Exception as e:
+        except (pa.errors.SchemaError, pa.errors.SchemaErrors) as e:
             logger.warning("EPIAS data validation failed (continuing): {}", e)
 
     # Step 3.5: Fetch generation data
@@ -574,7 +577,7 @@ def main() -> int:
         try:
             WeatherSchema.validate(weather_df)
             logger.info("Weather data validation passed")
-        except Exception as e:
+        except (pa.errors.SchemaError, pa.errors.SchemaErrors) as e:
             logger.warning("Weather data validation failed (continuing): {}", e)
 
     # Step 5: Merge all data sources

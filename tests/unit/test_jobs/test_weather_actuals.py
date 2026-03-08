@@ -490,7 +490,7 @@ class TestRunScheduler:
         async def fake_sleep(seconds: float) -> None:
             nonlocal iteration
             iteration += 1
-            if iteration > 2:
+            if iteration >= 2:
                 raise asyncio.CancelledError
 
         # Two different days so the second attempt is not skipped by same-day guard

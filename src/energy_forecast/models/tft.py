@@ -288,7 +288,7 @@ class TFTForecaster(BaseForecaster):
             context_df = X.iloc[max(0, context_end - enc_len):context_end]
             forecast_df = X.iloc[context_end:]
         else:
-            # Short input — use last_train_df as context
+            # Short input — no explicit context (NeuralForecast uses internal state)
             context_df = None
             forecast_df = X.iloc[-pred_len:]
 
@@ -315,7 +315,9 @@ class TFTForecaster(BaseForecaster):
                 nf_context["y"] = nf_context["y"].ffill().fillna(0)
 
         # Generate predictions
-        assert self._nf is not None, "Model not fitted"
+        if self._nf is None:
+            msg = "Model not fitted — call fit() or load() first"
+            raise RuntimeError(msg)
         preds = self._nf.predict(df=nf_context, futr_df=futr_df)
 
         # Extract median prediction
@@ -394,7 +396,9 @@ class TFTForecaster(BaseForecaster):
         logger.info("Saving TFT model to {}", path)
 
         # NeuralForecast save (handles ckpt + config internally)
-        assert self._nf is not None, "Model not fitted"
+        if self._nf is None:
+            msg = "Model not fitted — call fit() or load() first"
+            raise RuntimeError(msg)
         self._nf.save(path=str(path), overwrite=True)
 
         # Strip training callbacks from checkpoint — they hold dataset references

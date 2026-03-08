@@ -63,6 +63,7 @@ class PredictionService:
         self._data_loader: DataLoader | None = None
         self._models_loaded = False
         self._warnings: list[str] = []
+        self._last_feature_count: int = 0
 
     @property
     def is_ready(self) -> bool:
@@ -229,6 +230,7 @@ class PredictionService:
             update_progress("Running feature engineering pipeline...")
             try:
                 features_df = self._feature_pipeline.run(merged_df)
+                self._last_feature_count = len(features_df.columns)
             except Exception as e:
                 raise FeaturePipelineError(f"Feature pipeline failed: {e}") from e
 
@@ -431,7 +433,7 @@ class PredictionService:
             "config_snapshot": {
                 "ensemble_method": "stacking",
                 "ensemble_weights": weights,
-                "feature_count": 153,
+                "feature_count": self._last_feature_count or 153,
             },
             "model_versions": {
                 "catboost": str(self._config.catboost_path),

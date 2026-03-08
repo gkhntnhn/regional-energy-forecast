@@ -406,6 +406,7 @@ class StackingMetaLearnerConfig(BaseModel, frozen=True):
     loss_function: str = "RMSE"
     l2_leaf_reg: float = 3.0
     task_type: str = "CPU"
+    verbose: int = 50
 
 
 class StackingConfig(BaseModel, frozen=True):

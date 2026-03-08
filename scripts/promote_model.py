@@ -18,6 +18,8 @@ from pathlib import Path
 
 from loguru import logger
 
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Promote model to final_models/")
@@ -83,7 +85,7 @@ def main() -> None:
             logger.error("Source path does not exist: {}", src)
             sys.exit(1)
 
-        dst = Path("final_models") / args.model
+        dst = _PROJECT_ROOT / "final_models" / args.model
         dst.mkdir(parents=True, exist_ok=True)
 
         if src.is_dir():

@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any, cast
 
 import numpy as np
 import openmeteo_requests
 import pandas as pd
+import requests
 import requests_cache
 from loguru import logger
 from retry_requests import retry
@@ -198,7 +200,7 @@ class OpenMeteoClient:
             response = session.get(geo_cfg.api_url, params=params)
             response.raise_for_status()
             data = response.json()
-        except Exception as exc:
+        except (requests.RequestException, json.JSONDecodeError, KeyError, OSError) as exc:
             msg = f"Geocoding request failed for '{city_name}': {exc}"
             raise OpenMeteoApiError(msg) from exc
 
@@ -262,7 +264,7 @@ class OpenMeteoClient:
         except openmeteo_requests.OpenMeteoRequestsError as exc:
             msg = f"OpenMeteo API error: {exc}"
             raise OpenMeteoApiError(msg) from exc
-        except Exception as exc:
+        except (requests.RequestException, json.JSONDecodeError, KeyError, OSError) as exc:
             msg = f"OpenMeteo request failed: {exc}"
             raise OpenMeteoApiError(msg) from exc
 

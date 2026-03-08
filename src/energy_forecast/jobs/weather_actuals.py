@@ -126,25 +126,22 @@ async def run_scheduler(
     last_run_date: datetime | None = None
 
     while True:
-        await asyncio.sleep(3600)  # Check every hour
         now = datetime.now(tz=TZ_ISTANBUL)
 
-        if now.hour != run_hour:
-            continue
+        if now.hour == run_hour and (
+            last_run_date is None or last_run_date.date() != now.date()
+        ):
+            try:
+                count = await fetch_and_store_actuals(session_factory, settings)
+                last_run_date = now
+                if count > 0:
+                    logger.info(
+                        "Scheduler: stored {} weather actuals", count
+                    )
+            except Exception as e:
+                logger.error("Scheduler: weather actuals fetch failed: {}", e)
 
-        # Only run once per day
-        if last_run_date and last_run_date.date() == now.date():
-            continue
-
-        try:
-            count = await fetch_and_store_actuals(session_factory, settings)
-            last_run_date = now
-            if count > 0:
-                logger.info(
-                    "Scheduler: stored {} weather actuals", count
-                )
-        except Exception as e:
-            logger.error("Scheduler: weather actuals fetch failed: {}", e)
+        await asyncio.sleep(3600)  # Check every hour
 
 
 def main() -> None:

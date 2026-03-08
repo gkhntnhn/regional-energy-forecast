@@ -30,7 +30,11 @@ from energy_forecast.utils import TZ_ISTANBUL
 
 @dataclass(frozen=True)
 class DriftConfig:
-    """Drift detection thresholds (loaded from configs/monitoring.yaml)."""
+    """Drift detection thresholds.
+
+    Defaults are fallbacks only — prefer loading from configs/monitoring.yaml
+    via ``from_dict()`` to keep a single source of truth.
+    """
 
     enabled: bool = True
     mape_threshold_warning: float = 5.0

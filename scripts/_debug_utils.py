@@ -34,6 +34,12 @@ class TeeLogger:
     def close(self) -> None:
         self.log.close()
 
+    def __enter__(self) -> TeeLogger:
+        return self
+
+    def __exit__(self, *args: object) -> None:
+        self.close()
+
 
 SEASON_MAP: dict[int, str] = {
     12: "Winter", 1: "Winter", 2: "Winter",

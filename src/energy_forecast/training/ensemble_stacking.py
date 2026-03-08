@@ -128,7 +128,7 @@ def train_meta_learner(
         early_stopping_rounds=cfg.early_stopping_rounds,
         task_type=cfg.task_type,
         cat_features=cat_indices,
-        verbose=50,
+        verbose=cfg.verbose,
     )
     meta_model.fit(x_train, y_train, eval_set=(x_val, y_val))
 

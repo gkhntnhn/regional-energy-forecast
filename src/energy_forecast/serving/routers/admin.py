@@ -9,6 +9,8 @@ from fastapi.responses import FileResponse
 from loguru import logger
 
 from energy_forecast.db.repositories.analytics_repo import AnalyticsRepository
+from energy_forecast.db.repositories.job_repo import JobRepository
+from energy_forecast.db.repositories.prediction_repo import PredictionRepository
 
 admin_router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -216,11 +218,6 @@ async def get_job_details(
     if sf is None:
         return {"error": "Database not configured"}
     async with sf() as session:
-        from energy_forecast.db.repositories.job_repo import JobRepository
-        from energy_forecast.db.repositories.prediction_repo import (
-            PredictionRepository,
-        )
-
         job_repo = JobRepository(session)
         job = await job_repo.get_by_id(job_id)
         if job is None:

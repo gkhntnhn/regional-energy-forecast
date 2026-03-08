@@ -151,9 +151,9 @@ async def main(days: int, dry_run: bool) -> None:
             session_factory, retention_days=days, dry_run=dry_run
         )
         if dry_run:
-            print(f"[DRY RUN] Would affect: {result}")
+            logger.info("[DRY RUN] Would affect: {}", result)
         else:
-            print(f"Cleanup result: {result}")
+            logger.info("Cleanup result: {}", result)
     finally:
         await engine.dispose()
 

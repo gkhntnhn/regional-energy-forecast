@@ -161,6 +161,7 @@ class ProphetForecaster(BaseForecaster):
 
         # Verify integrity via SHA256 hash if metadata exists
         metadata_path = path / "metadata.json"
+        metadata: dict[str, Any] | None = None
         if metadata_path.exists():
             with open(metadata_path, encoding="utf-8") as f:
                 metadata = json.load(f)
@@ -182,13 +183,10 @@ class ProphetForecaster(BaseForecaster):
             msg = f"Failed to load Prophet model (corrupted file?): {e}"
             raise RuntimeError(msg) from e
 
-        # Load metadata
-        metadata_path = path / "metadata.json"
-        if metadata_path.exists():
-            with open(metadata_path) as f:
-                meta = json.load(f)
-                self._regressor_names = meta.get("regressor_names", [])
-                self.config = {**self.config, **meta.get("config", {})}
+        # Load regressor names and config from metadata (already read above)
+        if metadata is not None:
+            self._regressor_names = metadata.get("regressor_names", [])
+            self.config = {**self.config, **metadata.get("config", {})}
 
         logger.info("Prophet model loaded from {}", path)
 

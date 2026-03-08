@@ -20,6 +20,7 @@ from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
+from energy_forecast import __version__
 from energy_forecast.config import load_config
 from energy_forecast.serving.exceptions import APIError, JobNotFoundError, JobQueueFullError
 from energy_forecast.serving.job_manager import JobManager
@@ -260,7 +261,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 app = FastAPI(
     title="Energy Forecast API",
     description="Uludag region hourly electricity consumption forecasting",
-    version="0.1.0",
+    version=__version__,
     lifespan=lifespan,
 )
 
@@ -338,7 +339,7 @@ async def health() -> HealthResponse:
     return HealthResponse(
         status="ok",
         timestamp=datetime.now(tz=TZ_ISTANBUL),
-        version="0.1.0",
+        version=__version__,
     )
 
 

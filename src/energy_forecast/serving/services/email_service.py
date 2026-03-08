@@ -36,7 +36,7 @@ class EmailServiceConfig(BaseModel, frozen=True):
     body_template: str = Field(
         default="""Merhaba,
 
-Talep ettiğiniz 24 saatlik (T+1 gün) elektrik tüketimi tahmini ekte sunulmuştur.
+Talep ettiğiniz 48 saatlik (T + T+1 gün) elektrik tüketimi tahmini ekte sunulmuştur.
 
 İş No: {job_id}
 Oluşturulma: {created_at}
