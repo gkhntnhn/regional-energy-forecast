@@ -585,7 +585,7 @@ class TestProcessJobDB:
         self, job_manager: JobManager, db_session_factory: Any
     ) -> None:
         """Test process_job_db stores prediction rows in predictions table."""
-        from energy_forecast.db.models import JobModel, PredictionModel
+        from energy_forecast.db.models import PredictionModel
         from energy_forecast.db.repositories.job_repo import JobRepository
 
         # Seed a pending job
@@ -1239,13 +1239,12 @@ class TestRunDriftCheck:
             return_value=True,
         ) as _p, patch(
             "yaml.safe_load", return_value=yaml_data
-        ):
-            with patch(
-                "energy_forecast.monitoring.drift_detector.check_model_drift",
-                new_callable=AsyncMock,
-            ) as mock_check:
-                await _run_drift_check(db_session_factory, mock_email)
-                mock_check.assert_not_called()
+        ), patch(
+            "energy_forecast.monitoring.drift_detector.check_model_drift",
+            new_callable=AsyncMock,
+        ) as mock_check:
+            await _run_drift_check(db_session_factory, mock_email)
+            mock_check.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_drift_check_exception_nonfatal(

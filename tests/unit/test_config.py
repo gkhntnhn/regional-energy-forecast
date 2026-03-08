@@ -8,7 +8,6 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from energy_forecast.config import Settings, get_default_config, load_config
 from energy_forecast.config import (
     CityConfig,
     ConsumptionLagConfig,
@@ -22,7 +21,10 @@ from energy_forecast.config import (
     ModelSearchConfig,
     RegionConfig,
     SearchParamConfig,
+    Settings,
     _load_yaml,
+    get_default_config,
+    load_config,
 )
 
 # ---------------------------------------------------------------------------

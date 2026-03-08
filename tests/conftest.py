@@ -12,11 +12,13 @@ import pytest
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from energy_forecast.config import Settings, get_default_config, load_config
 from energy_forecast.config import (
     DataLoaderConfig,
     OpenMeteoConfig,
     RegionConfig,
+    Settings,
+    get_default_config,
+    load_config,
 )
 from energy_forecast.db.base import Base
 

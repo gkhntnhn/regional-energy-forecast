@@ -5,11 +5,11 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from energy_forecast.config import get_default_config
 from energy_forecast.config import (
     _DEFAULT_REGION,
     PipelineConfig,
     Settings,
+    get_default_config,
 )
 from energy_forecast.features.pipeline import FeaturePipeline
 

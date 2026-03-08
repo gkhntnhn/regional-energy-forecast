@@ -289,7 +289,7 @@ class TestFetchAndStoreActuals:
             mock_dt.now.return_value = fixed_now
             mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)
             # Act
-            result = await fetch_and_store_actuals(sf, settings)
+            await fetch_and_store_actuals(sf, settings)
 
         # Assert — T-2 from 2026-03-07 is 2026-03-05
         expected_start = "2026-03-05"
@@ -303,7 +303,7 @@ class TestFetchAndStoreActuals:
     async def test_openmeteo_client_created_with_correct_config(
         self, settings: Settings
     ) -> None:
-        """Test that OpenMeteoClient is initialized with settings.openmeteo, .region, .project.timezone."""
+        """Test OpenMeteoClient init with settings.openmeteo, .region, .project.timezone."""
         # Arrange
         mock_repo = AsyncMock()
         mock_repo.has_actuals_for_date = AsyncMock(return_value=False)
@@ -528,9 +528,9 @@ class TestRunScheduler:
 
         with (
             patch("energy_forecast.jobs.weather_actuals.asyncio.sleep", side_effect=fake_sleep),
+            pytest.raises(asyncio.CancelledError),
         ):
-            with pytest.raises(asyncio.CancelledError):
-                await run_scheduler(sf, mock_settings)
+            await run_scheduler(sf, mock_settings)
 
 
 # ---------------------------------------------------------------------------
