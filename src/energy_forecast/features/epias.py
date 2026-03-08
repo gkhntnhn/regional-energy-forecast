@@ -167,14 +167,18 @@ class EpiasFeatureEngineer(BaseFeatureEngineer):
         thermal_cols = [f"{v}_lag_{lag}" for v in thermal_vars]
         available_th = [c for c in thermal_cols if c in df.columns]
         if available_th:
-            df["thermal_ratio_lag_48"] = df[available_th].sum(axis=1) / total
+            df["thermal_ratio_lag_48"] = (
+                (df[available_th].sum(axis=1) / total).clip(0, 1)
+            )
 
         # Renewable ratio: explicit vars if available, else 1 - thermal_ratio
         renewable_vars: list[str] = comp_cfg.get("renewable_vars", [])
         renewable_cols = [f"{v}_lag_{lag}" for v in renewable_vars]
         available_ren = [c for c in renewable_cols if c in df.columns]
         if available_ren:
-            df["renewable_ratio_lag_48"] = df[available_ren].sum(axis=1) / total
+            df["renewable_ratio_lag_48"] = (
+                (df[available_ren].sum(axis=1) / total).clip(0, 1)
+            )
         elif "thermal_ratio_lag_48" in df.columns:
             df["renewable_ratio_lag_48"] = 1.0 - df["thermal_ratio_lag_48"]
 

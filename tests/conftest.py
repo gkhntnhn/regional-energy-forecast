@@ -21,6 +21,7 @@ from energy_forecast.config import (
     load_config,
 )
 from energy_forecast.db.base import Base
+import energy_forecast.db.models  # noqa: F401  — register all ORM models with Base.metadata
 
 # ---------------------------------------------------------------------------
 # Project paths

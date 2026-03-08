@@ -797,7 +797,8 @@ class TestFetchAndStoreActualsIntegration:
         self, db_session_factory: async_sessionmaker, settings: Settings
     ) -> None:
         """Test calling fetch_and_store_actuals twice returns 0 on second call."""
-        # Arrange
+        # Arrange — freeze now to 2026-03-07 so target_date = 2026-03-05
+        frozen_now = datetime(2026, 3, 7, 10, 0, 0, tzinfo=TZ)
         weather_df = _make_weather_df("2026-03-05")
 
         mock_client = MagicMock()
@@ -805,10 +806,17 @@ class TestFetchAndStoreActualsIntegration:
         mock_client.__enter__ = MagicMock(return_value=mock_client)
         mock_client.__exit__ = MagicMock(return_value=False)
 
-        with patch(
-            _PATCH_CLIENT,
-            return_value=mock_client,
+        with (
+            patch(
+                _PATCH_CLIENT,
+                return_value=mock_client,
+            ),
+            patch(
+                "energy_forecast.jobs.weather_actuals.datetime",
+                wraps=datetime,
+            ) as mock_dt,
         ):
+            mock_dt.now.return_value = frozen_now
             # First call stores data
             first_result = await fetch_and_store_actuals(db_session_factory, settings)
             # Second call should find actuals exist and skip
