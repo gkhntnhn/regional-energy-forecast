@@ -1,4 +1,7 @@
-"""Analytics repository — read-only queries for admin dashboard."""
+"""Analytics repository — read-only queries for admin dashboard.
+
+Dual-mode: PostgreSQL uses SQL aggregation, SQLite falls back to Python-side grouping.
+"""
 
 from __future__ import annotations
 
@@ -6,8 +9,9 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import case, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.types import Integer, String
 
 from energy_forecast.db.models import (
     AuditLogModel,
@@ -22,12 +26,18 @@ from energy_forecast.utils import TZ_ISTANBUL
 class AnalyticsRepository:
     """Read-only analytics queries for the admin dashboard.
 
-    All methods use ORM queries with Python-side grouping
-    for SQLite test compatibility (no date_trunc, no PG casts).
+    PostgreSQL mode: SQL aggregation (GROUP BY, func.avg, date_trunc).
+    SQLite mode: ORM fetch + Python-side grouping (test compatibility).
     """
 
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
+
+    @property
+    def _is_pg(self) -> bool:
+        """Check if the current database is PostgreSQL."""
+        bind = self._session.get_bind()
+        return bind.dialect.name == "postgresql"
 
     # ------------------------------------------------------------------
     # 4.1 — Production MAPE Trending
@@ -36,6 +46,51 @@ class AnalyticsRepository:
     async def get_daily_mape(self, days: int = 30) -> list[dict[str, Any]]:
         """Daily production MAPE for ensemble predictions."""
         cutoff = datetime.now(tz=TZ_ISTANBUL) - timedelta(days=days)
+
+        if self._is_pg:
+            stmt = (
+                select(
+                    func.to_char(
+                        func.date_trunc("day", PredictionModel.forecast_dt),
+                        "YYYY-MM-DD",
+                    ).label("day"),
+                    func.round(func.avg(PredictionModel.error_pct), 2).label(
+                        "mape"
+                    ),
+                    func.round(func.min(PredictionModel.error_pct), 2).label(
+                        "min_error"
+                    ),
+                    func.round(func.max(PredictionModel.error_pct), 2).label(
+                        "max_error"
+                    ),
+                    func.count().label("n_hours"),
+                )
+                .where(
+                    PredictionModel.actual_mwh.is_not(None),
+                    PredictionModel.model_source == "ensemble",
+                    PredictionModel.forecast_dt >= cutoff,
+                    PredictionModel.error_pct.is_not(None),
+                )
+                .group_by(
+                    func.date_trunc("day", PredictionModel.forecast_dt)
+                )
+                .order_by(
+                    func.date_trunc("day", PredictionModel.forecast_dt)
+                )
+            )
+            result = await self._session.execute(stmt)
+            return [
+                {
+                    "day": row.day,
+                    "mape": float(row.mape),
+                    "min_error": float(row.min_error),
+                    "max_error": float(row.max_error),
+                    "n_hours": row.n_hours,
+                }
+                for row in result
+            ]
+
+        # SQLite fallback: Python-side grouping
         stmt = (
             select(PredictionModel)
             .where(
@@ -68,6 +123,77 @@ class AnalyticsRepository:
     async def get_weekly_mape(self, weeks: int = 12) -> list[dict[str, Any]]:
         """Weekly MAPE trend with T vs T+1 breakdown."""
         cutoff = datetime.now(tz=TZ_ISTANBUL) - timedelta(weeks=weeks)
+
+        if self._is_pg:
+            # PostgreSQL: use date_trunc('week') + EXTRACT for ISO week key
+            iso_year = func.extract(
+                "isoyear", PredictionModel.forecast_dt
+            )
+            iso_week = func.extract(
+                "week", PredictionModel.forecast_dt
+            )
+            week_label = func.concat(
+                cast(iso_year, String),
+                "-W",
+                func.lpad(cast(cast(iso_week, Integer), String), 2, "0"),
+            )
+            stmt = (
+                select(
+                    week_label.label("week"),
+                    func.round(func.avg(PredictionModel.error_pct), 2).label(
+                        "weekly_mape"
+                    ),
+                    func.count().label("n_hours"),
+                    func.round(
+                        func.avg(
+                            case(
+                                (
+                                    PredictionModel.period == "intraday",
+                                    PredictionModel.error_pct,
+                                ),
+                                else_=None,
+                            )
+                        ),
+                        2,
+                    ).label("t_mape"),
+                    func.round(
+                        func.avg(
+                            case(
+                                (
+                                    PredictionModel.period == "day_ahead",
+                                    PredictionModel.error_pct,
+                                ),
+                                else_=None,
+                            )
+                        ),
+                        2,
+                    ).label("t1_mape"),
+                )
+                .where(
+                    PredictionModel.actual_mwh.is_not(None),
+                    PredictionModel.model_source == "ensemble",
+                    PredictionModel.forecast_dt >= cutoff,
+                    PredictionModel.error_pct.is_not(None),
+                )
+                .group_by(week_label)
+                .order_by(week_label)
+            )
+            result = await self._session.execute(stmt)
+            out: list[dict[str, Any]] = []
+            for row in result:
+                entry: dict[str, Any] = {
+                    "week": row.week,
+                    "weekly_mape": float(row.weekly_mape),
+                    "n_hours": row.n_hours,
+                }
+                if row.t_mape is not None:
+                    entry["t_mape"] = float(row.t_mape)
+                if row.t1_mape is not None:
+                    entry["t1_mape"] = float(row.t1_mape)
+                out.append(entry)
+            return out
+
+        # SQLite fallback: Python-side grouping
         stmt = (
             select(PredictionModel)
             .where(
@@ -90,22 +216,54 @@ class AnalyticsRepository:
                 weekly[week_key]["all"].append(r.error_pct)
                 weekly[week_key][r.period].append(r.error_pct)
 
-        out: list[dict[str, Any]] = []
+        out = []
         for week, buckets in sorted(weekly.items()):
-            row: dict[str, Any] = {
+            row_dict: dict[str, Any] = {
                 "week": week,
                 "weekly_mape": _safe_mean(buckets["all"]),
                 "n_hours": len(buckets["all"]),
             }
             if buckets["intraday"]:
-                row["t_mape"] = _safe_mean(buckets["intraday"])
+                row_dict["t_mape"] = _safe_mean(buckets["intraday"])
             if buckets["day_ahead"]:
-                row["t1_mape"] = _safe_mean(buckets["day_ahead"])
-            out.append(row)
+                row_dict["t1_mape"] = _safe_mean(buckets["day_ahead"])
+            out.append(row_dict)
         return out
 
     async def get_hourly_mape(self) -> list[dict[str, Any]]:
         """Hourly MAPE pattern — which hours have highest error."""
+        if self._is_pg:
+            hour_col = cast(
+                func.extract("hour", PredictionModel.forecast_dt),
+                Integer,
+            )
+            stmt = (
+                select(
+                    hour_col.label("hour"),
+                    func.round(func.avg(PredictionModel.error_pct), 2).label(
+                        "avg_mape"
+                    ),
+                    func.count().label("n_samples"),
+                )
+                .where(
+                    PredictionModel.actual_mwh.is_not(None),
+                    PredictionModel.model_source == "ensemble",
+                    PredictionModel.error_pct.is_not(None),
+                )
+                .group_by(hour_col)
+                .order_by(hour_col)
+            )
+            result = await self._session.execute(stmt)
+            return [
+                {
+                    "hour": row.hour,
+                    "avg_mape": float(row.avg_mape),
+                    "n_samples": row.n_samples,
+                }
+                for row in result
+            ]
+
+        # SQLite fallback
         stmt = (
             select(PredictionModel)
             .where(
@@ -138,6 +296,36 @@ class AnalyticsRepository:
     async def get_per_model_mape(self, days: int = 30) -> list[dict[str, Any]]:
         """Model-level production MAPE comparison."""
         cutoff = datetime.now(tz=TZ_ISTANBUL) - timedelta(days=days)
+
+        if self._is_pg:
+            stmt = (
+                select(
+                    PredictionModel.model_source,
+                    func.round(func.avg(PredictionModel.error_pct), 2).label(
+                        "mape"
+                    ),
+                    func.count().label("n_hours"),
+                )
+                .where(
+                    PredictionModel.actual_mwh.is_not(None),
+                    PredictionModel.forecast_dt >= cutoff,
+                    PredictionModel.model_source.is_not(None),
+                    PredictionModel.error_pct.is_not(None),
+                )
+                .group_by(PredictionModel.model_source)
+                .order_by(func.avg(PredictionModel.error_pct))
+            )
+            result = await self._session.execute(stmt)
+            return [
+                {
+                    "model_source": row.model_source,
+                    "mape": float(row.mape),
+                    "n_hours": row.n_hours,
+                }
+                for row in result
+            ]
+
+        # SQLite fallback
         stmt = (
             select(PredictionModel)
             .where(
@@ -167,6 +355,38 @@ class AnalyticsRepository:
 
     async def get_hourly_model_performance(self) -> list[dict[str, Any]]:
         """Hourly model MAPE matrix for heatmap visualization."""
+        if self._is_pg:
+            hour_col = cast(
+                func.extract("hour", PredictionModel.forecast_dt),
+                Integer,
+            )
+            stmt = (
+                select(
+                    hour_col.label("hour"),
+                    PredictionModel.model_source,
+                    func.round(func.avg(PredictionModel.error_pct), 2).label(
+                        "mape"
+                    ),
+                )
+                .where(
+                    PredictionModel.actual_mwh.is_not(None),
+                    PredictionModel.model_source.is_not(None),
+                    PredictionModel.error_pct.is_not(None),
+                )
+                .group_by(hour_col, PredictionModel.model_source)
+                .order_by(hour_col, PredictionModel.model_source)
+            )
+            result = await self._session.execute(stmt)
+            return [
+                {
+                    "hour": row.hour,
+                    "model_source": row.model_source,
+                    "mape": float(row.mape),
+                }
+                for row in result
+            ]
+
+        # SQLite fallback
         stmt = (
             select(PredictionModel)
             .where(PredictionModel.actual_mwh.is_not(None))
@@ -193,7 +413,12 @@ class AnalyticsRepository:
     async def get_model_comparison_stats(
         self, days: int = 30
     ) -> list[dict[str, Any]]:
-        """Ensemble vs individual model stats (avg, median, p95)."""
+        """Ensemble vs individual model stats (avg, median, p95).
+
+        Note: median and p95 require Python-side computation even for PG,
+        since percentile_cont is not available in all PG versions.
+        Falls back to Python-side for all dialects.
+        """
         cutoff = datetime.now(tz=TZ_ISTANBUL) - timedelta(days=days)
         stmt = (
             select(PredictionModel)

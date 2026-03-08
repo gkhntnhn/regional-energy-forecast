@@ -8,6 +8,7 @@ Supports two modes:
 from __future__ import annotations
 
 import asyncio
+import os
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -178,7 +179,348 @@ class JobManager:
         return job
 
     # ------------------------------------------------------------------
-    # Process job (DB mode)
+    # Process job (DB mode) — pipeline steps
+    # ------------------------------------------------------------------
+
+    async def _match_previous_predictions_step(
+        self,
+        job_id: str,
+        excel_path: str,
+        session_factory: async_sessionmaker[AsyncSession],
+        prediction_service: PredictionService,
+        email_service: EmailService,
+    ) -> None:
+        """Match previous predictions with actuals from new Excel (non-fatal)."""
+        from energy_forecast.db.repositories.prediction_repo import (
+            PredictionRepository,
+        )
+
+        try:
+            if prediction_service._data_loader is not None:
+                consumption_df = (
+                    prediction_service._data_loader.load_excel(
+                        Path(excel_path)
+                    )
+                )
+                if not consumption_df.empty:
+                    async with session_factory() as session:
+                        pred_repo = PredictionRepository(session)
+                        matched = (
+                            await pred_repo
+                            .match_predictions_with_actuals(
+                                consumption_df
+                            )
+                        )
+                        await session.commit()
+                    if matched > 0:
+                        logger.info(
+                            "Matched {} predictions with actuals",
+                            matched,
+                        )
+                        await _run_drift_check(
+                            session_factory,
+                            email_service,
+                        )
+        except Exception as e:
+            logger.warning(
+                "Prediction matching failed (non-fatal): {}", e
+            )
+
+    async def _run_prediction_step(
+        self,
+        excel_path: str,
+        prediction_service: PredictionService,
+    ) -> pd.DataFrame:
+        """Run model prediction pipeline. Raises on failure."""
+        return prediction_service.run_prediction(
+            excel_path=Path(excel_path),
+            progress_callback=lambda msg: None,
+        )
+
+    async def _store_predictions_step(
+        self,
+        job_id: str,
+        predictions: pd.DataFrame,
+        session_factory: async_sessionmaker[AsyncSession],
+    ) -> None:
+        """Store ensemble + per-model predictions in DB (non-fatal)."""
+        from energy_forecast.db.repositories.job_repo import JobRepository
+        from energy_forecast.db.repositories.prediction_repo import (
+            PredictionRepository,
+        )
+
+        try:
+            raw_preds = predictions.attrs.get("raw_predictions")
+            async with session_factory() as session:
+                pred_repo = PredictionRepository(session)
+                pred_rows: list[dict[str, Any]] = []
+                for _, row in predictions.iterrows():
+                    raw_dt = row.name if hasattr(row, "name") else row.get(
+                        "datetime"
+                    )
+                    dt = pd.Timestamp(raw_dt)  # type: ignore[arg-type]
+                    if dt.tzinfo is None:
+                        dt = dt.tz_localize(TZ_ISTANBUL)
+                    mwh = float(row["consumption_mwh"])
+                    period = str(row.get("period", "day_ahead"))
+                    pred_rows.append(
+                        {
+                            "job_id": job_id,
+                            "forecast_dt": dt,
+                            "consumption_mwh": mwh,
+                            "period": period,
+                            "model_source": "ensemble",
+                        }
+                    )
+
+                # Per-model predictions for analytics (D1)
+                if raw_preds is not None:
+                    ensemble_dts = {
+                        pd.Timestamp(r["forecast_dt"])
+                        for r in pred_rows
+                    }
+                    model_col_map = {
+                        "catboost": "catboost_prediction",
+                        "prophet": "prophet_prediction",
+                        "tft": "tft_prediction",
+                    }
+                    for model_name, col_name in model_col_map.items():
+                        if col_name not in raw_preds.columns:
+                            continue
+                        for idx_val, raw_row in raw_preds.iterrows():
+                            raw_dt = pd.Timestamp(idx_val)
+                            if raw_dt.tzinfo is None:
+                                raw_dt = raw_dt.tz_localize(TZ_ISTANBUL)
+                            if raw_dt not in ensemble_dts:
+                                continue
+                            val = raw_row[col_name]
+                            if pd.notna(val):
+                                pred_rows.append(
+                                    {
+                                        "job_id": job_id,
+                                        "forecast_dt": raw_dt,
+                                        "consumption_mwh": float(val),
+                                        "period": "day_ahead",
+                                        "model_source": model_name,
+                                    }
+                                )
+
+                await pred_repo.bulk_create(pred_rows)
+                job_repo = JobRepository(session)
+                await job_repo.update_progress(
+                    job_id, "Tahmin sonuclari kaydedildi"
+                )
+                await session.commit()
+        except Exception as e:
+            logger.warning("DB snapshot failed (non-fatal): {}", e)
+
+    async def _store_weather_step(
+        self,
+        job_id: str,
+        predictions: pd.DataFrame,
+        session_factory: async_sessionmaker[AsyncSession],
+    ) -> None:
+        """Store weather snapshot in DB (non-fatal)."""
+        try:
+            weather_df = predictions.attrs.get("weather_data")
+            if weather_df is not None and not weather_df.empty:
+                from energy_forecast.db.repositories.weather_repo import (
+                    WeatherSnapshotRepository,
+                )
+
+                async with session_factory() as session:
+                    weather_repo = WeatherSnapshotRepository(session)
+                    count = await weather_repo.bulk_create_forecast(
+                        job_id=job_id,
+                        weather_df=weather_df,
+                        fetched_at=datetime.now(tz=TZ_ISTANBUL),
+                    )
+                    await session.commit()
+                logger.info(
+                    "Stored {} weather snapshots for job {}",
+                    count, job_id,
+                )
+        except Exception as e:
+            logger.warning(
+                "Weather snapshot failed (non-fatal): {}", e
+            )
+
+    async def _store_metadata_step(
+        self,
+        job_id: str,
+        predictions: pd.DataFrame,
+        prediction_service: PredictionService,
+        session_factory: async_sessionmaker[AsyncSession],
+    ) -> None:
+        """Store EPIAS snapshot + feature importance metadata (non-fatal)."""
+        from energy_forecast.db.repositories.job_repo import JobRepository
+
+        try:
+            epias_snap = predictions.attrs.get("epias_snapshot")
+            fi_top = prediction_service.get_feature_importance_top(15)
+            meta_update: dict[str, Any] = {}
+            if epias_snap:
+                meta_update["epias_snapshot"] = epias_snap
+            if fi_top:
+                meta_update["feature_importance_top15"] = fi_top
+            if meta_update:
+                async with session_factory() as session:
+                    job_repo = JobRepository(session)
+                    await job_repo.update_metadata(
+                        job_id, meta_update,
+                    )
+                    await session.commit()
+        except Exception as e:
+            logger.warning(
+                "Metadata snapshot failed (non-fatal): {}", e
+            )
+
+    async def _create_output_step(
+        self,
+        predictions: pd.DataFrame,
+        file_stem: str,
+        file_service: FileService,
+    ) -> Path:
+        """Create output Excel file. Raises on failure."""
+        return file_service.create_output_xlsx(predictions, file_stem)
+
+    async def _send_email_step(
+        self,
+        job_id: str,
+        email: str,
+        output_path: Path,
+        created_at: datetime,
+        session_factory: async_sessionmaker[AsyncSession],
+        email_service: EmailService,
+    ) -> None:
+        """Send prediction result email and update DB status."""
+        from energy_forecast.db.repositories.job_repo import JobRepository
+
+        email_service.send_prediction_result(
+            to_email=email,
+            attachment_path=output_path,
+            job_id=job_id,
+            created_at=created_at.strftime("%Y-%m-%d %H:%M:%S"),
+        )
+
+        async with session_factory() as session:
+            repo = JobRepository(session)
+            await repo.update_email_status(
+                job_id, "sent", attempts=1
+            )
+            await repo.update_progress(job_id, "Sonuclar gonderildi")
+            await session.commit()
+
+    async def _archive_step(
+        self,
+        job_id: str,
+        file_stem: str,
+        output_path: Path,
+        created_at: datetime,
+        predictions: pd.DataFrame,
+        prediction_service: PredictionService,
+        session_factory: async_sessionmaker[AsyncSession],
+    ) -> None:
+        """Archive features + upload to GDrive (non-fatal)."""
+        from energy_forecast.db.repositories.job_repo import JobRepository
+
+        try:
+            features_df = predictions.attrs.get("features_df")
+            forecast_mask = predictions.attrs.get("forecast_mask")
+            if features_df is None or forecast_mask is None:
+                return
+
+            hist_path, fc_path = (
+                prediction_service.archive_features(
+                    job_id, features_df, forecast_mask,
+                )
+            )
+            meta_path = (
+                prediction_service.write_metadata_json(
+                    job_id,
+                    {
+                        "model_versions": (
+                            prediction_service.get_model_info()
+                        ),
+                        "config_snapshot": (
+                            predictions.attrs.get(
+                                "epias_snapshot", {}
+                            )
+                        ),
+                    },
+                )
+            )
+
+            # Upload to GDrive if configured
+            creds = os.environ.get("GDRIVE_CREDENTIALS_PATH")
+            folder_id = os.environ.get(
+                "GDRIVE_BACKUP_FOLDER_ID"
+            )
+            if creds and folder_id:
+                from energy_forecast.storage.gdrive import (
+                    GoogleDriveStorage,
+                )
+
+                files: dict[str, Path] = {}
+                if hist_path:
+                    files["features_historical.parquet"] = (
+                        hist_path
+                    )
+                if fc_path:
+                    files["features_forecast.parquet"] = fc_path
+                if meta_path:
+                    files["metadata.json"] = meta_path
+                files[f"{file_stem}_forecast.xlsx"] = output_path
+                logger.info(
+                    "Uploading {} artifacts to GDrive...",
+                    len(files),
+                )
+
+                gdrive = GoogleDriveStorage(creds, folder_id)
+                uploaded = await asyncio.to_thread(
+                    gdrive.upload_job_artifacts,
+                    job_id,
+                    files,
+                    created_at,
+                )
+
+                # Update DB with GDrive paths
+                async with session_factory() as session:
+                    job_repo = JobRepository(session)
+                    path_meta: dict[str, str] = {}
+                    if hist_path:
+                        path_meta["historical_path"] = str(
+                            hist_path
+                        )
+                    if fc_path:
+                        path_meta["forecast_path"] = str(
+                            fc_path
+                        )
+                    if uploaded:
+                        path_meta["archive_path"] = str(
+                            uploaded
+                        )
+                    await job_repo.update_metadata(
+                        job_id, path_meta
+                    )
+                    await session.commit()
+
+                logger.info(
+                    "Archived {} files to GDrive for job {}",
+                    len(uploaded),
+                    job_id,
+                )
+            else:
+                logger.debug(
+                    "GDrive not configured — skipping artifact upload"
+                )
+        except Exception as e:
+            logger.warning(
+                "Artifact archival failed (non-fatal): {}", e
+            )
+
+    # ------------------------------------------------------------------
+    # Process job (DB mode) — orchestrator
     # ------------------------------------------------------------------
 
     async def process_job_db(
@@ -196,11 +538,9 @@ class JobManager:
         """Process a job using DB for persistence.
 
         Each checkpoint uses a separate session to avoid holding connections.
+        Steps are delegated to private methods for clarity.
         """
         from energy_forecast.db.repositories.job_repo import JobRepository
-        from energy_forecast.db.repositories.prediction_repo import (
-            PredictionRepository,
-        )
 
         async with self._lock:
             # Mark running
@@ -210,7 +550,7 @@ class JobManager:
                 await session.commit()
 
             try:
-                # Run prediction pipeline
+                # Progress: data analysis
                 async with session_factory() as session:
                     repo = JobRepository(session)
                     await repo.update_progress(
@@ -218,158 +558,34 @@ class JobManager:
                     )
                     await session.commit()
 
-                # Match previous predictions with actuals (non-fatal)
-                try:
-                    if prediction_service._data_loader is not None:
-                        consumption_df = (
-                            prediction_service._data_loader.load_excel(
-                                Path(excel_path)
-                            )
-                        )
-                        if not consumption_df.empty:
-                            async with session_factory() as session:
-                                pred_repo = PredictionRepository(session)
-                                matched = (
-                                    await pred_repo
-                                    .match_predictions_with_actuals(
-                                        consumption_df
-                                    )
-                                )
-                                await session.commit()
-                            if matched > 0:
-                                logger.info(
-                                    "Matched {} predictions with actuals",
-                                    matched,
-                                )
-                                # Drift check after successful matching
-                                await _run_drift_check(
-                                    session_factory,
-                                    email_service,
-                                )
-                except Exception as e:
-                    logger.warning(
-                        "Prediction matching failed (non-fatal): {}", e
-                    )
-
-                predictions = prediction_service.run_prediction(
-                    excel_path=Path(excel_path),
-                    progress_callback=lambda msg: None,
+                # Step 1: Match previous predictions with actuals
+                await self._match_previous_predictions_step(
+                    job_id, excel_path, session_factory,
+                    prediction_service, email_service,
                 )
 
-                # Store predictions (non-fatal)
-                try:
-                    raw_preds = predictions.attrs.get("raw_predictions")
-                    async with session_factory() as session:
-                        pred_repo = PredictionRepository(session)
-                        pred_rows: list[dict[str, Any]] = []
-                        for _, row in predictions.iterrows():
-                            raw_dt = row.name if hasattr(row, "name") else row.get(
-                                "datetime"
-                            )
-                            dt = pd.Timestamp(raw_dt)  # type: ignore[arg-type]
-                            # Ensure tz-aware for TIMESTAMPTZ columns
-                            if dt.tzinfo is None:
-                                dt = dt.tz_localize(TZ_ISTANBUL)
-                            mwh = float(row["consumption_mwh"])
-                            period = str(row.get("period", "day_ahead"))
-                            pred_rows.append(
-                                {
-                                    "job_id": job_id,
-                                    "forecast_dt": dt,
-                                    "consumption_mwh": mwh,
-                                    "period": period,
-                                    "model_source": "ensemble",
-                                }
-                            )
+                # Step 2: Run prediction pipeline
+                predictions = await self._run_prediction_step(
+                    excel_path, prediction_service,
+                )
 
-                        # Per-model predictions for analytics (D1)
-                        if raw_preds is not None:
-                            ensemble_dts = {
-                                pd.Timestamp(r["forecast_dt"])
-                                for r in pred_rows
-                            }
-                            model_col_map = {
-                                "catboost": "catboost_prediction",
-                                "prophet": "prophet_prediction",
-                                "tft": "tft_prediction",
-                            }
-                            for model_name, col_name in model_col_map.items():
-                                if col_name not in raw_preds.columns:
-                                    continue
-                                for idx_val, raw_row in raw_preds.iterrows():
-                                    raw_dt = pd.Timestamp(idx_val)
-                                    if raw_dt.tzinfo is None:
-                                        raw_dt = raw_dt.tz_localize(TZ_ISTANBUL)
-                                    if raw_dt not in ensemble_dts:
-                                        continue
-                                    val = raw_row[col_name]
-                                    if pd.notna(val):
-                                        pred_rows.append(
-                                            {
-                                                "job_id": job_id,
-                                                "forecast_dt": raw_dt,
-                                                "consumption_mwh": float(val),
-                                                "period": "day_ahead",
-                                                "model_source": model_name,
-                                            }
-                                        )
+                # Step 3: Store predictions in DB
+                await self._store_predictions_step(
+                    job_id, predictions, session_factory,
+                )
 
-                        await pred_repo.bulk_create(pred_rows)
-                        job_repo = JobRepository(session)
-                        await job_repo.update_progress(
-                            job_id, "Tahmin sonuclari kaydedildi"
-                        )
-                        await session.commit()
-                except Exception as e:
-                    logger.warning("DB snapshot failed (non-fatal): {}", e)
+                # Step 4: Store weather snapshot
+                await self._store_weather_step(
+                    job_id, predictions, session_factory,
+                )
 
-                # Store weather snapshot (non-fatal)
-                try:
-                    weather_df = predictions.attrs.get("weather_data")
-                    if weather_df is not None and not weather_df.empty:
-                        from energy_forecast.db.repositories.weather_repo import (
-                            WeatherSnapshotRepository,
-                        )
+                # Step 5: Store EPIAS + feature importance metadata
+                await self._store_metadata_step(
+                    job_id, predictions, prediction_service,
+                    session_factory,
+                )
 
-                        async with session_factory() as session:
-                            weather_repo = WeatherSnapshotRepository(session)
-                            count = await weather_repo.bulk_create_forecast(
-                                job_id=job_id,
-                                weather_df=weather_df,
-                                fetched_at=datetime.now(tz=TZ_ISTANBUL),
-                            )
-                            await session.commit()
-                        logger.info(
-                            "Stored {} weather snapshots for job {}",
-                            count, job_id,
-                        )
-                except Exception as e:
-                    logger.warning(
-                        "Weather snapshot failed (non-fatal): {}", e
-                    )
-
-                # Store EPIAS snapshot + feature importance metadata (non-fatal)
-                try:
-                    epias_snap = predictions.attrs.get("epias_snapshot")
-                    fi_top = prediction_service.get_feature_importance_top(15)
-                    meta_update: dict[str, Any] = {}
-                    if epias_snap:
-                        meta_update["epias_snapshot"] = epias_snap
-                    if fi_top:
-                        meta_update["feature_importance_top15"] = fi_top
-                    if meta_update:
-                        async with session_factory() as session:
-                            job_repo = JobRepository(session)
-                            await job_repo.update_metadata(
-                                job_id, meta_update,
-                            )
-                            await session.commit()
-                except Exception as e:
-                    logger.warning(
-                        "Metadata snapshot failed (non-fatal): {}", e
-                    )
-
-                # Create output file
+                # Step 6: Create output file
                 async with session_factory() as session:
                     repo = JobRepository(session)
                     await repo.update_progress(
@@ -377,126 +593,28 @@ class JobManager:
                     )
                     await session.commit()
 
-                output_path = file_service.create_output_xlsx(
-                    predictions, file_stem
+                output_path = await self._create_output_step(
+                    predictions, file_stem, file_service,
                 )
 
-                # Send email
+                # Step 7: Send email
                 async with session_factory() as session:
                     repo = JobRepository(session)
-                    await repo.update_progress(job_id, "E-posta gonderiliyor...")
+                    await repo.update_progress(
+                        job_id, "E-posta gonderiliyor..."
+                    )
                     await session.commit()
 
-                email_service.send_prediction_result(
-                    to_email=email,
-                    attachment_path=output_path,
-                    job_id=job_id,
-                    created_at=created_at.strftime("%Y-%m-%d %H:%M:%S"),
+                await self._send_email_step(
+                    job_id, email, output_path, created_at,
+                    session_factory, email_service,
                 )
 
-                async with session_factory() as session:
-                    repo = JobRepository(session)
-                    await repo.update_email_status(
-                        job_id, "sent", attempts=1
-                    )
-                    await repo.update_progress(job_id, "Sonuclar gonderildi")
-                    await session.commit()
-
-                # Archive features + upload to GDrive (non-fatal)
-                try:
-                    features_df = predictions.attrs.get("features_df")
-                    forecast_mask = predictions.attrs.get("forecast_mask")
-                    if features_df is not None and forecast_mask is not None:
-                        hist_path, fc_path = (
-                            prediction_service.archive_features(
-                                job_id, features_df, forecast_mask,
-                            )
-                        )
-                        meta_path = (
-                            prediction_service.write_metadata_json(
-                                job_id,
-                                {
-                                    "model_versions": (
-                                        prediction_service.get_model_info()
-                                    ),
-                                    "config_snapshot": (
-                                        predictions.attrs.get(
-                                            "epias_snapshot", {}
-                                        )
-                                    ),
-                                },
-                            )
-                        )
-
-                        # Upload to GDrive if configured
-                        import os
-
-                        creds = os.environ.get("GDRIVE_CREDENTIALS_PATH")
-                        folder_id = os.environ.get(
-                            "GDRIVE_BACKUP_FOLDER_ID"
-                        )
-                        if creds and folder_id:
-                            from energy_forecast.storage.gdrive import (
-                                GoogleDriveStorage,
-                            )
-
-                            files: dict[str, Path] = {}
-                            if hist_path:
-                                files["features_historical.parquet"] = (
-                                    hist_path
-                                )
-                            if fc_path:
-                                files["features_forecast.parquet"] = fc_path
-                            if meta_path:
-                                files["metadata.json"] = meta_path
-                            files[f"{file_stem}_forecast.xlsx"] = output_path
-                            logger.info(
-                                "Uploading {} artifacts to GDrive...",
-                                len(files),
-                            )
-
-                            gdrive = GoogleDriveStorage(creds, folder_id)
-                            uploaded = await asyncio.to_thread(
-                                gdrive.upload_job_artifacts,
-                                job_id,
-                                files,
-                                created_at,
-                            )
-
-                            # Update DB with GDrive paths
-                            async with session_factory() as session:
-                                job_repo = JobRepository(session)
-                                path_meta: dict[str, str] = {}
-                                if hist_path:
-                                    path_meta["historical_path"] = str(
-                                        hist_path
-                                    )
-                                if fc_path:
-                                    path_meta["forecast_path"] = str(
-                                        fc_path
-                                    )
-                                if uploaded:
-                                    path_meta["archive_path"] = str(
-                                        uploaded
-                                    )
-                                await job_repo.update_metadata(
-                                    job_id, path_meta
-                                )
-                                await session.commit()
-
-                            logger.info(
-                                "Archived {} files to GDrive for job {}",
-                                len(uploaded),
-                                job_id,
-                            )
-                        else:
-                            logger.debug(
-                                "GDrive not configured — skipping artifact upload"
-                            )
-                except Exception as e:
-                    logger.warning(
-                        "Artifact archival failed (non-fatal): {}", e
-                    )
+                # Step 8: Archive features + GDrive upload
+                await self._archive_step(
+                    job_id, file_stem, output_path, created_at,
+                    predictions, prediction_service, session_factory,
+                )
 
                 # Mark complete
                 async with session_factory() as session:
