@@ -47,10 +47,12 @@ _GENERATION_FUEL_MAP: dict[str, str] = {
     "wind": "gen_wind",
 }
 
-_VARIABLE_MAP: dict[str, dict[str, str]] = {
+_VARIABLE_MAP: dict[str, dict[str, Any]] = {
     "FDPP": {
         "endpoint": "/generation/data/dpp",
         "response_key": "toplam",
+        "extra_params": {"region": "TR1"},
+        "quarterly": True,
     },
     "Real_Time_Consumption": {
         "endpoint": "/consumption/data/realtime-consumption",
@@ -224,13 +226,19 @@ class EpiasClient:
                 continue
             var_info = _VARIABLE_MAP[var_name]
             try:
-                var_df = self._fetch_variable(
-                    endpoint=var_info["endpoint"],
-                    response_key=var_info["response_key"],
-                    column_name=var_name,
-                    start_date=start,
-                    end_date=end,
-                )
+                if var_info.get("quarterly"):
+                    var_df = self._fetch_variable_quarterly(
+                        var_info, var_name, year
+                    )
+                else:
+                    var_df = self._fetch_variable(
+                        endpoint=var_info["endpoint"],
+                        response_key=var_info["response_key"],
+                        column_name=var_name,
+                        start_date=start,
+                        end_date=end,
+                        extra_params=var_info.get("extra_params"),
+                    )
                 var_dfs[var_name] = var_df
             except EpiasApiError:
                 logger.warning("Failed to fetch EPIAS variable: {}", var_name)
@@ -486,6 +494,53 @@ class EpiasClient:
             time.sleep(sleep_time)
         self._last_request_time = time.monotonic()
 
+    def _fetch_variable_quarterly(
+        self,
+        var_info: dict[str, Any],
+        column_name: str,
+        year: int,
+    ) -> pd.DataFrame:
+        """Fetch a variable in quarterly chunks for endpoints with date range limits.
+
+        Args:
+            var_info: Variable mapping entry from _VARIABLE_MAP.
+            column_name: Output column name.
+            year: Year to fetch.
+
+        Returns:
+            DataFrame with DatetimeIndex and single value column.
+        """
+        quarters = [
+            (f"{year}-01-01", f"{year}-03-31"),
+            (f"{year}-04-01", f"{year}-06-30"),
+            (f"{year}-07-01", f"{year}-09-30"),
+            (f"{year}-10-01", f"{year}-12-31"),
+        ]
+
+        dfs: list[pd.DataFrame] = []
+        for i, (q_start, q_end) in enumerate(quarters, 1):
+            logger.info("Fetching {} Q{} {}", column_name, i, year)
+            try:
+                q_df = self._fetch_variable(
+                    endpoint=var_info["endpoint"],
+                    response_key=var_info["response_key"],
+                    column_name=column_name,
+                    start_date=q_start,
+                    end_date=q_end,
+                    extra_params=var_info.get("extra_params"),
+                )
+                if not q_df.empty:
+                    dfs.append(q_df)
+            except EpiasApiError as exc:
+                logger.warning("{} Q{} fetch failed: {}", column_name, i, exc)
+
+        if not dfs:
+            msg = f"Failed to fetch any {column_name} data for year {year}"
+            raise EpiasApiError(msg)
+
+        result = pd.concat(dfs).sort_index()
+        return result[~result.index.duplicated(keep="first")]
+
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=4, max=60),
@@ -499,6 +554,7 @@ class EpiasClient:
         column_name: str,
         start_date: str,
         end_date: str,
+        extra_params: dict[str, Any] | None = None,
     ) -> pd.DataFrame:
         """Fetch a single EPIAS variable with retry and rate limiting.
 
@@ -508,6 +564,7 @@ class EpiasClient:
             column_name: Output column name.
             start_date: Start date (YYYY-MM-DD).
             end_date: End date (YYYY-MM-DD).
+            extra_params: Additional request body params (e.g. region for DPP).
 
         Returns:
             DataFrame with DatetimeIndex and single value column.
@@ -523,6 +580,8 @@ class EpiasClient:
             "startDate": start_ts,
             "endDate": end_ts,
         }
+        if extra_params:
+            body.update(extra_params)
         headers = {"TGT": token, "Content-Type": "application/json"}
 
         logger.debug("Fetching EPIAS {} from {} to {}", column_name, start_date, end_date)

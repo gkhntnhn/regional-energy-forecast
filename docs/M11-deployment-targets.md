@@ -43,9 +43,10 @@
 Tum external veriler NeonDB (PostgreSQL) icinde tek kaynak (single source of truth):
 
 ```sql
--- EPIAS Market: Saatlik, incremental upsert
+-- EPIAS Market: Saatlik, incremental upsert (tum 5 degisken — hangisinin feature olacagi YAML'dan belirlenir)
 CREATE TABLE epias_market (
     datetime        TIMESTAMPTZ PRIMARY KEY,
+    fdpp            DOUBLE PRECISION,  -- KGUP toplam (region=TR1, quarterly fetch)
     rtc             DOUBLE PRECISION,
     dam_purchase    DOUBLE PRECISION,
     bilateral       DOUBLE PRECISION,
@@ -53,12 +54,27 @@ CREATE TABLE epias_market (
     fetched_at      TIMESTAMPTZ DEFAULT now()
 );
 
--- EPIAS Generation: Saatlik
+-- EPIAS Generation: Saatlik (tum yakit tipleri — hangisinin feature olacagi YAML'dan belirlenir)
 CREATE TABLE epias_generation (
-    datetime        TIMESTAMPTZ PRIMARY KEY,
-    gen_total       DOUBLE PRECISION,
-    gen_natural_gas DOUBLE PRECISION,
-    fetched_at      TIMESTAMPTZ DEFAULT now()
+    datetime            TIMESTAMPTZ PRIMARY KEY,
+    gen_asphaltite_coal DOUBLE PRECISION,
+    gen_biomass         DOUBLE PRECISION,
+    gen_black_coal      DOUBLE PRECISION,
+    gen_dammed_hydro    DOUBLE PRECISION,
+    gen_fueloil         DOUBLE PRECISION,
+    gen_geothermal      DOUBLE PRECISION,
+    gen_import_coal     DOUBLE PRECISION,
+    gen_import_export   DOUBLE PRECISION,
+    gen_lignite         DOUBLE PRECISION,
+    gen_lng             DOUBLE PRECISION,
+    gen_naphta          DOUBLE PRECISION,
+    gen_natural_gas     DOUBLE PRECISION,
+    gen_river           DOUBLE PRECISION,
+    gen_sun             DOUBLE PRECISION,
+    gen_total           DOUBLE PRECISION,
+    gen_wasteheat       DOUBLE PRECISION,
+    gen_wind            DOUBLE PRECISION,
+    fetched_at          TIMESTAMPTZ DEFAULT now()
 );
 
 -- Weather Cache: Sehir x saat x kaynak

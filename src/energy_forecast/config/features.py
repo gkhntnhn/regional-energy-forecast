@@ -533,6 +533,7 @@ class EpiasConfig(BaseModel, frozen=True):
     source: EpiasSourceConfig = Field(default_factory=EpiasSourceConfig)
     variables: list[str] = Field(
         default_factory=lambda: [
+            "FDPP",
             "Real_Time_Consumption",
             "DAM_Purchase",
             "Load_Forecast",

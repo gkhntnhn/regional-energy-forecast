@@ -5,11 +5,12 @@ source:
   file_pattern: "epias_market_{year}.parquet"
 
 variables:
-  # R2 prune: 5→3 (FDPP deprecated, Bilateral near-zero importance)
+  # R2 prune: 5→4 (Bilateral near-zero importance)
+  - FDPP                          # KGÜP toplam — planlanan üretim (region=TR1 gerektirir)
   - Real_Time_Consumption
   - DAM_Purchase
   - Load_Forecast
-  # DROPPED: FDPP (deprecated API), Bilateral_Agreement_Purchase (near-zero R1)
+  # DROPPED: Bilateral_Agreement_Purchase (near-zero R1 importance)
 
 lags:
   min_lag: 48

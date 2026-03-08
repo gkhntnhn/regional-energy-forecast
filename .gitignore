@@ -111,3 +111,6 @@ data/backups/
 
 # Code walkthrough docs (local only)
 docs/code-walkthrough/
+
+# Deployment targets (internal planning, not committed)
+docs/M11-deployment-targets.md

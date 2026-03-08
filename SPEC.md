@@ -112,7 +112,7 @@ son veri noktasından 48 saat sonradır.
 
 | Kısaltma | Tam Adı | Durum |
 |----------|---------|-------|
-| ~~FDPP~~ | ~~Final Daily Production Plan~~ | **DEPRECATED** — API'den artık çekilemiyor |
+| FDPP | Final Daily Production Plan (KGÜP toplam) | Aktif (region=TR1 gerektirir) |
 | Real_Time_Consumption | — | Aktif |
 | DAM_Purchase | Day-Ahead Market Purchase | Aktif |
 | Bilateral_Agreement_Purchase | — | Aktif |
@@ -698,7 +698,7 @@ Commit format: `feat(scope): description` / `fix(scope): description`
 
 | Sorun | Açıklama | Workaround |
 |-------|----------|------------|
-| FDPP deprecated | EPIAS API'den artık çekilemiyor | Diğer 4 değişken kullanılıyor |
+| ~~FDPP deprecated~~ | ~~EPIAS API'den artık çekilemiyor~~ | **ÇÖZÜLDÜ**: region=TR1 parametresi gerekiyormuş |
 | EPIAS duplicate timestamps | Yıllık cache dosyalarında duplicate satırlar | `df[~df.index.duplicated(keep='first')]` ile temizle |
 | Windows cp1254 codec | Unicode box-drawing karakterler encode edilemiyor | ASCII karakterler kullan |
 | Prophet cmdstanpy | Bazı ortamlarda kurulum sorunu | `pip install cmdstanpy` sonra `cmdstanpy.install_cmdstan()` |

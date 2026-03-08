@@ -192,7 +192,7 @@ src/energy_forecast/utils/prophet_utils.py  # Shared to_prophet_format (DRY)
 
 | Sorun | Açıklama | Workaround |
 |-------|----------|------------|
-| FDPP deprecated | EPIAS API'den artık çekilemiyor | Diğer 4 değişken kullanılıyor |
+| ~~FDPP deprecated~~ | ~~EPIAS API'den artık çekilemiyor~~ | **ÇÖZÜLDÜ**: `region=TR1` parametresi gerekiyormuş, endpoint aktif |
 | EPIAS duplicate timestamps | Cache'te duplicate satırlar olabiliyor | `~df.index.duplicated(keep='first')` ile temizle |
 | Windows cp1254 codec | Unicode box-drawing karakterler çalışmaz | ASCII karakterler kullan |
 | Prophet cmdstanpy | Bazı ortamlarda kurulum sorunu | `pip install cmdstanpy` sonra `cmdstanpy.install_cmdstan()` |
