@@ -272,6 +272,7 @@ class TestLoadHolidays:
 class TestTrainSplit:
     """Tests for _train_split method."""
 
+    @pytest.mark.slow
     def test_train_split_smoke(self, trainer: ProphetTrainer, sample_df: pd.DataFrame) -> None:
         """Smoke test for single split training."""
         from energy_forecast.training.splitter import SplitInfo
@@ -301,6 +302,7 @@ class TestTrainSplit:
         assert isinstance(result.val_metrics, MetricsResult)
         assert isinstance(result.test_metrics, MetricsResult)
 
+    @pytest.mark.slow
     def test_split_result_month_labels(
         self, trainer: ProphetTrainer, sample_df: pd.DataFrame
     ) -> None:
@@ -335,6 +337,7 @@ class TestTrainSplit:
 class TestTrainAllSplits:
     """Tests for _train_all_splits method."""
 
+    @pytest.mark.slow
     def test_train_all_splits(self, trainer: ProphetTrainer, sample_df: pd.DataFrame) -> None:
         """Test training on all CV splits."""
         result = trainer._train_all_splits(sample_df, {})
@@ -354,6 +357,7 @@ class TestTrainAllSplits:
 class TestOptimize:
     """Tests for optimize method."""
 
+    @pytest.mark.slow
     def test_optimize_smoke(self, trainer: ProphetTrainer, sample_df: pd.DataFrame) -> None:
         """Smoke test for Optuna optimization (n_trials=2)."""
         study, result = trainer.optimize(sample_df)
@@ -374,6 +378,7 @@ class TestOptimize:
 class TestTrainFinal:
     """Tests for train_final method."""
 
+    @pytest.mark.slow
     def test_train_final(self, trainer: ProphetTrainer, sample_df: pd.DataFrame) -> None:
         """Test final model training on all data."""
         from prophet import Prophet
@@ -392,6 +397,7 @@ class TestTrainFinal:
 class TestRun:
     """Tests for run method (full pipeline)."""
 
+    @pytest.mark.slow
     def test_run_pipeline(self, trainer: ProphetTrainer, sample_df: pd.DataFrame) -> None:
         """Test full training pipeline."""
         result = trainer.run(sample_df)
