@@ -67,7 +67,7 @@ class TimeSeriesSplitter:
         Returns:
             Configured TimeSeriesSplitter.
         """
-        from energy_forecast.config.settings import CrossValidationConfig
+        from energy_forecast.config import CrossValidationConfig
 
         if not isinstance(cv_config, CrossValidationConfig):
             msg = f"Expected CrossValidationConfig, got {type(cv_config).__name__}"

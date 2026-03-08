@@ -22,7 +22,7 @@ from optuna import Study, Trial, TrialPruned, create_study
 from optuna.pruners import MedianPruner
 from optuna.samplers import TPESampler
 
-from energy_forecast.config.settings import Settings
+from energy_forecast.config import Settings
 from energy_forecast.training.experiment import ExperimentTracker
 from energy_forecast.training.metrics import MetricsResult, compute_all
 from energy_forecast.training.search import suggest_params

@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from energy_forecast.config.settings import SearchParamConfig
+from energy_forecast.config import SearchParamConfig
 from energy_forecast.training.search import suggest_params
 
 

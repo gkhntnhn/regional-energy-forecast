@@ -15,7 +15,7 @@ import pandas as pd
 from loguru import logger
 from numpy.typing import NDArray
 
-from energy_forecast.config.settings import TFTConfig
+from energy_forecast.config import TFTConfig
 from energy_forecast.models.base import PREDICTION_COL, BaseForecaster
 
 # NeuralForecast long-format constants
@@ -440,7 +440,7 @@ class TFTForecaster(BaseForecaster):
         """
         from neuralforecast import NeuralForecast
 
-        from energy_forecast.config.settings import (
+        from energy_forecast.config import (
             TFTArchitectureConfig,
             TFTConfig,
             TFTCovariatesConfig,

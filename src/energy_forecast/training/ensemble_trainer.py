@@ -23,7 +23,7 @@ from catboost import CatBoostRegressor
 from loguru import logger
 from scipy.optimize import minimize
 
-from energy_forecast.config.settings import Settings
+from energy_forecast.config import Settings
 from energy_forecast.training.catboost_trainer import (
     CatBoostTrainer,
 )

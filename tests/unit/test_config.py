@@ -9,7 +9,7 @@ import pytest
 from pydantic import ValidationError
 
 from energy_forecast.config import Settings, get_default_config, load_config
-from energy_forecast.config.settings import (
+from energy_forecast.config import (
     CityConfig,
     ConsumptionLagConfig,
     CrossValidationConfig,

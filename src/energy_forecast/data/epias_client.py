@@ -19,7 +19,7 @@ from tenacity import (
     wait_exponential,
 )
 
-from energy_forecast.config.settings import EpiasApiConfig
+from energy_forecast.config import EpiasApiConfig
 from energy_forecast.data.exceptions import EpiasApiError, EpiasAuthError
 
 # ---------------------------------------------------------------------------

@@ -19,7 +19,7 @@ import yaml
 from loguru import logger
 
 from energy_forecast.config import Settings, load_config
-from energy_forecast.config.settings import SearchParamConfig
+from energy_forecast.config import SearchParamConfig
 from energy_forecast.training.catboost_trainer import CatBoostTrainer
 from energy_forecast.training.experiment import ExperimentTracker
 

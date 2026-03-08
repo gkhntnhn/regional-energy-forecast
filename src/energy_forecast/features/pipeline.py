@@ -7,7 +7,7 @@ from typing import Any, ClassVar
 import pandas as pd
 from loguru import logger
 
-from energy_forecast.config.settings import Settings
+from energy_forecast.config import Settings
 from energy_forecast.features.base import BaseFeatureEngineer
 from energy_forecast.features.calendar import CalendarFeatureEngineer
 from energy_forecast.features.consumption import ConsumptionFeatureEngineer

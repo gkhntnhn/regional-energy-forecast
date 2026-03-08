@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from energy_forecast.config.settings import (
+from energy_forecast.config import (
     CrossValidationConfig,
     HyperparameterConfig,
     ModelSearchConfig,

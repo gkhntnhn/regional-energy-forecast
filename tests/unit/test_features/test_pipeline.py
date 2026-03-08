@@ -6,7 +6,7 @@ import pandas as pd
 import pytest
 
 from energy_forecast.config import get_default_config
-from energy_forecast.config.settings import (
+from energy_forecast.config import (
     _DEFAULT_REGION,
     PipelineConfig,
     Settings,

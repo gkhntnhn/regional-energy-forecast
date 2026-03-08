@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from energy_forecast.config.settings import EpiasConfig, GenerationConfig
+from energy_forecast.config import EpiasConfig, GenerationConfig
 from energy_forecast.features.epias import EpiasFeatureEngineer
 
 EPIAS_VARIABLES: list[str] = [

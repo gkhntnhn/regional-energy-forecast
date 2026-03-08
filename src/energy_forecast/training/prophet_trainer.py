@@ -28,7 +28,7 @@ from optuna.pruners import MedianPruner
 from optuna.samplers import TPESampler
 from prophet import Prophet
 
-from energy_forecast.config.settings import Settings
+from energy_forecast.config import Settings
 from energy_forecast.models.prophet import ProphetForecaster
 from energy_forecast.training.experiment import ExperimentTracker
 from energy_forecast.training.metrics import MetricsResult, compute_all

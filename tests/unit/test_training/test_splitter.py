@@ -182,7 +182,7 @@ class TestFactory:
 
     def test_from_config(self) -> None:
         """Construct from CrossValidationConfig."""
-        from energy_forecast.config.settings import CrossValidationConfig
+        from energy_forecast.config import CrossValidationConfig
 
         cv_config = CrossValidationConfig(
             n_splits=5,
@@ -198,7 +198,7 @@ class TestFactory:
 
     def test_from_config_shuffle_true_raises(self) -> None:
         """shuffle=True in CrossValidationConfig raises ValueError."""
-        from energy_forecast.config.settings import CrossValidationConfig
+        from energy_forecast.config import CrossValidationConfig
 
         cv_config = CrossValidationConfig(n_splits=5, shuffle=True)
         with pytest.raises(ValueError, match="shuffle"):

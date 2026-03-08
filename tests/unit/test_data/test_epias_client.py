@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 import pandas as pd
 import pytest
 
-from energy_forecast.config.settings import EpiasApiConfig
+from energy_forecast.config import EpiasApiConfig
 from energy_forecast.data.epias_client import EpiasClient, _to_epias_timestamp
 from energy_forecast.data.exceptions import EpiasApiError, EpiasAuthError
 

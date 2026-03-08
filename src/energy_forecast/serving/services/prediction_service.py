@@ -14,7 +14,7 @@ import pandas as pd
 from loguru import logger
 from pydantic import BaseModel, Field
 
-from energy_forecast.config.settings import Settings
+from energy_forecast.config import Settings
 from energy_forecast.data.epias_client import EpiasClient
 from energy_forecast.data.exceptions import EpiasAuthError
 from energy_forecast.data.loader import DataLoader

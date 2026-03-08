@@ -24,7 +24,7 @@ from energy_forecast.utils import TZ_ISTANBUL
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import async_sessionmaker
 
-    from energy_forecast.config.settings import Settings
+    from energy_forecast.config import Settings
 
 
 async def fetch_and_store_actuals(
@@ -45,7 +45,7 @@ async def fetch_and_store_actuals(
     """
     from sqlalchemy.ext.asyncio import async_sessionmaker
 
-    from energy_forecast.config.settings import Settings
+    from energy_forecast.config import Settings
     from energy_forecast.data.openmeteo_client import OpenMeteoClient
     from energy_forecast.db.repositories.weather_repo import WeatherSnapshotRepository
 
@@ -149,7 +149,7 @@ async def run_scheduler(
 
 def main() -> None:
     """CLI entry point for manual execution."""
-    from energy_forecast.config.settings import load_config
+    from energy_forecast.config import load_config
     from energy_forecast.db import create_db_engine, create_session_factory
 
     settings = load_config()

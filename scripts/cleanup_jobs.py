@@ -135,7 +135,7 @@ async def main(days: int, dry_run: bool) -> None:
 
     load_dotenv()
 
-    from energy_forecast.config.settings import load_config
+    from energy_forecast.config import load_config
     from energy_forecast.db import create_db_engine, create_session_factory
 
     settings = load_config()

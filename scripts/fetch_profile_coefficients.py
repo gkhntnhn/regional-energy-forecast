@@ -30,7 +30,7 @@ from tenacity import (
     wait_exponential,
 )
 
-from energy_forecast.config.settings import EnvConfig
+from energy_forecast.config import EnvConfig
 from energy_forecast.data.exceptions import EpiasApiError, EpiasAuthError
 from energy_forecast.utils import TZ_ISTANBUL
 

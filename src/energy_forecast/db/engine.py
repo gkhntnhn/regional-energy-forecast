@@ -17,7 +17,7 @@ if TYPE_CHECKING:
     from sqlalchemy import Engine
     from sqlalchemy.ext.asyncio import AsyncEngine
 
-    from energy_forecast.config.settings import DatabaseConfig
+    from energy_forecast.config import DatabaseConfig
 
 
 # ---------------------------------------------------------------------------

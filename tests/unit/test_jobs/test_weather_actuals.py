@@ -9,7 +9,7 @@ import pandas as pd
 import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
-from energy_forecast.config.settings import Settings
+from energy_forecast.config import Settings
 from energy_forecast.jobs.weather_actuals import (
     fetch_and_store_actuals,
     main,
@@ -21,7 +21,7 @@ TZ = timezone(timedelta(hours=3))
 # Patch targets — lazy imports inside fetch_and_store_actuals resolve from source modules
 _PATCH_REPO = "energy_forecast.db.repositories.weather_repo.WeatherSnapshotRepository"
 _PATCH_CLIENT = "energy_forecast.data.openmeteo_client.OpenMeteoClient"
-_PATCH_LOAD_CONFIG = "energy_forecast.config.settings.load_config"
+_PATCH_LOAD_CONFIG = "energy_forecast.config.load_config"
 _PATCH_CREATE_ENGINE = "energy_forecast.db.create_db_engine"
 _PATCH_CREATE_SF = "energy_forecast.db.create_session_factory"
 

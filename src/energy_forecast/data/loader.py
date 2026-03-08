@@ -7,7 +7,7 @@ from pathlib import Path
 import pandas as pd
 from loguru import logger
 
-from energy_forecast.config.settings import DataLoaderConfig
+from energy_forecast.config import DataLoaderConfig
 from energy_forecast.data.exceptions import DataValidationError
 
 

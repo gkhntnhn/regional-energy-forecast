@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from energy_forecast.config.settings import WeatherFeaturesConfig
+from energy_forecast.config import WeatherFeaturesConfig
 from energy_forecast.features.weather import WeatherFeatureEngineer, map_wmo_group
 
 

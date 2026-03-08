@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from energy_forecast.config.settings import CalendarConfig
+from energy_forecast.config import CalendarConfig
 from energy_forecast.features.calendar import CalendarFeatureEngineer
 
 # ---------------------------------------------------------------------------

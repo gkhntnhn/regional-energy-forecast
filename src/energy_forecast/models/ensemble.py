@@ -18,7 +18,7 @@ import pandas as pd
 from catboost import CatBoostRegressor
 from loguru import logger
 
-from energy_forecast.config.settings import EnsembleConfig
+from energy_forecast.config import EnsembleConfig
 from energy_forecast.models.base import PREDICTION_COL, BaseForecaster
 from energy_forecast.models.tft import TFTForecaster
 from energy_forecast.utils.prophet_utils import to_prophet_format

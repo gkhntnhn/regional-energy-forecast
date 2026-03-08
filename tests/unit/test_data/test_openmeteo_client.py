@@ -11,7 +11,7 @@ import openmeteo_requests
 import pandas as pd
 import pytest
 
-from energy_forecast.config.settings import (
+from energy_forecast.config import (
     CityConfig,
     GeocodingConfig,
     OpenMeteoApiConfig,

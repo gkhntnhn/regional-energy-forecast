@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from energy_forecast.config.settings import ConsumptionConfig
+from energy_forecast.config import ConsumptionConfig
 from energy_forecast.features.consumption import ConsumptionFeatureEngineer
 
 

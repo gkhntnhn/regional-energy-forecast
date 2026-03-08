@@ -7,7 +7,7 @@ from typing import Any
 import pandas as pd
 import pytest
 
-from energy_forecast.config.settings import SolarConfig
+from energy_forecast.config import SolarConfig
 from energy_forecast.features.solar import SolarFeatureEngineer
 
 

@@ -20,7 +20,7 @@ from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
-from energy_forecast.config.settings import load_config
+from energy_forecast.config import load_config
 from energy_forecast.serving.exceptions import APIError, JobNotFoundError, JobQueueFullError
 from energy_forecast.serving.job_manager import JobManager
 from energy_forecast.serving.schemas import (
@@ -127,7 +127,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         settings = load_config()
     except FileNotFoundError:
         logger.warning("Config files not found, using defaults")
-        from energy_forecast.config.settings import get_default_config
+        from energy_forecast.config import get_default_config
 
         settings = get_default_config()
 

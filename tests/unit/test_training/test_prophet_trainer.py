@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from energy_forecast.config.settings import (
+from energy_forecast.config import (
     CrossValidationConfig,
     HyperparameterConfig,
     ModelSearchConfig,
@@ -84,7 +84,7 @@ def settings_with_prophet(tmp_path: Any) -> Settings:
     holidays_df.to_parquet(holidays_path)
 
     # Create minimal Settings with Prophet config
-    from energy_forecast.config.settings import (
+    from energy_forecast.config import (
         CityConfig,
         DataLoaderConfig,
         PathsConfig,
@@ -247,7 +247,7 @@ class TestLoadHolidays:
 
     def test_holidays_missing_file(self, settings_with_prophet: Settings) -> None:
         """Test graceful handling of missing holidays file."""
-        from energy_forecast.config.settings import DataLoaderConfig, PathsConfig
+        from energy_forecast.config import DataLoaderConfig, PathsConfig
 
         # Create settings with non-existent holidays path
         settings = settings_with_prophet.model_copy(

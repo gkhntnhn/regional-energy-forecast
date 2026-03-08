@@ -12,7 +12,7 @@ import requests_cache
 from loguru import logger
 from retry_requests import retry
 
-from energy_forecast.config.settings import CityConfig, OpenMeteoConfig, RegionConfig
+from energy_forecast.config import CityConfig, OpenMeteoConfig, RegionConfig
 from energy_forecast.data.exceptions import OpenMeteoApiError
 
 

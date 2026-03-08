@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from energy_forecast.config.settings import SearchParamConfig
+from energy_forecast.config import SearchParamConfig
 
 
 def suggest_params(
