@@ -714,10 +714,8 @@ class EpiasConfig(BaseModel, frozen=True):
     source: EpiasSourceConfig = Field(default_factory=EpiasSourceConfig)
     variables: list[str] = Field(
         default_factory=lambda: [
-            "FDPP",
             "Real_Time_Consumption",
             "DAM_Purchase",
-            "Bilateral_Agreement_Purchase",
             "Load_Forecast",
         ]
     )
@@ -750,15 +748,15 @@ class CatBoostTrainingConfig(BaseModel, frozen=True):
     """CatBoost training parameters."""
 
     task_type: Literal["CPU", "GPU"] = "CPU"
-    iterations: int = Field(default=2000, ge=100)
+    iterations: int = Field(default=5000, ge=100)
     learning_rate: float = Field(default=0.05, gt=0.0, lt=1.0)
     depth: int = Field(default=6, ge=1, le=16)
-    loss_function: str = "MAE"
+    loss_function: str = "RMSE"
     eval_metric: str = "MAPE"
-    early_stopping_rounds: int = Field(default=200, ge=1)
+    early_stopping_rounds: int = Field(default=100, ge=1)
     has_time: bool = True
     random_seed: int = 42
-    verbose: int = 100
+    verbose: int = 500
 
 
 class CatBoostNanHandling(BaseModel, frozen=True):
@@ -789,6 +787,7 @@ class CatBoostConfig(BaseModel, frozen=True):
             "is_bridge_day",
             "tatil_tipi",
             "bayram_gun_no",
+            "holiday_duration",
             # Interaction (flag x hour)
             "is_holiday_x_hour",
             "is_ramadan_x_hour",
@@ -797,7 +796,6 @@ class CatBoostConfig(BaseModel, frozen=True):
             "is_business_hours",
             "is_peak",
             "is_ramp_morning",
-            "is_ramp_evening",
             "is_friday",
             "is_monday",
             "is_sunday",
@@ -805,16 +803,8 @@ class CatBoostConfig(BaseModel, frozen=True):
             "weather_code",
             "weather_group",
             "wth_extreme_cold",
-            "wth_extreme_hot",
-            "wth_extreme_wind",
-            "wth_heavy_precip",
-            "wth_is_severe",
-            "wth_severity",
             # Season / solar
             "is_cooling_season",
-            "is_heating_season",
-            "sol_is_daylight",
-            "sol_daylight_hours",
         ]
     )
     nan_handling: CatBoostNanHandling = Field(default_factory=CatBoostNanHandling)
@@ -896,16 +886,16 @@ class ProphetConfig(BaseModel, frozen=True):
             ProphetRegressorConfig(name="consumption_lag_720", mode="multiplicative"),
             # Weather
             ProphetRegressorConfig(name="temperature_2m", mode="multiplicative"),
+            ProphetRegressorConfig(name="apparent_temperature", mode="multiplicative"),
             ProphetRegressorConfig(name="relative_humidity_2m", mode="additive"),
-            ProphetRegressorConfig(name="wind_speed_10m", mode="additive"),
             ProphetRegressorConfig(name="shortwave_radiation", mode="multiplicative"),
             ProphetRegressorConfig(name="wth_cdd", mode="multiplicative"),
             ProphetRegressorConfig(name="wth_hdd", mode="multiplicative"),
             # Deterministic (calendar/solar)
             ProphetRegressorConfig(name="is_weekend", mode="multiplicative"),
+            ProphetRegressorConfig(name="is_sunday", mode="multiplicative"),
             ProphetRegressorConfig(name="is_holiday", mode="multiplicative"),
             ProphetRegressorConfig(name="is_business_hours", mode="multiplicative"),
-            ProphetRegressorConfig(name="is_peak", mode="multiplicative"),
             ProphetRegressorConfig(name="sol_elevation", mode="multiplicative"),
         ]
     )
@@ -973,6 +963,11 @@ class TFTCovariatesConfig(BaseModel, frozen=True):
             "apparent_temperature",
             "shortwave_radiation",
             "sol_elevation",
+            "wth_cdd",
+            "wth_hdd",
+            "hdd_x_hour",
+            "temp_x_hour",
+            "cdd_x_hour",
         ]
     )
     time_varying_unknown: list[str] = Field(
@@ -990,13 +985,9 @@ class TFTCovariatesConfig(BaseModel, frozen=True):
             "consumption_window_720_std",
             "consumption_window_48_max",
             "consumption_window_336_max",
-            "consumption_window_720_mean",
-            "consumption_window_336_min",
-            "consumption_q75_168",
             "temperature_2m_window_24_max",
             "temperature_2m_window_12_max",
             "temperature_2m_window_6_mean",
-            "hdd_x_hour",
         ]
     )
 

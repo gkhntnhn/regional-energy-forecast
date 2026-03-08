@@ -14,7 +14,6 @@ from energy_forecast.features.epias import EpiasFeatureEngineer
 EPIAS_VARIABLES: list[str] = [
     "Real_Time_Consumption",
     "DAM_Purchase",
-    "Bilateral_Agreement_Purchase",
     "Load_Forecast",
 ]
 
@@ -130,7 +129,7 @@ class TestEpiasFeatureEngineer:
         """Missing column is skipped without error."""
         rng = np.random.default_rng(42)
         idx = pd.date_range("2024-01-01", periods=720, freq="h")
-        # Only include 2 of 4 variables
+        # Only include 2 of 3 variables
         df = pd.DataFrame(
             {
                 "Real_Time_Consumption": 500.0 + rng.random(720) * 1000,
@@ -146,12 +145,12 @@ class TestEpiasFeatureEngineer:
         # Should not have lag features for missing variables
         assert "DAM_Purchase_lag_48" not in result.columns
 
-    def test_all_five_variables(
+    def test_all_variables(
         self,
         engineer: EpiasFeatureEngineer,
         epias_df: pd.DataFrame,
     ) -> None:
-        """Lag features are created for all 4 active EPIAS variables."""
+        """Lag features are created for all 3 active EPIAS variables."""
         result = engineer.fit_transform(epias_df)
         for var in EPIAS_VARIABLES:
             col = f"{var}_lag_48"

@@ -197,13 +197,16 @@ def run_catboost(
     data: pd.DataFrame,
     *,
     no_mlflow: bool = False,
-) -> None:
+) -> dict[str, Any]:
     """Run CatBoost training pipeline.
 
     Args:
         settings: Full application settings.
         data: Feature-engineered DataFrame.
         no_mlflow: If True, disable MLflow tracking.
+
+    Returns:
+        Dict with metrics and model_path for DB recording.
     """
     tracker = ExperimentTracker(
         experiment_name="energy-forecast-catboost",
@@ -218,19 +221,38 @@ def run_catboost(
     logger.info("Best params: {}", result.best_params)
     logger.info("Training time: {:.1f}s", result.training_time_seconds)
 
+    from datetime import datetime
+
+    from energy_forecast.utils import TZ_ISTANBUL
+
+    run_ts = datetime.now(tz=TZ_ISTANBUL).strftime("%Y-%m-%d_%H-%M")
+    return {
+        "metrics": {
+            "val_mape": result.training_result.avg_val_mape,
+            "test_mape": result.training_result.avg_test_mape,
+        },
+        "model_path": str(
+            Path(settings.paths.models_dir) / "catboost" / f"catboost_{run_ts}"
+        ),
+        "best_params": result.best_params,
+    }
+
 
 def run_prophet(
     settings: Settings,
     data: pd.DataFrame,
     *,
     no_mlflow: bool = False,
-) -> None:
+) -> dict[str, Any]:
     """Run Prophet training pipeline.
 
     Args:
         settings: Full application settings.
         data: Feature-engineered DataFrame.
         no_mlflow: If True, disable MLflow tracking.
+
+    Returns:
+        Dict with metrics and model_path for DB recording.
     """
     from energy_forecast.training.prophet_trainer import ProphetTrainer
 
@@ -247,19 +269,38 @@ def run_prophet(
     logger.info("Best params: {}", result.best_params)
     logger.info("Training time: {:.1f}s", result.training_time_seconds)
 
+    from datetime import datetime
+
+    from energy_forecast.utils import TZ_ISTANBUL
+
+    run_ts = datetime.now(tz=TZ_ISTANBUL).strftime("%Y-%m-%d_%H-%M")
+    return {
+        "metrics": {
+            "val_mape": result.training_result.avg_val_mape,
+            "test_mape": result.training_result.avg_test_mape,
+        },
+        "model_path": str(
+            Path(settings.paths.models_dir) / "prophet" / f"prophet_{run_ts}"
+        ),
+        "best_params": result.best_params,
+    }
+
 
 def run_tft(
     settings: Settings,
     data: pd.DataFrame,
     *,
     no_mlflow: bool = False,
-) -> None:
+) -> dict[str, Any]:
     """Run TFT training pipeline.
 
     Args:
         settings: Full application settings.
         data: Feature-engineered DataFrame.
         no_mlflow: If True, disable MLflow tracking.
+
+    Returns:
+        Dict with metrics and model_path for DB recording.
     """
     from energy_forecast.training.tft_trainer import TFTTrainer
 
@@ -276,6 +317,22 @@ def run_tft(
     logger.info("Best params: {}", result.best_params)
     logger.info("Training time: {:.1f}s", result.training_time_seconds)
 
+    from datetime import datetime
+
+    from energy_forecast.utils import TZ_ISTANBUL
+
+    run_ts = datetime.now(tz=TZ_ISTANBUL).strftime("%Y-%m-%d_%H-%M")
+    return {
+        "metrics": {
+            "val_mape": result.training_result.avg_val_mape,
+            "test_mape": result.training_result.avg_test_mape,
+        },
+        "model_path": str(
+            Path(settings.paths.models_dir) / "tft" / f"tft_{run_ts}"
+        ),
+        "best_params": result.best_params,
+    }
+
 
 def run_ensemble(
     settings: Settings,
@@ -283,7 +340,7 @@ def run_ensemble(
     *,
     no_mlflow: bool = False,
     active_models_override: list[str] | None = None,
-) -> None:
+) -> dict[str, Any]:
     """Run Ensemble training pipeline (CatBoost + Prophet + TFT).
 
     Args:
@@ -291,6 +348,9 @@ def run_ensemble(
         data: Feature-engineered DataFrame.
         no_mlflow: If True, disable MLflow tracking.
         active_models_override: Override active models from config.
+
+    Returns:
+        Dict with metrics and model_path for DB recording.
     """
     from energy_forecast.training.ensemble_trainer import (
         EnsembleTrainer,
@@ -335,6 +395,15 @@ def run_ensemble(
     if mode == "weighted_average":
         logger.info("Optimized weights: {}", result.training_result.optimized_weights)
     logger.info("Training time: {:.1f}s", result.training_time_seconds)
+
+    return {
+        "metrics": {
+            "val_mape": result.training_result.avg_val_mape,
+            "test_mape": result.training_result.avg_test_mape,
+        },
+        "model_path": str(ensemble_dir),
+        "best_params": result.training_result.optimized_weights,
+    }
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -404,9 +473,15 @@ def main(argv: list[str] | None = None) -> None:
 
     t0 = time.monotonic()
     try:
-        runner()
+        run_result = runner()
         duration = int(time.monotonic() - t0)
-        _complete_model_run(model_run, duration=duration)
+        _complete_model_run(
+            model_run,
+            duration=duration,
+            metrics=run_result.get("metrics", {}),
+            model_path=run_result.get("model_path", ""),
+            hyperparams=run_result.get("best_params"),
+        )
     except Exception:
         duration = int(time.monotonic() - t0)
         _fail_model_run(model_run, duration=duration)
@@ -462,7 +537,14 @@ def _start_model_run(
         return None
 
 
-def _complete_model_run(run_id: int | None, *, duration: int) -> None:
+def _complete_model_run(
+    run_id: int | None,
+    *,
+    duration: int,
+    metrics: dict[str, float] | None = None,
+    model_path: str = "",
+    hyperparams: dict[str, Any] | None = None,
+) -> None:
     """Record training completion in DB (non-fatal)."""
     if run_id is None:
         return
@@ -482,8 +564,9 @@ def _complete_model_run(run_id: int | None, *, duration: int) -> None:
             repo = ModelRunRepository(session)
             repo.complete_run(
                 run_id,
-                metrics={},
-                model_path="",
+                metrics=metrics or {},
+                model_path=model_path,
+                hyperparams=hyperparams,
                 duration_seconds=duration,
             )
             session.commit()

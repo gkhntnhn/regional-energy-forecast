@@ -15,8 +15,18 @@ from pathlib import Path
 from typing import Any, ClassVar
 
 from loguru import logger
+from tenacity import (
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
 
 from energy_forecast.utils import TZ_ISTANBUL
+
+
+class GDriveTransientError(Exception):
+    """Transient GDrive API error (rate limit, server error)."""
 
 
 class GoogleDriveStorage:
@@ -210,6 +220,28 @@ class GoogleDriveStorage:
 
         return parent_id
 
+    @staticmethod
+    def _wrap_api_error(e: Exception) -> Exception:
+        """Wrap Google API HttpError into GDriveTransientError if retryable."""
+        try:
+            from googleapiclient.errors import HttpError
+
+            if isinstance(e, HttpError):
+                status = e.resp.status if e.resp else 0
+                if status in (429, 500, 502, 503):
+                    return GDriveTransientError(
+                        f"GDrive API {status}: {e}"
+                    )
+        except ImportError:
+            pass
+        return e
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=30),
+        retry=retry_if_exception_type(GDriveTransientError),
+        reraise=True,
+    )
     def _find_folder(self, name: str, parent_id: str) -> str | None:
         """Find existing folder by name under parent."""
         service = self._get_service()
@@ -220,16 +252,25 @@ class GoogleDriveStorage:
             f"mimeType='application/vnd.google-apps.folder' and "
             f"trashed=false"
         )
-        results = (
-            service.files()
-            .list(q=query, fields="files(id)")
-            .execute()
-        )
+        try:
+            results = (
+                service.files()
+                .list(q=query, fields="files(id)")
+                .execute()
+            )
+        except Exception as e:
+            raise self._wrap_api_error(e) from e
         existing = results.get("files", [])
         if existing:
             return existing[0]["id"]  # type: ignore[no-any-return]
         return None
 
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=30),
+        retry=retry_if_exception_type(GDriveTransientError),
+        reraise=True,
+    )
     def _create_folder(self, name: str, parent_id: str) -> str:
         """Create a folder in GDrive."""
         service = self._get_service()
@@ -238,14 +279,23 @@ class GoogleDriveStorage:
             "mimeType": "application/vnd.google-apps.folder",
             "parents": [parent_id],
         }
-        folder = (
-            service.files()
-            .create(body=metadata, fields="id")
-            .execute()
-        )
+        try:
+            folder = (
+                service.files()
+                .create(body=metadata, fields="id")
+                .execute()
+            )
+        except Exception as e:
+            raise self._wrap_api_error(e) from e
         folder_id: str = folder["id"]
         return folder_id
 
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=30),
+        retry=retry_if_exception_type(GDriveTransientError),
+        reraise=True,
+    )
     def _upload_file(
         self, name: str, path: Path, folder_id: str
     ) -> str:
@@ -255,10 +305,13 @@ class GoogleDriveStorage:
         service = self._get_service()
         metadata = {"name": name, "parents": [folder_id]}
         media = MediaFileUpload(str(path), resumable=True)
-        result = (
-            service.files()
-            .create(body=metadata, media_body=media, fields="id")
-            .execute()
-        )
+        try:
+            result = (
+                service.files()
+                .create(body=metadata, media_body=media, fields="id")
+                .execute()
+            )
+        except Exception as e:
+            raise self._wrap_api_error(e) from e
         file_id: str = result["id"]
         return file_id
