@@ -948,7 +948,7 @@ class TestBuildOofDataframe:
 
         # Mock TimeSeriesSplitter to return 3 splits with matching val slices
         with patch(
-            "energy_forecast.training.ensemble_trainer.TimeSeriesSplitter"
+            "energy_forecast.training.ensemble_stacking.TimeSeriesSplitter"
         ) as _mock_tss:
             mock_splitter = MagicMock()
             splits = []
@@ -1010,7 +1010,7 @@ class TestBuildOofDataframe:
             model_results[model_name] = mock_result
 
         with patch(
-            "energy_forecast.training.ensemble_trainer.TimeSeriesSplitter"
+            "energy_forecast.training.ensemble_stacking.TimeSeriesSplitter"
         ) as _mock_tss:
             mock_splitter = MagicMock()
             splits = []
@@ -1064,7 +1064,7 @@ class TestTrainMetaLearner:
         )
 
         with patch(
-            "energy_forecast.training.ensemble_trainer.CatBoostRegressor"
+            "energy_forecast.training.ensemble_stacking.CatBoostRegressor"
         ) as _mock_cbr:
             mock_meta = MagicMock()
             mock_meta.predict.return_value = rng.random(40) * 400 + 800
@@ -1105,7 +1105,7 @@ class TestTrainMetaLearner:
         )
 
         with patch(
-            "energy_forecast.training.ensemble_trainer.CatBoostRegressor"
+            "energy_forecast.training.ensemble_stacking.CatBoostRegressor"
         ) as _mock_cbr:
             mock_meta = MagicMock()
             mock_meta.predict.return_value = np.ones(20) * 1000
@@ -1184,7 +1184,7 @@ class TestComputeStackingTestMape:
             model_results[model_name] = mock_result
 
         with patch(
-            "energy_forecast.training.ensemble_trainer.TimeSeriesSplitter"
+            "energy_forecast.training.ensemble_stacking.TimeSeriesSplitter"
         ) as _mock_tss:
             mock_splitter = MagicMock()
             splits = []

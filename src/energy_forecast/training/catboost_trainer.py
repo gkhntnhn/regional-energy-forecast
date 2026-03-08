@@ -6,7 +6,6 @@ training on calendar-month splits, and final model training on all data.
 
 from __future__ import annotations
 
-import os
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -24,30 +23,11 @@ from optuna.samplers import TPESampler
 
 from energy_forecast.config import Settings
 from energy_forecast.training.experiment import ExperimentTracker
-from energy_forecast.training.metrics import MetricsResult, compute_all
+from energy_forecast.training.metrics import compute_all
+from energy_forecast.training.results import SplitResult
 from energy_forecast.training.search import suggest_params
 from energy_forecast.training.splitter import SplitInfo, TimeSeriesSplitter
-
-# ---------------------------------------------------------------------------
-# Result dataclasses
-# ---------------------------------------------------------------------------
-
-
-@dataclass(frozen=True)
-class SplitResult:
-    """Result from a single CV split."""
-
-    split_idx: int
-    train_metrics: MetricsResult
-    val_metrics: MetricsResult
-    test_metrics: MetricsResult
-    best_iteration: int
-    val_month: str
-    test_month: str
-    val_predictions: np.ndarray[Any, np.dtype[np.floating[Any]]] | None = None
-    val_actuals: np.ndarray[Any, np.dtype[np.floating[Any]]] | None = None
-    test_predictions: np.ndarray[Any, np.dtype[np.floating[Any]]] | None = None
-    test_actuals: np.ndarray[Any, np.dtype[np.floating[Any]]] | None = None
+from energy_forecast.training.utils import optuna_storage
 
 
 @dataclass(frozen=True)
@@ -103,21 +83,10 @@ class CatBoostTrainer:
     # -- Optuna storage --
 
     def _optuna_storage(self, model_name: str) -> optuna.storages.RDBStorage | str | None:
-        """Return Optuna storage: PostgreSQL if available, else SQLite.
-
-        Returns None for very short runs (n_trials <= 3) to avoid overhead.
-        """
-        if self._search_config.n_trials <= 3:
-            return None
-        db_url = os.environ.get("DATABASE_URL_SYNC", "")
-        if db_url:
-            return optuna.storages.RDBStorage(
-                url=db_url,
-                engine_kwargs={"pool_size": 1, "max_overflow": 0},
-            )
-        studies_dir = Path(self._settings.paths.models_dir) / "optuna_studies"
-        studies_dir.mkdir(parents=True, exist_ok=True)
-        return f"sqlite:///{studies_dir / model_name}.db"
+        """Return Optuna storage (delegates to shared ``optuna_storage``)."""
+        return optuna_storage(
+            self._search_config.n_trials, model_name, self._settings.paths.models_dir,
+        )
 
     # -- X/y split (resolves M4 leakage audit warning) --
 

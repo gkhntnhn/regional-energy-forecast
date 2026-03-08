@@ -21,6 +21,7 @@ from loguru import logger
 from energy_forecast.config import EnsembleConfig
 from energy_forecast.models.base import PREDICTION_COL, BaseForecaster
 from energy_forecast.models.tft import TFTForecaster
+from energy_forecast.training.ensemble_utils import build_context_features
 from energy_forecast.utils.prophet_utils import to_prophet_format
 
 if TYPE_CHECKING:
@@ -299,26 +300,11 @@ class EnsembleForecaster(BaseForecaster):
             if model_name in predictions:
                 meta_features[f"pred_{model_name}"] = predictions[model_name]
 
-        # Context features from DatetimeIndex
-        dt_idx = pd.DatetimeIndex(X.index)
-        if "hour" in self._context_features:
-            meta_features["hour"] = dt_idx.hour
-        if "day_of_week" in self._context_features:
-            meta_features["day_of_week"] = dt_idx.dayofweek
-        if "is_weekend" in self._context_features:
-            meta_features["is_weekend"] = (dt_idx.dayofweek >= 5).astype(int)
-        if "month" in self._context_features:
-            meta_features["month"] = dt_idx.month
-        if "is_holiday" in self._context_features:
-            if "is_holiday" in X.columns:
-                meta_features["is_holiday"] = X["is_holiday"].values
-            else:
-                meta_features["is_holiday"] = 0
-
-        # Categorical columns to string (matching training format)
-        for col in ["hour", "day_of_week", "month"]:
-            if col in meta_features.columns:
-                meta_features[col] = meta_features[col].astype(str)
+        # Context features from DatetimeIndex + categorical conversion
+        build_context_features(
+            meta_features, X, list(self._context_features),
+            cast_categorical_to_str=True,
+        )
 
         assert self._meta_model is not None
         return np.asarray(self._meta_model.predict(meta_features), dtype=np.float64)
