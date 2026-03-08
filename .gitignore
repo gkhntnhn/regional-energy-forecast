@@ -108,3 +108,6 @@ data/archive/
 
 # Database backups
 data/backups/
+
+# Code walkthrough docs (local only)
+docs/code-walkthrough/
