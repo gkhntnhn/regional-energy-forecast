@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 from sqlalchemy import (
     Boolean,
     CheckConstraint,
+    Date,
     DateTime,
     Float,
     ForeignKey,
@@ -311,3 +312,153 @@ class ModelRunModel(Base):
         Index("idx_model_runs_type", "model_type"),
         Index("idx_model_runs_status", "status"),
     )
+
+
+# ---------------------------------------------------------------------------
+# External data tables (M11 Phase 1)
+# ---------------------------------------------------------------------------
+
+
+class EpiasMarketModel(Base):
+    """EPIAS market data — 5 variables (FDPP, RTC, DAM, Bilateral, LoadForecast)."""
+
+    __tablename__ = "epias_market"
+
+    dt: Mapped[datetime] = mapped_column(
+        "datetime", DateTime(timezone=True), primary_key=True
+    )
+    fdpp: Mapped[float | None] = mapped_column(Float, nullable=True)
+    rtc: Mapped[float | None] = mapped_column(Float, nullable=True)
+    dam_purchase: Mapped[float | None] = mapped_column(Float, nullable=True)
+    bilateral: Mapped[float | None] = mapped_column(Float, nullable=True)
+    load_forecast: Mapped[float | None] = mapped_column(Float, nullable=True)
+    fetched_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (Index("ix_epias_market_fetched_at", "fetched_at"),)
+
+
+class EpiasGenerationModel(Base):
+    """EPIAS real-time generation data — 17 fuel types."""
+
+    __tablename__ = "epias_generation"
+
+    dt: Mapped[datetime] = mapped_column(
+        "datetime", DateTime(timezone=True), primary_key=True
+    )
+    gen_asphaltite_coal: Mapped[float | None] = mapped_column(Float, nullable=True)
+    gen_biomass: Mapped[float | None] = mapped_column(Float, nullable=True)
+    gen_black_coal: Mapped[float | None] = mapped_column(Float, nullable=True)
+    gen_dammed_hydro: Mapped[float | None] = mapped_column(Float, nullable=True)
+    gen_fueloil: Mapped[float | None] = mapped_column(Float, nullable=True)
+    gen_geothermal: Mapped[float | None] = mapped_column(Float, nullable=True)
+    gen_import_coal: Mapped[float | None] = mapped_column(Float, nullable=True)
+    gen_import_export: Mapped[float | None] = mapped_column(Float, nullable=True)
+    gen_lignite: Mapped[float | None] = mapped_column(Float, nullable=True)
+    gen_lng: Mapped[float | None] = mapped_column(Float, nullable=True)
+    gen_naphta: Mapped[float | None] = mapped_column(Float, nullable=True)
+    gen_natural_gas: Mapped[float | None] = mapped_column(Float, nullable=True)
+    gen_river: Mapped[float | None] = mapped_column(Float, nullable=True)
+    gen_sun: Mapped[float | None] = mapped_column(Float, nullable=True)
+    gen_total: Mapped[float | None] = mapped_column(Float, nullable=True)
+    gen_wasteheat: Mapped[float | None] = mapped_column(Float, nullable=True)
+    gen_wind: Mapped[float | None] = mapped_column(Float, nullable=True)
+    fetched_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (Index("ix_epias_generation_fetched_at", "fetched_at"),)
+
+
+class WeatherCacheModel(Base):
+    """Weather observations — per city, per source (historical/forecast)."""
+
+    __tablename__ = "weather_cache"
+
+    dt: Mapped[datetime] = mapped_column(
+        "datetime", DateTime(timezone=True), primary_key=True
+    )
+    city: Mapped[str] = mapped_column(String(50), primary_key=True)
+    source: Mapped[str] = mapped_column(String(20), primary_key=True)
+    temperature_2m: Mapped[float | None] = mapped_column(Float, nullable=True)
+    apparent_temperature: Mapped[float | None] = mapped_column(Float, nullable=True)
+    relative_humidity_2m: Mapped[float | None] = mapped_column(Float, nullable=True)
+    dew_point_2m: Mapped[float | None] = mapped_column(Float, nullable=True)
+    precipitation: Mapped[float | None] = mapped_column(Float, nullable=True)
+    snow_depth: Mapped[float | None] = mapped_column(Float, nullable=True)
+    surface_pressure: Mapped[float | None] = mapped_column(Float, nullable=True)
+    wind_speed_10m: Mapped[float | None] = mapped_column(Float, nullable=True)
+    wind_direction_10m: Mapped[float | None] = mapped_column(Float, nullable=True)
+    shortwave_radiation: Mapped[float | None] = mapped_column(Float, nullable=True)
+    weather_code: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
+    fetched_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        Index("ix_weather_cache_fetched_at", "fetched_at"),
+        Index("ix_weather_cache_city", "city"),
+        Index("ix_weather_cache_source", "source"),
+    )
+
+
+class TurkishHolidayModel(Base):
+    """Turkish holiday calendar — raw parquet data (tatil_tipi derived by CalendarFE)."""
+
+    __tablename__ = "turkish_holidays"
+
+    date: Mapped[date] = mapped_column(Date, primary_key=True)
+    # holiday_name is None for Ramadan days (tracked via is_ramadan)
+    holiday_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # raw_holiday_name: original Turkish name from parquet (1:1 mapping)
+    raw_holiday_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # is_ramadan: 0 = regular day, 1 = Ramadan period
+    is_ramadan: Mapped[int] = mapped_column(
+        SmallInteger, nullable=False, server_default="0"
+    )
+    # bayram_gun_no: 0 = not a holiday, 1-4 = holiday day number
+    bayram_gun_no: Mapped[int] = mapped_column(
+        SmallInteger, nullable=False, server_default="0"
+    )
+    # bayrama_kalan_gun: days until next bayram, -1 = not applicable
+    bayrama_kalan_gun: Mapped[int] = mapped_column(
+        SmallInteger, nullable=False, server_default="-1"
+    )
+
+
+class ProfileCoefficientModel(Base):
+    """EPİAŞ profile coefficients — 14 columns (10 base + 4 aggregate)."""
+
+    __tablename__ = "profile_coefficients"
+
+    dt: Mapped[datetime] = mapped_column(
+        "datetime", DateTime(timezone=True), primary_key=True
+    )
+    # Base profiles (10) — voltage-level specific
+    profile_residential_lv: Mapped[float | None] = mapped_column(Float, nullable=True)
+    profile_residential_mv: Mapped[float | None] = mapped_column(Float, nullable=True)
+    profile_industrial_lv: Mapped[float | None] = mapped_column(Float, nullable=True)
+    profile_industrial_mv: Mapped[float | None] = mapped_column(Float, nullable=True)
+    profile_commercial_lv: Mapped[float | None] = mapped_column(Float, nullable=True)
+    profile_commercial_mv: Mapped[float | None] = mapped_column(Float, nullable=True)
+    profile_agricultural_irrigation_lv: Mapped[float | None] = mapped_column(
+        Float, nullable=True
+    )
+    profile_agricultural_irrigation_mv: Mapped[float | None] = mapped_column(
+        Float, nullable=True
+    )
+    profile_lighting: Mapped[float | None] = mapped_column(Float, nullable=True)
+    profile_government: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # Aggregate profiles (4) — voltage-level totals
+    profile_residential: Mapped[float | None] = mapped_column(Float, nullable=True)
+    profile_industrial: Mapped[float | None] = mapped_column(Float, nullable=True)
+    profile_commercial: Mapped[float | None] = mapped_column(Float, nullable=True)
+    profile_agricultural_irrigation: Mapped[float | None] = mapped_column(
+        Float, nullable=True
+    )
+    fetched_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (Index("ix_profile_coefficients_fetched_at", "fetched_at"),)

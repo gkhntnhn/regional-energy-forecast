@@ -1,4 +1,4 @@
-.PHONY: install test lint format serve train-catboost train-prophet train-tft train-ensemble prepare-data clean generate-holidays backfill-epias db-up db-down db-migrate db-revision db-downgrade fetch-weather-actuals db-backup promote-model cleanup-old-data cleanup-dry-run help
+.PHONY: install test lint format serve train-catboost train-prophet train-tft train-ensemble prepare-data clean generate-holidays backfill-epias db-up db-down db-migrate db-revision db-downgrade fetch-weather-actuals db-backup promote-model cleanup-old-data cleanup-dry-run seed-db seed-db-full help
 
 install: ## Install dependencies
 	uv sync --all-extras
@@ -67,6 +67,12 @@ cleanup-old-data: ## Apply retention policy (90 days default)
 
 cleanup-dry-run: ## Show what would be deleted (dry run)
 	uv run python scripts/cleanup_jobs.py --days 90 --dry-run
+
+seed-db: ## Seed DB with sample data (data/seed/)
+	uv run python scripts/seed_db.py
+
+seed-db-full: ## Seed DB with all parquet data (full import)
+	uv run python scripts/seed_db.py --full
 
 clean: ## Remove build/cache artifacts
 	find . -type d -name __pycache__ -exec rm -rf {} +
