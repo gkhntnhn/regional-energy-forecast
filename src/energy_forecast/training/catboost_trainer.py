@@ -386,17 +386,8 @@ class CatBoostTrainer:
         with self._tracker.start_run("catboost_final"):
             final_model = self.train_final(df, study.best_params, best_result.avg_best_iteration)
 
-            # Save model to timestamped subdirectory
-            from datetime import datetime
-
-            from energy_forecast.utils import TZ_ISTANBUL
-
-            run_ts = datetime.now(tz=TZ_ISTANBUL).strftime("%Y-%m-%d_%H-%M")
-            model_dir = (
-                Path(self._settings.paths.models_dir)
-                / "catboost"
-                / f"catboost_{run_ts}"
-            )
+            # Save model to fixed directory (overwrite previous)
+            model_dir = Path(self._settings.paths.models_dir) / "catboost"
             model_dir.mkdir(parents=True, exist_ok=True)
             model_path = model_dir / "model.cbm"
             final_model.save_model(str(model_path))

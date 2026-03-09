@@ -78,50 +78,6 @@ def test_client(
     return TestClient(app, raise_server_exceptions=False)
 
 
-class TestFindLatestModelDir:
-    """Tests for _find_latest_model_dir utility."""
-
-    def test_returns_latest_subdir(self, tmp_path: Any) -> None:
-        from energy_forecast.serving.app import _find_latest_model_dir
-
-        (tmp_path / "catboost_2025-01-01_10-00").mkdir()
-        (tmp_path / "catboost_2025-06-01_10-00").mkdir()
-        (tmp_path / "catboost_2025-12-01_10-00").mkdir()
-
-        result = _find_latest_model_dir(tmp_path, "catboost")
-        assert result is not None
-        assert result.name == "catboost_2025-12-01_10-00"
-
-    def test_returns_none_for_empty_dir(self, tmp_path: Any) -> None:
-        from energy_forecast.serving.app import _find_latest_model_dir
-
-        result = _find_latest_model_dir(tmp_path, "catboost")
-        assert result is None
-
-    def test_returns_none_for_nonexistent_dir(self, tmp_path: Any) -> None:
-        from energy_forecast.serving.app import _find_latest_model_dir
-
-        result = _find_latest_model_dir(tmp_path / "nonexistent", "catboost")
-        assert result is None
-
-    def test_ignores_files(self, tmp_path: Any) -> None:
-        from energy_forecast.serving.app import _find_latest_model_dir
-
-        (tmp_path / "catboost_2025-01-01.txt").write_text("not a dir")
-        (tmp_path / "catboost_2025-06-01_10-00").mkdir()
-
-        result = _find_latest_model_dir(tmp_path, "catboost")
-        assert result is not None
-        assert result.name == "catboost_2025-06-01_10-00"
-
-    def test_ignores_non_matching_prefix(self, tmp_path: Any) -> None:
-        from energy_forecast.serving.app import _find_latest_model_dir
-
-        (tmp_path / "prophet_2025-01-01_10-00").mkdir()
-
-        result = _find_latest_model_dir(tmp_path, "catboost")
-        assert result is None
-
 
 class TestHealthEndpoint:
     """Tests for /health endpoint."""

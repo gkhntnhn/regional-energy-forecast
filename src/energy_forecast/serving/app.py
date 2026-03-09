@@ -43,27 +43,6 @@ if TYPE_CHECKING:
     pass
 
 
-def _find_latest_model_dir(base_dir: Path, prefix: str) -> Path | None:
-    """Find the latest timestamped model subdirectory.
-
-    All models use timestamped subdirectories: ``{prefix}_YYYY-MM-DD_HH-MM/``.
-    Scans ``base_dir`` for matching subdirectories and returns the most recent
-    one (sorted by name, so timestamps sort chronologically).
-
-    Args:
-        base_dir: Parent directory (e.g. ``models/catboost``).
-        prefix: Directory name prefix (e.g. ``"catboost"``, ``"prophet"``, ``"tft"``).
-
-    Returns:
-        Path to the latest matching subdirectory, or None if no match found.
-    """
-    if not base_dir.exists():
-        return None
-    subdirs = sorted(
-        (p for p in base_dir.glob(f"{prefix}_*") if p.is_dir()),
-        key=lambda p: p.name,
-    )
-    return subdirs[-1] if subdirs else None
 
 # ---------------------------------------------------------------------------
 # Authentication
@@ -164,25 +143,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         ensemble_dir: Path | None = final_dir / "ensemble"
         logger.info("Serving from final_models/ directory")
     else:
-        catboost_dir = _find_latest_model_dir(models_dir / "catboost", "catboost")
-        catboost_path = (
-            catboost_dir / "model.cbm"
-            if catboost_dir
-            else models_dir / "catboost" / "model.cbm"
-        )
-
-        prophet_dir = _find_latest_model_dir(models_dir / "prophet", "prophet")
-        prophet_path = (
-            prophet_dir / "prophet_model.pkl"
-            if prophet_dir
-            else models_dir / "prophet" / "prophet_model.pkl"
-        )
-
-        tft_dir = _find_latest_model_dir(models_dir / "tft", "tft")
-        tft_path = tft_dir if tft_dir else models_dir / "tft"
-
-        ensemble_dir = _find_latest_model_dir(models_dir / "ensemble", "ensemble")
-        logger.info("Serving from models/ with timestamped discovery")
+        catboost_path = models_dir / "catboost" / "model.cbm"
+        prophet_path = models_dir / "prophet" / "prophet_model.pkl"
+        tft_path = models_dir / "tft"
+        ensemble_dir = models_dir / "ensemble"
+        logger.info("Serving from models/ directory")
 
     pred_config = PredictionServiceConfig(
         models_dir=models_dir,

@@ -549,13 +549,8 @@ class TFTTrainer:
         with self._tracker.start_run("tft_final"):
             final_model = self.train_final(df, study.best_params)
 
-            # Save model to timestamped subdirectory (consistent with CatBoost/Prophet)
-            from datetime import datetime
-
-            from energy_forecast.utils import TZ_ISTANBUL
-
-            run_ts = datetime.now(tz=TZ_ISTANBUL).strftime("%Y-%m-%d_%H-%M")
-            model_dir = Path(self._settings.paths.models_dir) / "tft" / f"tft_{run_ts}"
+            # Save model to fixed directory (overwrite previous)
+            model_dir = Path(self._settings.paths.models_dir) / "tft"
             model_dir.mkdir(parents=True, exist_ok=True)
             final_model.save(model_dir)
             logger.info("Model saved to {}", model_dir)

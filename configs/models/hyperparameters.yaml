@@ -9,8 +9,8 @@ catboost:
   search_space:
     iterations:
       type: int
-      low: 10
-      high: 10            # LOCAL SMOKE TEST (prod: 5000, early stopping decides)
+      low: 100
+      high: 100            # LOCAL SMOKE TEST (prod: 5000, early stopping decides)
     learning_rate:
       type: float
       low: 0.05
@@ -84,7 +84,7 @@ tft:
       log: true
 
 cross_validation:
-  n_splits: 2             # LOCAL SMOKE TEST (prod: 12-fold TSCV)
+  n_splits: 3             # LOCAL SMOKE TEST (prod: 12-fold TSCV)
   val_months: 1
   test_months: 1
   gap_hours: 0

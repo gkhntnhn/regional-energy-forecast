@@ -87,7 +87,11 @@ htmlcov/
 models/optuna_studies/
 
 # Notebooks
-notebooks/.ipynb_checkpoints/
+notebooks/
+!notebooks/.gitkeep
+
+# Training logs
+logs/
 
 # Skills results (generated reports)
 skills_results/

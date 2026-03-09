@@ -6,12 +6,24 @@ All models (CatBoost, Prophet, TFT) use this same tracker.
 
 from __future__ import annotations
 
+import io
+import os
+import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import Any
 
 import numpy as np
 from loguru import logger
+
+# MLflow prints emoji (🏃) on run start/end; Windows cp1254 can't encode it.
+# Reconfigure stdout/stderr to utf-8 with replace error handler.
+for _stream_name in ("stdout", "stderr"):
+    _stream = getattr(sys, _stream_name, None)
+    if isinstance(_stream, io.TextIOWrapper) and _stream.encoding.lower() != "utf-8":
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+
+os.environ.setdefault("PYTHONIOENCODING", "utf-8")
 
 from energy_forecast.training.metrics import MetricsResult
 
@@ -71,10 +83,10 @@ class ExperimentTracker:
         self._mlflow.log_metrics(metrics, step=step)
 
     def log_model(self, model: Any, artifact_path: str = "model") -> None:
-        """Log a CatBoost model artifact."""
+        """Log a CatBoost model artifact via native MLflow CatBoost flavor."""
         if not self._enabled:
             return
-        self._mlflow.catboost.log_model(model, artifact_path=artifact_path)
+        self._mlflow.catboost.log_model(model, name=artifact_path)
 
     def log_prophet_model(self, model: Any, artifact_path: str = "model") -> None:
         """Log a Prophet model artifact using pickle.

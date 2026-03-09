@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import argparse
 import os
-import shutil
 import sys
 import time
 from pathlib import Path
@@ -367,13 +366,8 @@ def run_ensemble(
     )
     result = trainer.run(data)
 
-    # Save ensemble artifacts to timestamped subdirectory
-    from datetime import datetime
-
-    from energy_forecast.utils import TZ_ISTANBUL
-
-    run_ts = datetime.now(tz=TZ_ISTANBUL).strftime("%Y-%m-%d_%H-%M")
-    ensemble_dir = Path(settings.paths.models_dir) / "ensemble" / f"ensemble_{run_ts}"
+    # Save ensemble artifacts to fixed directory (overwrite previous)
+    ensemble_dir = Path(settings.paths.models_dir) / "ensemble"
     ensemble_dir.mkdir(parents=True, exist_ok=True)
 
     # Save weights/config
@@ -491,31 +485,6 @@ def main(argv: list[str] | None = None) -> None:
         _fail_model_run(model_run, duration=duration)
         raise
 
-    # Auto-cleanup: keep only last N runs per model type
-    if args.model == "ensemble":
-        for mt in ["catboost", "prophet", "tft", "ensemble"]:
-            _cleanup_old_runs(mt)
-    else:
-        _cleanup_old_runs(args.model)
-
-
-_MAX_KEPT_RUNS = 3
-
-
-def _cleanup_old_runs(model_type: str, keep: int = _MAX_KEPT_RUNS) -> None:
-    """Remove old model directories, keeping the most recent *keep* runs."""
-    model_dir = Path("models") / model_type
-    if not model_dir.is_dir():
-        return
-    dirs = sorted(
-        [d for d in model_dir.iterdir() if d.is_dir() and d.name.startswith(model_type)],
-        key=lambda p: p.name,
-    )
-    to_remove = dirs[:-keep] if len(dirs) > keep else []
-    for d in to_remove:
-        shutil.rmtree(d, ignore_errors=True)
-    if to_remove:
-        logger.info("Cleaned {} old {} run(s), kept {}", len(to_remove), model_type, keep)
 
 
 def _get_n_trials(settings: Settings, model: str) -> int:
