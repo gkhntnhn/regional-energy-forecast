@@ -122,11 +122,17 @@ class CalendarFeatureEngineer(BaseFeatureEngineer):
         holidays_df: pd.DataFrame | None
         if self._holidays_df is not None and len(self._holidays_df) > 0:
             holidays_df = self._holidays_df
+            logger.info("[DB READ] Holidays from DB ({} entries)", len(holidays_df))
         else:
             h_path = h_cfg.get("path", "data/static/turkish_holidays.parquet")
             holidays_df = self._load_holidays(h_path)
+            if holidays_df is not None:
+                logger.info("[PARQUET READ] Holidays from {}", h_path)
 
         if holidays_df is not None and len(holidays_df) > 0:
+            # Ensure 'date' is a column (DB path returns it as index)
+            if "date" not in holidays_df.columns and holidays_df.index.name == "date":
+                holidays_df = holidays_df.reset_index()
             holiday_dates = set(pd.to_datetime(holidays_df["date"]).dt.date)
             date_series = pd.Series(
                 cast(pd.DatetimeIndex, df.index).date, index=df.index

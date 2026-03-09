@@ -298,22 +298,37 @@ class EpiasClient:
             else:
                 df = self._db.get_epias_market_year(year)
             if not df.empty:
-                logger.debug("Loaded EPIAS {} {} from DB ({} rows)",
-                             "generation" if is_gen else "market", year, len(df))
+                logger.info("[DB READ] EPIAS {} {} from DB ({} rows)",
+                            "generation" if is_gen else "market", year, len(df))
                 # Normalize index to tz-naive DatetimeIndex for compatibility
                 idx = pd.DatetimeIndex(df.index)
                 if idx.tz is not None:
                     df.index = idx.tz_localize(None)
                 # Drop internal columns not expected by downstream
                 df = df.drop(columns=["fetched_at"], errors="ignore")
+                # Rename DB columns back to pipeline-expected names
+                if not is_gen:
+                    db_to_pipeline = {
+                        "fdpp": "FDPP",
+                        "rtc": "Real_Time_Consumption",
+                        "dam_purchase": "DAM_Purchase",
+                        "bilateral": "Bilateral_Agreement_Purchase",
+                        "load_forecast": "Load_Forecast",
+                    }
+                    df = df.rename(columns=db_to_pipeline)
                 return df
 
         # 2. Parquet fallback
+        if self._db is not None:
+            is_gen = self._is_generation_pattern(file_pattern)
+            logger.info("[DB MISS] EPIAS {} {} not in DB, trying parquet",
+                        "generation" if is_gen else "market", year)
         pattern = file_pattern or self.file_pattern
         path = self.cache_dir / pattern.format(year=year)
         if not path.exists():
             return None
         df = pd.read_parquet(path)
+        logger.info("[PARQUET READ] EPIAS {} from {}", year, path)
         if "datetime" in df.columns:
             df["datetime"] = pd.to_datetime(df["datetime"])
             df = df.set_index("datetime")
@@ -345,10 +360,10 @@ class EpiasClient:
                 else:
                     rows = self._df_to_market_rows(df)
                     count = self._db.upsert_epias_market(rows)
-                logger.info("Upserted {} EPIAS {} rows to DB for year {}",
-                            count, "generation" if is_gen else "market", year)
+                logger.info("[DB WRITE] EPIAS {} {} upserted ({} rows)",
+                            "generation" if is_gen else "market", year, count)
             except Exception as e:
-                logger.warning("DB write failed for EPIAS {} year {} (continuing): {}",
+                logger.warning("[DB WRITE FAIL] EPIAS {} {} (continuing): {}",
                                "generation" if is_gen else "market", year, e)
 
         # 2. Parquet backup (always)
@@ -359,7 +374,7 @@ class EpiasClient:
         save_df.index.name = "datetime"
         save_df = save_df.reset_index()
         save_df.to_parquet(path, engine="pyarrow", compression="snappy")
-        logger.info("Cached EPIAS data for year {} → {}", year, path)
+        logger.info("[PARQUET WRITE] EPIAS {} → {}", year, path)
 
     def _is_generation_pattern(self, file_pattern: str | None) -> bool:
         """Check if file_pattern corresponds to generation data."""

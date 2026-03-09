@@ -98,7 +98,10 @@ def parse_args() -> argparse.Namespace:
 
 
 def setup_logging(verbose: bool = False) -> None:
-    """Configure logging."""
+    """Configure logging and suppress noisy warnings."""
+    import warnings
+
+    warnings.filterwarnings("ignore")
     logger.remove()
     level = "DEBUG" if verbose else "INFO"
     logger.add(
@@ -181,7 +184,7 @@ def _create_db_session() -> Session | None:
     """Create sync DB session if DATABASE_URL_SYNC is available."""
     db_url = os.getenv("DATABASE_URL_SYNC")
     if not db_url:
-        logger.info("DATABASE_URL_SYNC not set — using parquet cache fallback")
+        logger.info("[CONFIG] DATABASE_URL_SYNC not set — parquet fallback mode")
         return None
     try:
         from energy_forecast.db.engine import create_sync_engine, create_sync_session_factory
@@ -189,7 +192,7 @@ def _create_db_session() -> Session | None:
         engine = create_sync_engine(db_url)
         factory = create_sync_session_factory(engine)
         session = factory()
-        logger.info("Connected to PostgreSQL for data access")
+        logger.info("[DB CONNECT] PostgreSQL session ready — DB-first mode active")
         return session
     except Exception as e:
         logger.warning("DB connection failed, falling back to parquet: {}", e)
@@ -591,9 +594,9 @@ def main() -> int:
             holidays_df = SyncDataAccess(db_session).get_holidays()
             if holidays_df.empty:
                 holidays_df = None
-                logger.debug("Holiday table empty — using parquet fallback")
+                logger.info("[DB MISS] Holiday table empty — parquet fallback")
             else:
-                logger.info("Loaded {} holidays from DB", len(holidays_df))
+                logger.info("[DB READ] Holidays loaded ({} entries)", len(holidays_df))
         except Exception as e:
             logger.warning("Holiday DB load failed: {}", e)
 

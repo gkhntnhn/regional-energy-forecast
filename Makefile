@@ -1,4 +1,4 @@
-.PHONY: install test lint format serve train-catboost train-prophet train-tft train-ensemble prepare-data clean generate-holidays backfill-epias db-up db-down db-migrate db-revision db-downgrade fetch-weather-actuals db-backup promote-model cleanup-old-data cleanup-dry-run seed-db seed-db-full seed-weather help
+.PHONY: install test lint format serve train-catboost train-prophet train-tft train-ensemble prepare-data clean clean-models generate-holidays backfill-epias db-up db-down db-migrate db-revision db-downgrade fetch-weather-actuals db-backup promote-model cleanup-old-data cleanup-dry-run seed-db seed-db-full seed-weather help
 
 install: ## Install dependencies
 	uv sync --all-extras
@@ -30,7 +30,7 @@ train-ensemble: ## Train ensemble (all models + weight optimization)
 	uv run python -m energy_forecast.training.run --model ensemble
 
 prepare-data: ## Prepare dataset (Excel -> feature parquets)
-	uv run python scripts/prepare_dataset.py
+	uv run python scripts/prepare_dataset.py -v
 
 generate-holidays: ## Generate Turkish holidays parquet
 	uv run python scripts/generate_holidays.py
@@ -76,6 +76,20 @@ seed-db-full: ## Seed DB with all parquet data (full import)
 
 seed-weather: ## Seed weather_cache from OpenMeteo API (historical)
 	uv run python scripts/seed_weather.py
+
+clean-models: ## Keep only last 3 model runs per type
+	@for d in catboost prophet tft ensemble; do \
+		dir="models/$$d"; \
+		if [ -d "$$dir" ]; then \
+			count=$$(ls -d $$dir/$${d}_*/ 2>/dev/null | wc -l); \
+			if [ $$count -gt 3 ]; then \
+				ls -d $$dir/$${d}_*/ | sort | head -n -3 | xargs rm -rf; \
+				echo "$$d: removed $$((count - 3)) old run(s)"; \
+			else \
+				echo "$$d: $$count run(s), nothing to clean"; \
+			fi \
+		fi \
+	done
 
 clean: ## Remove build/cache artifacts
 	find . -type d -name __pycache__ -exec rm -rf {} +

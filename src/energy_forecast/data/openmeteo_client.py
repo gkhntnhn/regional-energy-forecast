@@ -111,23 +111,25 @@ class OpenMeteoClient:
         if self._db is not None:
             city_dfs = self._load_cities_from_db(start_date, end_date, source="historical")
             if city_dfs is not None:
-                logger.info("Loaded historical weather from DB ({} to {})", start_date, end_date)
+                logger.info("[DB READ] Weather historical from DB ({} to {})", start_date, end_date)
                 return self._compute_weighted_average(city_dfs)
 
         # 2. Fetch from API
+        if self._db is not None:
+            logger.info("[DB MISS] Weather historical not in DB, fetching from API")
         city_dfs = self._fetch_all_cities(
             url=self.config.api.base_url_historical,
             start_date=start_date,
             end_date=end_date,
         )
 
-        # 3. Save per-city data to DB
+        # 3. Save per-city data to DB (dual-write)
         if self._db is not None:
             self._save_cities_to_db(city_dfs, source="historical")
 
         result = self._compute_weighted_average(city_dfs)
         logger.info(
-            "Fetched historical weather: {} rows ({} to {})",
+            "[API FETCH] Weather historical: {} rows ({} to {})",
             len(result),
             start_date,
             end_date,
@@ -318,9 +320,9 @@ class OpenMeteoClient:
                     rows.append(d)
                 count = self._db.upsert_weather(rows)
                 total += count
-            logger.debug("Saved {} weather rows to DB (source={})", total, source)
+            logger.info("[DB WRITE] Weather {} rows (source={})", total, source)
         except Exception as e:
-            logger.warning("Weather DB write failed (continuing): {}", e)
+            logger.warning("[DB WRITE FAIL] Weather (continuing): {}", e)
 
     # ------------------------------------------------------------------
     # Internal: fetch + parse
