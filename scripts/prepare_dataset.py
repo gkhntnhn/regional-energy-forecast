@@ -42,6 +42,11 @@ from energy_forecast.data.openmeteo_client import OpenMeteoClient
 from energy_forecast.data.schemas import ConsumptionSchema, EpiasSchema, WeatherSchema
 from energy_forecast.features.pipeline import FeaturePipeline
 
+try:
+    from sqlalchemy.orm import Session
+except ImportError:  # pragma: no cover
+    Session = None  # type: ignore[assignment,misc]
+
 # Load .env for credentials
 load_dotenv()
 
@@ -172,12 +177,32 @@ def extend_with_forecast_rows(
     return extended
 
 
+def _create_db_session() -> Session | None:
+    """Create sync DB session if DATABASE_URL_SYNC is available."""
+    db_url = os.getenv("DATABASE_URL_SYNC")
+    if not db_url:
+        logger.info("DATABASE_URL_SYNC not set — using parquet cache fallback")
+        return None
+    try:
+        from energy_forecast.db.engine import create_sync_engine, create_sync_session_factory
+
+        engine = create_sync_engine(db_url)
+        factory = create_sync_session_factory(engine)
+        session = factory()
+        logger.info("Connected to PostgreSQL for data access")
+        return session
+    except Exception as e:
+        logger.warning("DB connection failed, falling back to parquet: {}", e)
+        return None
+
+
 def fetch_epias_data(
     settings: Settings,
     start_date: str,
     end_date: str,
     *,
     skip_api: bool = False,
+    db_session: Session | None = None,
 ) -> pd.DataFrame | None:
     """Fetch EPIAS market data.
 
@@ -223,7 +248,7 @@ def fetch_epias_data(
         return None
 
     logger.info("Fetching EPIAS data from API...")
-    with EpiasClient(username, password, settings.epias_api) as client:
+    with EpiasClient(username, password, settings.epias_api, db_session=db_session) as client:
         epias_df = client.fetch(start_date, end_date)
 
     if epias_df is not None and not epias_df.empty:
@@ -241,6 +266,7 @@ def fetch_weather_data(
     settings: Settings,
     start_date: str,
     end_date: str,
+    db_session: Session | None = None,
 ) -> pd.DataFrame | None:
     """Fetch OpenMeteo weather data (historical + forecast).
 
@@ -258,13 +284,15 @@ def fetch_weather_data(
             settings.openmeteo,
             settings.region,
             settings.project.timezone,
+            db_session=db_session,
         ) as client:
             # Fetch historical weather
             try:
                 historical_df = client.fetch_historical(start_date, end_date)
                 if historical_df is not None and "date" in historical_df.columns:
                     historical_df = historical_df.set_index("date").sort_index()
-                logger.info("Historical weather: {} rows", len(historical_df) if historical_df is not None else 0)
+                n_hist = len(historical_df) if historical_df is not None else 0
+                logger.info("Historical weather: {} rows", n_hist)
             except (requests.RequestException, OpenMeteoApiError, ValueError) as e:
                 logger.warning("Historical weather fetch failed: {}", e)
                 historical_df = None
@@ -272,7 +300,8 @@ def fetch_weather_data(
             # Fetch forecast weather for T and T+1 (future 48h+)
             try:
                 forecast_df = client.fetch_forecast(forecast_days=3)
-                logger.info("Forecast weather: {} rows", len(forecast_df) if forecast_df is not None else 0)
+                n_fc = len(forecast_df) if forecast_df is not None else 0
+                logger.info("Forecast weather: {} rows", n_fc)
             except (requests.RequestException, OpenMeteoApiError, ValueError) as e:
                 logger.warning("Weather forecast fetch failed: {}", e)
                 forecast_df = None
@@ -309,6 +338,7 @@ def fetch_generation_data(
     end_date: str,
     *,
     skip_api: bool = False,
+    db_session: Session | None = None,
 ) -> pd.DataFrame | None:
     """Fetch EPIAS real-time generation data.
 
@@ -355,7 +385,7 @@ def fetch_generation_data(
 
     logger.info("Fetching generation data from API...")
     try:
-        with EpiasClient(username, password, settings.epias_api) as client:
+        with EpiasClient(username, password, settings.epias_api, db_session=db_session) as client:
             gen_df = client.fetch_generation(start_date, end_date)
 
         if gen_df is not None and not gen_df.empty:
@@ -439,18 +469,23 @@ def merge_data_sources(
     return merged
 
 
-def run_feature_pipeline(settings: Settings, df: pd.DataFrame) -> pd.DataFrame:
+def run_feature_pipeline(
+    settings: Settings,
+    df: pd.DataFrame,
+    holidays_df: pd.DataFrame | None = None,
+) -> pd.DataFrame:
     """Run feature engineering pipeline.
 
     Args:
         settings: Application settings.
         df: Merged raw data DataFrame.
+        holidays_df: Pre-loaded holidays from DB (optional).
 
     Returns:
         Feature-engineered DataFrame.
     """
     logger.info("Running feature pipeline...")
-    pipeline = FeaturePipeline(settings)
+    pipeline = FeaturePipeline(settings, holidays_df=holidays_df)
     features_df = pipeline.run(df)
     logger.info("Features: {} rows, {} columns", len(features_df), len(features_df.columns))
     return features_df
@@ -544,10 +579,29 @@ def main() -> int:
     start_date = extended_df.index.min().strftime("%Y-%m-%d")
     end_date = extended_df.index.max().strftime("%Y-%m-%d")
 
+    # DB session (optional — falls back to parquet if not available)
+    db_session = _create_db_session()
+
+    # Load holidays from DB if available
+    holidays_df = None
+    if db_session is not None:
+        try:
+            from energy_forecast.db.sync_repos import SyncDataAccess
+
+            holidays_df = SyncDataAccess(db_session).get_holidays()
+            if holidays_df.empty:
+                holidays_df = None
+                logger.debug("Holiday table empty — using parquet fallback")
+            else:
+                logger.info("Loaded {} holidays from DB", len(holidays_df))
+        except Exception as e:
+            logger.warning("Holiday DB load failed: {}", e)
+
     # Step 3: Fetch EPIAS data
     logger.info("[3/6] Fetching EPIAS data...")
     epias_df = fetch_epias_data(
-        settings, start_date, end_date, skip_api=args.skip_epias
+        settings, start_date, end_date, skip_api=args.skip_epias,
+        db_session=db_session,
     )
 
     # Validate EPIAS data
@@ -561,7 +615,8 @@ def main() -> int:
     # Step 3.5: Fetch generation data
     logger.info("[3.5/6] Fetching generation data...")
     generation_df = fetch_generation_data(
-        settings, start_date, end_date, skip_api=args.skip_epias
+        settings, start_date, end_date, skip_api=args.skip_epias,
+        db_session=db_session,
     )
 
     # Step 4: Fetch weather data
@@ -570,7 +625,8 @@ def main() -> int:
         weather_df = None
     else:
         logger.info("[4/6] Fetching weather data...")
-        weather_df = fetch_weather_data(settings, start_date, end_date)
+        weather_df = fetch_weather_data(settings, start_date, end_date,
+                                        db_session=db_session)
 
     # Validate weather data
     if weather_df is not None:
@@ -600,7 +656,7 @@ def main() -> int:
 
     # Step 6: Run feature pipeline
     logger.info("[6/6] Running feature pipeline...")
-    features_df = run_feature_pipeline(settings, merged_df)
+    features_df = run_feature_pipeline(settings, merged_df, holidays_df=holidays_df)
 
     # Split and save
     logger.info("=" * 60)
@@ -610,10 +666,19 @@ def main() -> int:
         features_df, args.output_dir, args.forecast_hours
     )
 
+    # Close DB session
+    if db_session is not None:
+        try:
+            db_session.commit()
+            db_session.close()
+        except Exception as e:
+            logger.warning("DB session close failed: {}", e)
+
     elapsed = time.monotonic() - start_time
     logger.info("=" * 60)
     logger.info("COMPLETED in {:.1f}s", elapsed)
-    logger.info("  Historical: {} ({} rows)", historical_path, len(features_df) - args.forecast_hours)
+    n_hist = len(features_df) - args.forecast_hours
+    logger.info("  Historical: {} ({} rows)", historical_path, n_hist)
     logger.info("  Forecast:   {} ({} rows)", forecast_path, args.forecast_hours)
     logger.info("=" * 60)
 

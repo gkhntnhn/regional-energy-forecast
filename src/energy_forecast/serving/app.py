@@ -191,7 +191,19 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         tft_path=tft_path,
         ensemble_dir=ensemble_dir,
     )
-    app.state.prediction_service = PredictionService(pred_config, settings)
+
+    # Create sync session factory for PredictionService (DB data access)
+    sync_session_factory = None
+    if settings.env.database_url_sync:
+        from energy_forecast.db.engine import create_sync_engine, create_sync_session_factory
+
+        sync_engine = create_sync_engine(settings.env.database_url_sync)
+        sync_session_factory = create_sync_session_factory(sync_engine)
+        logger.info("Sync DB session factory created for prediction service")
+
+    app.state.prediction_service = PredictionService(
+        pred_config, settings, sync_session_factory=sync_session_factory,
+    )
 
     # Try to load models (warn if not available)
     try:

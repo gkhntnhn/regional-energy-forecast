@@ -8,7 +8,7 @@ import time
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import pandas as pd
 from loguru import logger
@@ -27,6 +27,9 @@ from energy_forecast.serving.exceptions import (
     PredictionError,
 )
 from energy_forecast.utils import TZ_ISTANBUL
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session, sessionmaker
 
 
 class PredictionServiceConfig(BaseModel, frozen=True):
@@ -55,15 +58,23 @@ class PredictionService:
         self,
         config: PredictionServiceConfig,
         settings: Settings,
+        sync_session_factory: sessionmaker[Session] | None = None,
     ) -> None:
         self._config = config
         self._settings = settings
+        self._sync_session_factory = sync_session_factory
         self._ensemble: EnsembleForecaster | None = None
         self._feature_pipeline: FeaturePipeline | None = None
         self._data_loader: DataLoader | None = None
         self._models_loaded = False
         self._warnings: list[str] = []
         self._last_feature_count: int = 0
+
+    def _get_sync_session(self) -> Session | None:
+        """Get a sync session for data access (if configured)."""
+        if self._sync_session_factory is None:
+            return None
+        return self._sync_session_factory()
 
     @property
     def is_ready(self) -> bool:
@@ -226,9 +237,15 @@ class PredictionService:
             weather_df = self._fetch_weather_data(extended_df)
             merged_df = merged_df.join(weather_df, how="left")
 
-            # Step 5: Run feature pipeline
+            # Step 5: Run feature pipeline (with DB holidays if available)
             update_progress("Running feature engineering pipeline...")
             try:
+                # Rebuild pipeline with DB holidays if sync session is available
+                if self._sync_session_factory is not None:
+                    holidays_df = self._load_holidays_from_db()
+                    self._feature_pipeline = FeaturePipeline(
+                        self._settings, holidays_df=holidays_df,
+                    )
                 features_df = self._feature_pipeline.run(merged_df)
                 self._last_feature_count = len(features_df.columns)
             except Exception as e:
@@ -289,11 +306,13 @@ class PredictionService:
         start_date = df.index.min().strftime("%Y-%m-%d")
         end_date = df.index.max().strftime("%Y-%m-%d")
 
+        session = self._get_sync_session()
         try:
             with EpiasClient(
                 username=self._settings.env.epias_username,
                 password=self._settings.env.epias_password,
                 config=self._settings.epias_api,
+                db_session=session,
             ) as client:
                 return client.fetch(start_date, end_date)
         except EpiasAuthError:
@@ -303,6 +322,9 @@ class PredictionService:
             logger.warning(msg)
             self._warnings.append(msg)
             return pd.DataFrame(index=df.index)
+        finally:
+            if session is not None:
+                session.close()
 
     def _fetch_generation_data(self, df: pd.DataFrame) -> pd.DataFrame:
         """Fetch EPIAS generation data for the date range in df.
@@ -313,11 +335,13 @@ class PredictionService:
         start_date = df.index.min().strftime("%Y-%m-%d")
         end_date = df.index.max().strftime("%Y-%m-%d")
 
+        session = self._get_sync_session()
         try:
             with EpiasClient(
                 username=self._settings.env.epias_username,
                 password=self._settings.env.epias_password,
                 config=self._settings.epias_api,
+                db_session=session,
             ) as client:
                 return client.fetch_generation(start_date, end_date)
         except EpiasAuthError:
@@ -327,43 +351,68 @@ class PredictionService:
             logger.warning(msg)
             self._warnings.append(msg)
             return pd.DataFrame(index=df.index)
+        finally:
+            if session is not None:
+                session.close()
 
     def _fetch_weather_data(self, df: pd.DataFrame) -> pd.DataFrame:
         """Fetch weather data: historical for past, forecast for future."""
-        with OpenMeteoClient(
-            config=self._settings.openmeteo,
-            region=self._settings.region,
-            timezone=self._settings.project.timezone,
-        ) as client:
-            # Get date range
-            start_date = df.index.min().strftime("%Y-%m-%d")
-            end_date = df.index.max().strftime("%Y-%m-%d")
+        session = self._get_sync_session()
+        try:
+            with OpenMeteoClient(
+                config=self._settings.openmeteo,
+                region=self._settings.region,
+                timezone=self._settings.project.timezone,
+                db_session=session,
+            ) as client:
+                # Get date range
+                start_date = df.index.min().strftime("%Y-%m-%d")
+                end_date = df.index.max().strftime("%Y-%m-%d")
 
-            try:
-                # Try historical first (for training data portion)
-                historical_df = client.fetch_historical(start_date, end_date)
-            except Exception as e:
-                logger.warning("Historical weather fetch failed: {}", e)
-                historical_df = pd.DataFrame(index=df.index)
+                try:
+                    # Try historical first (for training data portion)
+                    historical_df = client.fetch_historical(start_date, end_date)
+                except Exception as e:
+                    logger.warning("Historical weather fetch failed: {}", e)
+                    historical_df = pd.DataFrame(index=df.index)
 
-            try:
-                # Get forecast for future portion
-                forecast_df = client.fetch_forecast(forecast_days=3)
-            except Exception as e:
-                logger.warning("Weather forecast fetch failed: {}", e)
-                forecast_df = pd.DataFrame(index=df.index)
+                try:
+                    # Get forecast for future portion
+                    forecast_df = client.fetch_forecast(forecast_days=3)
+                except Exception as e:
+                    logger.warning("Weather forecast fetch failed: {}", e)
+                    forecast_df = pd.DataFrame(index=df.index)
 
-            # Combine: historical for past, forecast for future
-            if not historical_df.empty and not forecast_df.empty:
-                combined = pd.concat([historical_df, forecast_df])
-                combined = combined[~combined.index.duplicated(keep="last")]
-                return combined.sort_index()
-            elif not historical_df.empty:
-                return historical_df
-            elif not forecast_df.empty:
-                return forecast_df
-            else:
-                return pd.DataFrame(index=df.index)
+                # Combine: historical for past, forecast for future
+                if not historical_df.empty and not forecast_df.empty:
+                    combined = pd.concat([historical_df, forecast_df])
+                    combined = combined[~combined.index.duplicated(keep="last")]
+                    return combined.sort_index()
+                elif not historical_df.empty:
+                    return historical_df
+                elif not forecast_df.empty:
+                    return forecast_df
+                else:
+                    return pd.DataFrame(index=df.index)
+        finally:
+            if session is not None:
+                session.close()
+
+    def _load_holidays_from_db(self) -> pd.DataFrame | None:
+        """Load holidays from DB via sync session (if available)."""
+        session = self._get_sync_session()
+        if session is None:
+            return None
+        try:
+            from energy_forecast.db.sync_repos import SyncDataAccess
+
+            df = SyncDataAccess(session).get_holidays()
+            return df if not df.empty else None
+        except Exception as e:
+            logger.warning("Holiday DB load failed: {}", e)
+            return None
+        finally:
+            session.close()
 
     def _prepare_output(
         self,

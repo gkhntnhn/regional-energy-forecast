@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
 import openmeteo_requests
@@ -16,6 +16,11 @@ from retry_requests import retry
 
 from energy_forecast.config import CityConfig, OpenMeteoConfig, RegionConfig
 from energy_forecast.data.exceptions import OpenMeteoApiError
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
+
+    from energy_forecast.db.sync_repos import SyncDataAccess
 
 
 class OpenMeteoClient:
@@ -38,10 +43,17 @@ class OpenMeteoClient:
         config: OpenMeteoConfig,
         region: RegionConfig,
         timezone: str = "Europe/Istanbul",
+        db_session: Session | None = None,
     ) -> None:
         self.config = config
         self.region = region
         self.timezone = timezone
+
+        self._db: SyncDataAccess | None = None
+        if db_session is not None:
+            from energy_forecast.db.sync_repos import SyncDataAccess as SyncDA
+
+            self._db = SyncDA(db_session)
 
         cache_path = Path(config.cache.path)
         cache_path.parent.mkdir(parents=True, exist_ok=True)
@@ -84,6 +96,9 @@ class OpenMeteoClient:
     ) -> pd.DataFrame:
         """Fetch historical weather for all cities, return weighted average.
 
+        DB-first: if DB has complete data for all cities, use it.
+        Otherwise fetch from API and save per-city data to DB.
+
         Args:
             start_date: Start date (YYYY-MM-DD).
             end_date: End date (YYYY-MM-DD).
@@ -92,16 +107,23 @@ class OpenMeteoClient:
             DataFrame with hourly DatetimeIndex and weather columns,
             weighted-averaged across cities.
         """
-        city_dfs: list[tuple[CityConfig, pd.DataFrame]] = []
-        for city in self.region.cities:
-            df = self._fetch_single_location(
-                url=self.config.api.base_url_historical,
-                latitude=city.latitude,
-                longitude=city.longitude,
-                start_date=start_date,
-                end_date=end_date,
-            )
-            city_dfs.append((city, df))
+        # 1. Try DB-first
+        if self._db is not None:
+            city_dfs = self._load_cities_from_db(start_date, end_date, source="historical")
+            if city_dfs is not None:
+                logger.info("Loaded historical weather from DB ({} to {})", start_date, end_date)
+                return self._compute_weighted_average(city_dfs)
+
+        # 2. Fetch from API
+        city_dfs = self._fetch_all_cities(
+            url=self.config.api.base_url_historical,
+            start_date=start_date,
+            end_date=end_date,
+        )
+
+        # 3. Save per-city data to DB
+        if self._db is not None:
+            self._save_cities_to_db(city_dfs, source="historical")
 
         result = self._compute_weighted_average(city_dfs)
         logger.info(
@@ -128,16 +150,15 @@ class OpenMeteoClient:
         Returns:
             Weighted-average weather DataFrame.
         """
-        city_dfs: list[tuple[CityConfig, pd.DataFrame]] = []
-        for city in self.region.cities:
-            df = self._fetch_single_location(
-                url=self.config.api.base_url_historical_forecast,
-                latitude=city.latitude,
-                longitude=city.longitude,
-                start_date=start_date,
-                end_date=end_date,
-            )
-            city_dfs.append((city, df))
+        city_dfs = self._fetch_all_cities(
+            url=self.config.api.base_url_historical_forecast,
+            start_date=start_date,
+            end_date=end_date,
+        )
+
+        # Save to DB (source=historical — same data type)
+        if self._db is not None:
+            self._save_cities_to_db(city_dfs, source="historical")
 
         result = self._compute_weighted_average(city_dfs)
         logger.info(
@@ -151,21 +172,23 @@ class OpenMeteoClient:
     def fetch_forecast(self, forecast_days: int = 2) -> pd.DataFrame:
         """Fetch weather forecast for T and T+1.
 
+        Forecast always comes from API (must be current).
+        Saves per-city data to DB for audit trail.
+
         Args:
             forecast_days: Number of days to forecast (default 2).
 
         Returns:
             Weighted-average weather forecast DataFrame.
         """
-        city_dfs: list[tuple[CityConfig, pd.DataFrame]] = []
-        for city in self.region.cities:
-            df = self._fetch_single_location(
-                url=self.config.api.base_url_forecast,
-                latitude=city.latitude,
-                longitude=city.longitude,
-                forecast_days=forecast_days,
-            )
-            city_dfs.append((city, df))
+        city_dfs = self._fetch_all_cities(
+            url=self.config.api.base_url_forecast,
+            forecast_days=forecast_days,
+        )
+
+        # Save to DB
+        if self._db is not None:
+            self._save_cities_to_db(city_dfs, source="forecast")
 
         result = self._compute_weighted_average(city_dfs)
         logger.info("Fetched weather forecast: {} rows", len(result))
@@ -215,6 +238,89 @@ class OpenMeteoClient:
             "longitude": float(hit["longitude"]),
             "elevation": float(hit.get("elevation", 0.0)),
         }
+
+    # ------------------------------------------------------------------
+    # Internal: DB + multi-city helpers
+    # ------------------------------------------------------------------
+
+    def _fetch_all_cities(
+        self,
+        url: str,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        forecast_days: int | None = None,
+    ) -> list[tuple[CityConfig, pd.DataFrame]]:
+        """Fetch weather for all cities from API."""
+        city_dfs: list[tuple[CityConfig, pd.DataFrame]] = []
+        for city in self.region.cities:
+            df = self._fetch_single_location(
+                url=url,
+                latitude=city.latitude,
+                longitude=city.longitude,
+                start_date=start_date,
+                end_date=end_date,
+                forecast_days=forecast_days,
+            )
+            city_dfs.append((city, df))
+        return city_dfs
+
+    def _load_cities_from_db(
+        self,
+        start_date: str,
+        end_date: str,
+        source: str,
+    ) -> list[tuple[CityConfig, pd.DataFrame]] | None:
+        """Load per-city weather from DB. Returns None if any city has gaps."""
+        if self._db is None:
+            return None
+
+        start = pd.Timestamp(start_date, tz=self.timezone)
+        end = pd.Timestamp(end_date, tz=self.timezone) + pd.Timedelta(hours=23)
+        expected_hours = (end - start).total_seconds() / 3600 + 1
+
+        city_dfs: list[tuple[CityConfig, pd.DataFrame]] = []
+        for city in self.region.cities:
+            df = self._db.get_weather_range(start, end, city=city.name, source=source)
+            if df.empty or len(df) < expected_hours * 0.9:
+                return None  # Incomplete data — fall back to API
+            # Set datetime index and drop non-weather columns
+            if "datetime" in df.columns:
+                df = df.set_index("datetime")
+            df = df.drop(columns=["city", "source", "fetched_at"], errors="ignore")
+            idx = pd.DatetimeIndex(df.index)
+            if idx.tz is not None:
+                df.index = idx.tz_localize(None)
+            df.index.name = "datetime"
+            city_dfs.append((city, df))
+        return city_dfs
+
+    def _save_cities_to_db(
+        self,
+        city_dfs: list[tuple[CityConfig, pd.DataFrame]],
+        source: str,
+    ) -> None:
+        """Save per-city weather data to weather_cache table (non-fatal)."""
+        if self._db is None:
+            return
+        try:
+            total = 0
+            for city, df in city_dfs:
+                rows: list[dict[str, Any]] = []
+                for idx, row in df.iterrows():
+                    d: dict[str, Any] = {
+                        "datetime": idx,
+                        "city": city.name,
+                        "source": source,
+                    }
+                    for col in df.columns:
+                        val = row[col]
+                        d[col] = float(val) if pd.notna(val) else None
+                    rows.append(d)
+                count = self._db.upsert_weather(rows)
+                total += count
+            logger.debug("Saved {} weather rows to DB (source={})", total, source)
+        except Exception as e:
+            logger.warning("Weather DB write failed (continuing): {}", e)
 
     # ------------------------------------------------------------------
     # Internal: fetch + parse

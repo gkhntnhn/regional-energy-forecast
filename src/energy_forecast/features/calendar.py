@@ -24,7 +24,17 @@ class CalendarFeatureEngineer(BaseFeatureEngineer):
 
     Args:
         config: Calendar feature configuration dict.
+        holidays_df: Pre-loaded holidays DataFrame (e.g. from DB).
+            If provided, skips parquet file loading.
     """
+
+    def __init__(
+        self,
+        config: dict[str, Any],
+        holidays_df: pd.DataFrame | None = None,
+    ) -> None:
+        super().__init__(config)
+        self._holidays_df = holidays_df
 
     def transform(self, X: pd.DataFrame) -> pd.DataFrame:
         """Generate calendar features.
@@ -107,9 +117,14 @@ class CalendarFeatureEngineer(BaseFeatureEngineer):
     def _add_holiday_features(self, df: pd.DataFrame) -> pd.DataFrame:
         """Add holiday, Ramadan, bridge day, interaction, and proximity features."""
         h_cfg: dict[str, Any] = self.config.get("holidays", {})
-        h_path = h_cfg.get("path", "data/static/turkish_holidays.parquet")
 
-        holidays_df = self._load_holidays(h_path)
+        # Use injected holidays (from DB) if available, else parquet fallback
+        holidays_df: pd.DataFrame | None
+        if self._holidays_df is not None and len(self._holidays_df) > 0:
+            holidays_df = self._holidays_df
+        else:
+            h_path = h_cfg.get("path", "data/static/turkish_holidays.parquet")
+            holidays_df = self._load_holidays(h_path)
 
         if holidays_df is not None and len(holidays_df) > 0:
             holiday_dates = set(pd.to_datetime(holidays_df["date"]).dt.date)

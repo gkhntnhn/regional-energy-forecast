@@ -34,9 +34,12 @@ class FeaturePipeline:
         "epias": EpiasFeatureEngineer,
     }
 
-    def __init__(self, config: Settings) -> None:
+    def __init__(
+        self, config: Settings, holidays_df: pd.DataFrame | None = None,
+    ) -> None:
         self._settings = config
         self._pipeline_cfg = config.pipeline
+        self._holidays_df = holidays_df
         self._engineers: list[tuple[str, BaseFeatureEngineer]] = []
         self._build_engineers()
 
@@ -48,7 +51,14 @@ class FeaturePipeline:
                 raise ValueError(msg)
             cls = self.MODULE_MAP[name]
             feature_cfg: Any = getattr(self._settings.features, name)
-            engineer = cls(feature_cfg.model_dump())
+
+            # Inject holidays_df into CalendarFE if available
+            if name == "calendar" and self._holidays_df is not None:
+                engineer = cls(  # type: ignore[call-arg]
+                    feature_cfg.model_dump(), holidays_df=self._holidays_df,
+                )
+            else:
+                engineer = cls(feature_cfg.model_dump())
             self._engineers.append((name, engineer))
 
     def run(self, df: pd.DataFrame) -> pd.DataFrame:

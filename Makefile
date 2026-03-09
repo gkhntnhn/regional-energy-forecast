@@ -1,4 +1,4 @@
-.PHONY: install test lint format serve train-catboost train-prophet train-tft train-ensemble prepare-data clean generate-holidays backfill-epias db-up db-down db-migrate db-revision db-downgrade fetch-weather-actuals db-backup promote-model cleanup-old-data cleanup-dry-run seed-db seed-db-full help
+.PHONY: install test lint format serve train-catboost train-prophet train-tft train-ensemble prepare-data clean generate-holidays backfill-epias db-up db-down db-migrate db-revision db-downgrade fetch-weather-actuals db-backup promote-model cleanup-old-data cleanup-dry-run seed-db seed-db-full seed-weather help
 
 install: ## Install dependencies
 	uv sync --all-extras
@@ -73,6 +73,9 @@ seed-db: ## Seed DB with sample data (data/seed/)
 
 seed-db-full: ## Seed DB with all parquet data (full import)
 	uv run python scripts/seed_db.py --full
+
+seed-weather: ## Seed weather_cache from OpenMeteo API (historical)
+	uv run python scripts/seed_weather.py
 
 clean: ## Remove build/cache artifacts
 	find . -type d -name __pycache__ -exec rm -rf {} +

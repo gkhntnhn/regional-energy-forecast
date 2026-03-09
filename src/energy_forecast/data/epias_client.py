@@ -6,7 +6,7 @@ import contextlib
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo
 
 import httpx
@@ -21,6 +21,11 @@ from tenacity import (
 
 from energy_forecast.config import EpiasApiConfig
 from energy_forecast.data.exceptions import EpiasApiError, EpiasAuthError
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
+
+    from energy_forecast.db.sync_repos import SyncDataAccess
 
 # ---------------------------------------------------------------------------
 # EPIAS variable definitions
@@ -92,6 +97,7 @@ class EpiasClient:
         password: str,
         config: EpiasApiConfig | None = None,
         variables: list[str] | None = None,
+        db_session: Session | None = None,
     ) -> None:
         self.username = username
         self.password = password
@@ -105,6 +111,11 @@ class EpiasClient:
         self._token_ttl: float = self.config.token_ttl_seconds
         self._last_request_time: float = 0.0
         self._client = httpx.Client(timeout=self.config.timeout_seconds)
+        self._db: SyncDataAccess | None = None
+        if db_session is not None:
+            from energy_forecast.db.sync_repos import SyncDataAccess as SyncDA
+
+            self._db = SyncDA(db_session)
 
     def close(self) -> None:
         """Close the HTTP client."""
@@ -270,7 +281,7 @@ class EpiasClient:
         year: int,
         file_pattern: str | None = None,
     ) -> pd.DataFrame | None:
-        """Load cached parquet for a year.
+        """Load cached data for a year. DB-first, parquet fallback.
 
         Args:
             year: Year to load.
@@ -279,6 +290,25 @@ class EpiasClient:
         Returns:
             DataFrame if cache exists, None otherwise.
         """
+        # 1. DB-first (if session available)
+        if self._db is not None:
+            is_gen = self._is_generation_pattern(file_pattern)
+            if is_gen:
+                df = self._db.get_epias_generation_year(year)
+            else:
+                df = self._db.get_epias_market_year(year)
+            if not df.empty:
+                logger.debug("Loaded EPIAS {} {} from DB ({} rows)",
+                             "generation" if is_gen else "market", year, len(df))
+                # Normalize index to tz-naive DatetimeIndex for compatibility
+                idx = pd.DatetimeIndex(df.index)
+                if idx.tz is not None:
+                    df.index = idx.tz_localize(None)
+                # Drop internal columns not expected by downstream
+                df = df.drop(columns=["fetched_at"], errors="ignore")
+                return df
+
+        # 2. Parquet fallback
         pattern = file_pattern or self.file_pattern
         path = self.cache_dir / pattern.format(year=year)
         if not path.exists():
@@ -298,13 +328,30 @@ class EpiasClient:
         df: pd.DataFrame,
         file_pattern: str | None = None,
     ) -> None:
-        """Save year data as parquet file.
+        """Save year data. DB + parquet dual-write.
 
         Args:
             year: Year being cached.
             df: DataFrame to save.
             file_pattern: Override file pattern (default: market pattern).
         """
+        # 1. DB write (if session available)
+        if self._db is not None:
+            try:
+                is_gen = self._is_generation_pattern(file_pattern)
+                if is_gen:
+                    rows = self._df_to_generation_rows(df)
+                    count = self._db.upsert_epias_generation(rows)
+                else:
+                    rows = self._df_to_market_rows(df)
+                    count = self._db.upsert_epias_market(rows)
+                logger.info("Upserted {} EPIAS {} rows to DB for year {}",
+                            count, "generation" if is_gen else "market", year)
+            except Exception as e:
+                logger.warning("DB write failed for EPIAS {} year {} (continuing): {}",
+                               "generation" if is_gen else "market", year, e)
+
+        # 2. Parquet backup (always)
         pattern = file_pattern or self.file_pattern
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         path = self.cache_dir / pattern.format(year=year)
@@ -313,6 +360,45 @@ class EpiasClient:
         save_df = save_df.reset_index()
         save_df.to_parquet(path, engine="pyarrow", compression="snappy")
         logger.info("Cached EPIAS data for year {} → {}", year, path)
+
+    def _is_generation_pattern(self, file_pattern: str | None) -> bool:
+        """Check if file_pattern corresponds to generation data."""
+        if file_pattern is None:
+            return False
+        return file_pattern == self.config.generation_file_pattern
+
+    @staticmethod
+    def _df_to_market_rows(df: pd.DataFrame) -> list[dict[str, Any]]:
+        """Convert market DataFrame to list of dicts for DB upsert."""
+        col_map = {
+            "FDPP": "fdpp",
+            "Real_Time_Consumption": "rtc",
+            "DAM_Purchase": "dam_purchase",
+            "Bilateral_Agreement_Purchase": "bilateral",
+            "Load_Forecast": "load_forecast",
+        }
+        rows: list[dict[str, Any]] = []
+        for idx, row in df.iterrows():
+            d: dict[str, Any] = {"datetime": idx}
+            for src, dst in col_map.items():
+                if src in df.columns:
+                    val = row[src]
+                    d[dst] = float(val) if pd.notna(val) else None
+            rows.append(d)
+        return rows
+
+    @staticmethod
+    def _df_to_generation_rows(df: pd.DataFrame) -> list[dict[str, Any]]:
+        """Convert generation DataFrame to list of dicts for DB upsert."""
+        rows: list[dict[str, Any]] = []
+        for idx, row in df.iterrows():
+            d: dict[str, Any] = {"datetime": idx}
+            for col in df.columns:
+                if col.startswith("gen_"):
+                    val = row[col]
+                    d[col] = float(val) if pd.notna(val) else None
+            rows.append(d)
+        return rows
 
     # ------------------------------------------------------------------
     # Generation data (supply-side)

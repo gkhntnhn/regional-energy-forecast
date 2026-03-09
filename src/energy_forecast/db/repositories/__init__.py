@@ -9,6 +9,7 @@ from energy_forecast.db.repositories.prediction_repo import PredictionRepository
 from energy_forecast.db.repositories.profile_repo import ProfileRepository
 from energy_forecast.db.repositories.weather_cache_repo import WeatherCacheRepository
 from energy_forecast.db.repositories.weather_repo import WeatherSnapshotRepository
+from energy_forecast.db.sync_repos import SyncDataAccess
 
 __all__ = [
     "AnalyticsRepository",
@@ -18,6 +19,7 @@ __all__ = [
     "JobRepository",
     "PredictionRepository",
     "ProfileRepository",
+    "SyncDataAccess",
     "WeatherCacheRepository",
     "WeatherSnapshotRepository",
 ]
