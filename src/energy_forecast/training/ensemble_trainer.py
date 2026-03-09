@@ -16,6 +16,7 @@ Heavy-lifting functions live in:
 from __future__ import annotations
 
 import json
+import tempfile
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -230,6 +231,7 @@ class EnsembleTrainer:
                     "ensemble_avg_val_mape": training_result.avg_val_mape,
                     "ensemble_std_val_mape": training_result.std_val_mape,
                     "ensemble_avg_test_mape": training_result.avg_test_mape,
+                    "ensemble_std_test_mape": training_result.std_test_mape,
                     **{
                         f"{m}_avg_val_mape": v
                         for m, v in training_result.model_avg_val_mapes.items()
@@ -237,7 +239,50 @@ class EnsembleTrainer:
                 }
             )
 
-        elapsed = time.monotonic() - start
+            # Log ensemble weights (existing method, was never called)
+            self._tracker.log_ensemble_weights(training_result.optimized_weights)
+
+            # Per-split ensemble + per-model metrics
+            for sr in training_result.split_results:
+                split_batch: dict[str, float] = {
+                    f"ensemble_split_{sr.split_idx:02d}_mape": sr.ensemble_metrics.mape,
+                    f"ensemble_split_{sr.split_idx:02d}_mae": sr.ensemble_metrics.mae,
+                    f"ensemble_split_{sr.split_idx:02d}_rmse": sr.ensemble_metrics.rmse,
+                    f"ensemble_split_{sr.split_idx:02d}_r2": sr.ensemble_metrics.r2,
+                }
+                # Per-model per-split MAPE
+                for model_name, model_metric in sr.model_metrics.items():
+                    split_batch[
+                        f"{model_name}_split_{sr.split_idx:02d}_mape"
+                    ] = model_metric.mape
+                self._tracker.log_metrics(split_batch)
+
+            # Stacking: log meta-model artifact + feature importance
+            if self._mode == "stacking" and self._meta_model is not None:
+                with tempfile.TemporaryDirectory() as tmpdir:
+                    meta_path = Path(tmpdir) / "meta_model.cbm"
+                    self._meta_model.save_model(str(meta_path))
+                    self._tracker.log_artifact(str(meta_path), "meta_model")
+
+                # Meta-model feature importance
+                meta_fi = dict(
+                    zip(
+                        self._meta_model.feature_names_,
+                        [float(v) for v in self._meta_model.get_feature_importance()],
+                        strict=True,
+                    )
+                )
+                self._tracker.log_feature_importance(meta_fi, top_n=len(meta_fi))
+
+            elapsed = time.monotonic() - start
+            self._tracker.log_training_meta(
+                {
+                    "training_time_seconds": elapsed,
+                    "active_model_count": len(self._active_models),
+                    "ensemble_mode": self._mode,
+                }
+            )
+
         logger.info("Ensemble pipeline complete in {:.1f}s", elapsed)
 
         # Print comparison summary

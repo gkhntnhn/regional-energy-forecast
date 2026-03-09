@@ -12,6 +12,7 @@ Uses the same shared infrastructure as CatBoostTrainer:
 
 from __future__ import annotations
 
+import sys
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -485,17 +486,41 @@ class ProphetTrainer:
         with self._tracker.start_run("prophet_optimization"):
             study, best_result = self.optimize(df)
             self._tracker.log_params(study.best_params)
+
+            # Compute std_test_mape from split results
+            test_mapes = [sr.test_metrics.mape for sr in best_result.split_results]
+            std_test_mape = float(np.std(test_mapes)) if test_mapes else 0.0
+
             self._tracker.log_metrics(
                 {
                     "avg_val_mape": best_result.avg_val_mape,
                     "avg_test_mape": best_result.avg_test_mape,
                     "std_val_mape": best_result.std_val_mape,
+                    "std_test_mape": std_test_mape,
                 }
             )
             for sr in best_result.split_results:
                 self._tracker.log_split_metrics(
                     sr.split_idx, sr.train_metrics, sr.val_metrics, sr.test_metrics
                 )
+
+            self._tracker.log_training_meta(
+                {
+                    "data_rows": len(df),
+                    "data_cols": len(df.columns),
+                    "n_splits": self._hp_config.cross_validation.n_splits,
+                    "n_trials": self._search_config.n_trials,
+                    "best_trial_number": study.best_trial.number,
+                    "python_version": sys.version,
+                    "platform": sys.platform,
+                }
+            )
+            self._tracker.log_config_snapshot(
+                self._prophet_config.model_dump(), "prophet_config.yaml",
+            )
+            self._tracker.log_params(
+                {"regressor_names": ",".join(self._regressor_names)},
+            )
 
         with self._tracker.start_run("prophet_final"):
             final_model = self.train_final(df, study.best_params)
@@ -521,7 +546,11 @@ class ProphetTrainer:
 
             self._tracker.log_prophet_model(final_model, "prophet_model")
 
-        elapsed = time.monotonic() - start
+            elapsed = time.monotonic() - start
+            self._tracker.log_training_meta(
+                {"training_time_seconds": elapsed},
+            )
+
         logger.info("Prophet pipeline complete in {:.1f}s", elapsed)
 
         return ProphetPipelineResult(

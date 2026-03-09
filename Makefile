@@ -1,4 +1,4 @@
-.PHONY: install test lint format serve train-catboost train-prophet train-tft train-ensemble prepare-data clean clean-models generate-holidays backfill-epias db-up db-down db-migrate db-revision db-downgrade fetch-weather-actuals db-backup promote-model cleanup-old-data cleanup-dry-run seed-db seed-db-full seed-weather help
+.PHONY: install test lint format serve train-catboost train-prophet train-tft train-ensemble prepare-data clean clean-models generate-holidays backfill-epias db-up db-down db-migrate db-revision db-downgrade fetch-weather-actuals db-backup promote-model cleanup-old-data cleanup-dry-run seed-db seed-db-full seed-weather mlflow-up mlflow-logs help
 
 install: ## Install dependencies
 	uv sync --all-extras
@@ -76,6 +76,12 @@ seed-db-full: ## Seed DB with all parquet data (full import)
 
 seed-weather: ## Seed weather_cache from OpenMeteo API (historical)
 	uv run python scripts/seed_weather.py
+
+mlflow-up: ## Start MLflow + DB (Docker Compose)
+	docker compose up -d
+
+mlflow-logs: ## Show MLflow server logs
+	docker compose logs -f mlflow
 
 clean-models: ## Keep only last 3 model runs per type
 	@for d in catboost prophet tft ensemble; do \

@@ -902,7 +902,10 @@ class TestRun:
 
         # Verify tracker interactions
         assert mock_tracker.start_run.call_count == 2
-        mock_tracker.log_params.assert_called_once_with({"hidden_size": 32})
-        mock_tracker.log_metrics.assert_called_once()
+        # log_params called for: best_params, training_meta, config_snapshot, exog lists
+        assert mock_tracker.log_params.call_count >= 1
+        mock_tracker.log_params.assert_any_call({"hidden_size": 32})
+        # log_metrics called for: aggregate metrics + training_meta numeric
+        assert mock_tracker.log_metrics.call_count >= 1
         mock_tracker.log_split_metrics.assert_called_once()
         mock_tracker.log_tft_model.assert_called_once_with(mock_model, "tft_model")

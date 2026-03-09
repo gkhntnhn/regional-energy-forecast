@@ -6,6 +6,9 @@ training on calendar-month splits, and final model training on all data.
 
 from __future__ import annotations
 
+import json
+import sys
+import tempfile
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -347,17 +350,38 @@ class CatBoostTrainer:
         with self._tracker.start_run("catboost_optimization"):
             study, best_result = self.optimize(df)
             self._tracker.log_params(study.best_params)
+
+            # Compute std_test_mape from split results
+            test_mapes = [sr.test_metrics.mape for sr in best_result.split_results]
+            std_test_mape = float(np.std(test_mapes)) if test_mapes else 0.0
+
             self._tracker.log_metrics(
                 {
                     "avg_val_mape": best_result.avg_val_mape,
                     "avg_test_mape": best_result.avg_test_mape,
                     "std_val_mape": best_result.std_val_mape,
+                    "std_test_mape": std_test_mape,
                 }
             )
             for sr in best_result.split_results:
                 self._tracker.log_split_metrics(
                     sr.split_idx, sr.train_metrics, sr.val_metrics, sr.test_metrics
                 )
+
+            self._tracker.log_training_meta(
+                {
+                    "data_rows": len(df),
+                    "data_cols": len(df.columns),
+                    "n_splits": self._hp_config.cross_validation.n_splits,
+                    "n_trials": self._search_config.n_trials,
+                    "best_trial_number": study.best_trial.number,
+                    "python_version": sys.version,
+                    "platform": sys.platform,
+                }
+            )
+            self._tracker.log_config_snapshot(
+                self._settings.catboost.model_dump(), "catboost_config.yaml",
+            )
 
         with self._tracker.start_run("catboost_final"):
             final_model = self.train_final(df, study.best_params, best_result.avg_best_iteration)
@@ -389,7 +413,34 @@ class CatBoostTrainer:
             )
             self._tracker.log_feature_importance(importance)
 
-        elapsed = time.monotonic() - start
+            # Log ALL feature importances as artifact (JSON)
+            with tempfile.TemporaryDirectory() as tmpdir:
+                fi_path = Path(tmpdir) / "feature_importance_all.json"
+                sorted_fi = dict(
+                    sorted(importance.items(), key=lambda x: x[1], reverse=True)
+                )
+                fi_path.write_text(
+                    json.dumps(sorted_fi, indent=2), encoding="utf-8",
+                )
+                self._tracker.log_artifact(str(fi_path))
+
+            # Log predictions summary from last split
+            if best_result.split_results:
+                last_sr = best_result.split_results[-1]
+                if last_sr.val_predictions is not None and last_sr.val_actuals is not None:
+                    self._tracker.log_predictions_summary(
+                        last_sr.val_actuals, last_sr.val_predictions, prefix="final_val",
+                    )
+                if last_sr.test_predictions is not None and last_sr.test_actuals is not None:
+                    self._tracker.log_predictions_summary(
+                        last_sr.test_actuals, last_sr.test_predictions, prefix="final_test",
+                    )
+
+            elapsed = time.monotonic() - start
+            self._tracker.log_training_meta(
+                {"training_time_seconds": elapsed},
+            )
+
         logger.info("Pipeline complete in {:.1f}s", elapsed)
 
         return PipelineResult(
