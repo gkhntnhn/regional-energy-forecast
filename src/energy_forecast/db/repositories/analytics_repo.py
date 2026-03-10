@@ -11,7 +11,7 @@ from typing import Any
 
 from sqlalchemy import case, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.types import Integer, String
+from sqlalchemy.types import Integer, Numeric, String
 
 from energy_forecast.db.models import (
     AuditLogModel,
@@ -48,19 +48,18 @@ class AnalyticsRepository:
         cutoff = datetime.now(tz=TZ_ISTANBUL) - timedelta(days=days)
 
         if self._is_pg:
+            day_trunc = func.date_trunc("day", PredictionModel.forecast_dt)
+            day_label = func.to_char(day_trunc, "YYYY-MM-DD").label("day")
             stmt = (
                 select(
-                    func.to_char(
-                        func.date_trunc("day", PredictionModel.forecast_dt),
-                        "YYYY-MM-DD",
-                    ).label("day"),
-                    func.round(func.avg(PredictionModel.error_pct), 2).label(
+                    day_label,
+                    func.round(cast(func.avg(PredictionModel.error_pct), Numeric), 2).label(
                         "mape"
                     ),
-                    func.round(func.min(PredictionModel.error_pct), 2).label(
+                    func.round(cast(func.min(PredictionModel.error_pct), Numeric), 2).label(
                         "min_error"
                     ),
-                    func.round(func.max(PredictionModel.error_pct), 2).label(
+                    func.round(cast(func.max(PredictionModel.error_pct), Numeric), 2).label(
                         "max_error"
                     ),
                     func.count().label("n_hours"),
@@ -71,12 +70,8 @@ class AnalyticsRepository:
                     PredictionModel.forecast_dt >= cutoff,
                     PredictionModel.error_pct.is_not(None),
                 )
-                .group_by(
-                    func.date_trunc("day", PredictionModel.forecast_dt)
-                )
-                .order_by(
-                    func.date_trunc("day", PredictionModel.forecast_dt)
-                )
+                .group_by(day_label)
+                .order_by(day_label)
             )
             result = await self._session.execute(stmt)
             return [
@@ -140,12 +135,12 @@ class AnalyticsRepository:
             stmt = (
                 select(
                     week_label.label("week"),
-                    func.round(func.avg(PredictionModel.error_pct), 2).label(
+                    func.round(cast(func.avg(PredictionModel.error_pct), Numeric), 2).label(
                         "weekly_mape"
                     ),
                     func.count().label("n_hours"),
                     func.round(
-                        func.avg(
+                        cast(func.avg(
                             case(
                                 (
                                     PredictionModel.period == "intraday",
@@ -153,11 +148,11 @@ class AnalyticsRepository:
                                 ),
                                 else_=None,
                             )
-                        ),
+                        ), Numeric),
                         2,
                     ).label("t_mape"),
                     func.round(
-                        func.avg(
+                        cast(func.avg(
                             case(
                                 (
                                     PredictionModel.period == "day_ahead",
@@ -165,7 +160,7 @@ class AnalyticsRepository:
                                 ),
                                 else_=None,
                             )
-                        ),
+                        ), Numeric),
                         2,
                     ).label("t1_mape"),
                 )
@@ -240,7 +235,7 @@ class AnalyticsRepository:
             stmt = (
                 select(
                     hour_col.label("hour"),
-                    func.round(func.avg(PredictionModel.error_pct), 2).label(
+                    func.round(cast(func.avg(PredictionModel.error_pct), Numeric), 2).label(
                         "avg_mape"
                     ),
                     func.count().label("n_samples"),
@@ -301,7 +296,7 @@ class AnalyticsRepository:
             stmt = (
                 select(
                     PredictionModel.model_source,
-                    func.round(func.avg(PredictionModel.error_pct), 2).label(
+                    func.round(cast(func.avg(PredictionModel.error_pct), Numeric), 2).label(
                         "mape"
                     ),
                     func.count().label("n_hours"),
@@ -364,7 +359,7 @@ class AnalyticsRepository:
                 select(
                     hour_col.label("hour"),
                     PredictionModel.model_source,
-                    func.round(func.avg(PredictionModel.error_pct), 2).label(
+                    func.round(cast(func.avg(PredictionModel.error_pct), Numeric), 2).label(
                         "mape"
                     ),
                 )

@@ -276,7 +276,17 @@ app.add_middleware(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-# Admin router (analytics dashboard) — import here due to FastAPI app init order
+# Admin dashboard HTML — served without auth (JS handles its own token auth)
+@app.get("/admin", include_in_schema=False)
+@app.get("/admin/", include_in_schema=False)
+async def admin_dashboard() -> FileResponse:
+    """Serve the admin dashboard HTML (no auth — JS manages API key)."""
+    return FileResponse(
+        Path(__file__).parent / "static" / "admin.html",
+        headers={"Cache-Control": "no-cache"},
+    )
+
+# Admin API router (analytics endpoints) — auth required
 from energy_forecast.serving.routers.admin import admin_router  # noqa: E402
 
 app.include_router(admin_router, dependencies=[Depends(verify_api_key)])

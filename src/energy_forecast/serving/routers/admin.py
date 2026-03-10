@@ -27,15 +27,7 @@ def _get_session_factory(request: Request) -> Any:
 # ---------------------------------------------------------------------------
 
 
-@admin_router.get("/", include_in_schema=False)
-async def admin_dashboard() -> FileResponse:
-    """Serve the admin dashboard HTML."""
-    from pathlib import Path
-
-    return FileResponse(
-        Path(__file__).parent.parent / "static" / "admin.html",
-        headers={"Cache-Control": "no-cache"},
-    )
+# NOTE: Admin HTML is served from app.py without auth (JS handles its own auth)
 
 
 # ---------------------------------------------------------------------------
