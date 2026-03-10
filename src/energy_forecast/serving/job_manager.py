@@ -392,24 +392,58 @@ class JobManager:
         created_at: datetime,
         session_factory: async_sessionmaker[AsyncSession],
         email_service: EmailService,
-    ) -> None:
-        """Send prediction result email and update DB status."""
+    ) -> bool:
+        """Send prediction result email and update DB status (non-fatal).
+
+        Returns:
+            True if email was sent successfully, False otherwise.
+            Email failure does NOT propagate — the job completes regardless.
+        """
         from energy_forecast.db.repositories.job_repo import JobRepository
 
-        email_service.send_prediction_result(
-            to_email=email,
-            attachment_path=output_path,
-            job_id=job_id,
-            created_at=created_at.strftime("%Y-%m-%d %H:%M:%S"),
-        )
-
-        async with session_factory() as session:
-            repo = JobRepository(session)
-            await repo.update_email_status(
-                job_id, "sent", attempts=1
+        try:
+            success, attempts, error_msg = email_service.send_with_retry(
+                to_email=email,
+                attachment_path=output_path,
+                job_id=job_id,
+                created_at=created_at.strftime("%Y-%m-%d %H:%M:%S"),
             )
-            await repo.update_progress(job_id, "Sonuclar gonderildi")
-            await session.commit()
+
+            async with session_factory() as session:
+                repo = JobRepository(session)
+                if success:
+                    await repo.update_email_status(
+                        job_id, "sent", attempts=attempts
+                    )
+                    await repo.update_progress(job_id, "Sonuclar gonderildi")
+                else:
+                    await repo.update_email_status(
+                        job_id, "failed", attempts=attempts
+                    )
+                    await repo.update_progress(
+                        job_id, f"E-posta gonderilemedi: {error_msg}"
+                    )
+                await session.commit()
+
+            if not success:
+                logger.warning(
+                    "Email delivery failed for job {} (non-fatal): {}",
+                    job_id, error_msg,
+                )
+            return success
+
+        except Exception as e:
+            logger.opt(exception=True).warning(
+                "Email step failed for job {} (non-fatal): {}", job_id, e
+            )
+            try:
+                async with session_factory() as session:
+                    repo = JobRepository(session)
+                    await repo.update_email_status(job_id, "failed", attempts=0)
+                    await session.commit()
+            except Exception:
+                pass  # DB update failure is also non-fatal
+            return False
 
     async def _archive_step(
         self,
@@ -559,33 +593,39 @@ class JobManager:
                     await session.commit()
 
                 # Step 1: Match previous predictions with actuals
+                logger.info("[Job {}] Step 1/8: Matching previous predictions", job_id)
                 await self._match_previous_predictions_step(
                     job_id, excel_path, session_factory,
                     prediction_service, email_service,
                 )
 
                 # Step 2: Run prediction pipeline
+                logger.info("[Job {}] Step 2/8: Running prediction pipeline", job_id)
                 predictions = await self._run_prediction_step(
                     excel_path, prediction_service,
                 )
 
                 # Step 3: Store predictions in DB
+                logger.info("[Job {}] Step 3/8: Storing predictions in DB", job_id)
                 await self._store_predictions_step(
                     job_id, predictions, session_factory,
                 )
 
                 # Step 4: Store weather snapshot
+                logger.info("[Job {}] Step 4/8: Storing weather snapshot", job_id)
                 await self._store_weather_step(
                     job_id, predictions, session_factory,
                 )
 
                 # Step 5: Store EPIAS + feature importance metadata
+                logger.info("[Job {}] Step 5/8: Storing metadata", job_id)
                 await self._store_metadata_step(
                     job_id, predictions, prediction_service,
                     session_factory,
                 )
 
                 # Step 6: Create output file
+                logger.info("[Job {}] Step 6/8: Creating output file", job_id)
                 async with session_factory() as session:
                     repo = JobRepository(session)
                     await repo.update_progress(
@@ -597,7 +637,8 @@ class JobManager:
                     predictions, file_stem, file_service,
                 )
 
-                # Step 7: Send email
+                # Step 7: Send email (NON-FATAL — prediction succeeded)
+                logger.info("[Job {}] Step 7/8: Sending email", job_id)
                 async with session_factory() as session:
                     repo = JobRepository(session)
                     await repo.update_progress(
@@ -611,6 +652,7 @@ class JobManager:
                 )
 
                 # Step 8: Archive features + GDrive upload
+                logger.info("[Job {}] Step 8/8: Archiving artifacts", job_id)
                 await self._archive_step(
                     job_id, file_stem, output_path, created_at,
                     predictions, prediction_service, session_factory,
@@ -623,6 +665,8 @@ class JobManager:
                         job_id, "completed", result_path=str(output_path)
                     )
                     await session.commit()
+
+                logger.info("[Job {}] Completed successfully", job_id)
 
                 # Audit: job_complete (non-fatal)
                 try:
@@ -643,7 +687,7 @@ class JobManager:
 
             except Exception as e:
                 error_msg = str(e)
-                logger.error("Job {} failed: {}", job_id, error_msg)
+                logger.opt(exception=True).error("Job {} failed: {}", job_id, error_msg)
                 async with session_factory() as session:
                     repo = JobRepository(session)
                     await repo.update_status(
@@ -714,12 +758,18 @@ class JobManager:
                 )
 
                 self._jobs[job.id].progress = "E-posta gonderiliyor..."
-                email_service.send_prediction_result(
-                    to_email=job.email,
-                    attachment_path=output_path,
-                    job_id=job.id,
-                    created_at=job.created_at.strftime("%Y-%m-%d %H:%M:%S"),
-                )
+                try:
+                    email_service.send_with_retry(
+                        to_email=job.email,
+                        attachment_path=output_path,
+                        job_id=job.id,
+                        created_at=job.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+                    )
+                except Exception as email_err:
+                    logger.opt(exception=True).warning(
+                        "Email failed for job {} (non-fatal): {}",
+                        job.id, email_err,
+                    )
 
                 job.status = JobStatus.COMPLETED
                 job.result_path = output_path

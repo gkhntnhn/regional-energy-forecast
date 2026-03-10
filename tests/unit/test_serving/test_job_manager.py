@@ -208,7 +208,7 @@ class TestJobManagerProcessJob:
         mock_file.create_output_xlsx.return_value = Path("/tmp/output.xlsx")
 
         mock_email = MagicMock()
-        mock_email.send_prediction_result.return_value = True
+        mock_email.send_with_retry.return_value = (True, 1, None)
 
         await job_manager.process_job_in_memory(
             job=job,
@@ -221,7 +221,7 @@ class TestJobManagerProcessJob:
         mock_prediction.run_prediction.assert_called_once()
         call_args = mock_file.create_output_xlsx.call_args
         assert call_args[0][1] == "01-03-2026_12-00-00"
-        mock_email.send_prediction_result.assert_called_once()
+        mock_email.send_with_retry.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_process_job_failure(self, job_manager: JobManager) -> None:
@@ -499,7 +499,7 @@ class TestProcessJobDB:
         mock_file.create_output_xlsx.return_value = Path("/tmp/output.xlsx")
 
         mock_email = MagicMock()
-        mock_email.send_prediction_result.return_value = True
+        mock_email.send_with_retry.return_value = (True, 1, None)
 
         created_at = datetime.now(tz=TZ_ISTANBUL)
         await job_manager.process_job_db(
@@ -524,7 +524,7 @@ class TestProcessJobDB:
 
         mock_prediction.run_prediction.assert_called_once()
         mock_file.create_output_xlsx.assert_called_once()
-        mock_email.send_prediction_result.assert_called_once()
+        mock_email.send_with_retry.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_process_job_db_failure_marks_failed(
@@ -628,7 +628,7 @@ class TestProcessJobDB:
         mock_file.create_output_xlsx.return_value = Path("/tmp/output.xlsx")
 
         mock_email = MagicMock()
-        mock_email.send_prediction_result.return_value = True
+        mock_email.send_with_retry.return_value = (True, 1, None)
 
         await job_manager.process_job_db(
             job_id="pred_store_1",
@@ -711,7 +711,7 @@ class TestProcessJobDB:
         mock_file.create_output_xlsx.return_value = Path("/tmp/output.xlsx")
 
         mock_email = MagicMock()
-        mock_email.send_prediction_result.return_value = True
+        mock_email.send_with_retry.return_value = (True, 1, None)
 
         await job_manager.process_job_db(
             job_id="model_preds1",
@@ -785,7 +785,7 @@ class TestProcessJobDB:
         mock_file.create_output_xlsx.return_value = Path("/tmp/output.xlsx")
 
         mock_email = MagicMock()
-        mock_email.send_prediction_result.return_value = True
+        mock_email.send_with_retry.return_value = (True, 1, None)
 
         await job_manager.process_job_db(
             job_id="email_test_1",
@@ -903,7 +903,7 @@ class TestProcessJobDB:
         mock_file.create_output_xlsx.return_value = Path("/tmp/output.xlsx")
 
         mock_email = MagicMock()
-        mock_email.send_prediction_result.return_value = True
+        mock_email.send_with_retry.return_value = (True, 1, None)
 
         # Even if weather snapshot has issues, job should complete
         await job_manager.process_job_db(
@@ -974,7 +974,7 @@ class TestProcessJobDB:
         mock_file.create_output_xlsx.return_value = Path("/tmp/output.xlsx")
 
         mock_email = MagicMock()
-        mock_email.send_prediction_result.return_value = True
+        mock_email.send_with_retry.return_value = (True, 1, None)
 
         await job_manager.process_job_db(
             job_id="fi_test_001",
@@ -1103,7 +1103,7 @@ class TestProcessJobDB:
         mock_file.create_output_xlsx.return_value = Path("/tmp/output.xlsx")
 
         mock_email = MagicMock()
-        mock_email.send_prediction_result.return_value = True
+        mock_email.send_with_retry.return_value = (True, 1, None)
 
         await job_manager.process_job_db(
             job_id="match_test1",
@@ -1176,7 +1176,7 @@ class TestProcessJobDB:
         mock_file.create_output_xlsx.return_value = Path("/tmp/output.xlsx")
 
         mock_email = MagicMock()
-        mock_email.send_prediction_result.return_value = True
+        mock_email.send_with_retry.return_value = (True, 1, None)
 
         # Should not raise despite matching failure
         await job_manager.process_job_db(
@@ -1195,6 +1195,189 @@ class TestProcessJobDB:
             job = await session.get(JobModel, "match_fail1")
             assert job is not None
             assert job.status == "completed"
+
+
+class TestEmailNonFatal:
+    """Tests for email failure NOT causing job failure."""
+
+    @pytest.mark.asyncio
+    async def test_process_job_db_email_failure_still_completes(
+        self, job_manager: JobManager, db_session_factory: Any
+    ) -> None:
+        """Test job completes even when email delivery fails."""
+        from energy_forecast.db.models import JobModel
+        from energy_forecast.db.repositories.job_repo import JobRepository
+
+        async with db_session_factory() as session:
+            repo = JobRepository(session)
+            await repo.create({
+                "id": "email_fail_1",
+                "email": "user@example.com",
+                "excel_path": "/tmp/input.xlsx",
+                "file_stem": "07-03-2026_10-00-00",
+                "status": "pending",
+                "email_status": "pending",
+            })
+            await session.commit()
+
+        pred_index = pd.date_range(
+            "2026-03-08", periods=2, freq="h", tz=TZ_ISTANBUL
+        )
+        pred_df = pd.DataFrame(
+            {
+                "consumption_mwh": [1200.0, 1210.0],
+                "period": ["day_ahead", "day_ahead"],
+            },
+            index=pred_index,
+        )
+        pred_df.attrs["weather_data"] = None
+        pred_df.attrs["raw_predictions"] = None
+        pred_df.attrs["metadata"] = {}
+        pred_df.attrs["epias_snapshot"] = None
+        pred_df.attrs["features_df"] = None
+        pred_df.attrs["forecast_mask"] = None
+
+        mock_prediction = MagicMock()
+        mock_prediction.run_prediction.return_value = pred_df
+        mock_prediction._data_loader = None
+        mock_prediction.get_feature_importance_top.return_value = None
+
+        mock_file = MagicMock()
+        mock_file.create_output_xlsx.return_value = Path("/tmp/output.xlsx")
+
+        mock_email = MagicMock()
+        # send_with_retry returns (False, 2, "error msg") = all retries failed
+        mock_email.send_with_retry.return_value = (
+            False, 2, "SMTP connection error: [Errno 22] Invalid argument"
+        )
+
+        await job_manager.process_job_db(
+            job_id="email_fail_1",
+            excel_path="/tmp/input.xlsx",
+            email="user@example.com",
+            file_stem="07-03-2026_10-00-00",
+            created_at=datetime.now(tz=TZ_ISTANBUL),
+            session_factory=db_session_factory,
+            prediction_service=mock_prediction,
+            file_service=mock_file,
+            email_service=mock_email,
+        )
+
+        # Job should be COMPLETED (not failed) — prediction succeeded
+        async with db_session_factory() as session:
+            job = await session.get(JobModel, "email_fail_1")
+            assert job is not None
+            assert job.status == "completed"
+            assert job.email_status == "failed"
+            assert job.result_path is not None
+
+    @pytest.mark.asyncio
+    async def test_process_job_db_email_exception_still_completes(
+        self, job_manager: JobManager, db_session_factory: Any
+    ) -> None:
+        """Test job completes even when email step raises an exception."""
+        from energy_forecast.db.models import JobModel
+        from energy_forecast.db.repositories.job_repo import JobRepository
+
+        async with db_session_factory() as session:
+            repo = JobRepository(session)
+            await repo.create({
+                "id": "email_exc_1",
+                "email": "user@example.com",
+                "excel_path": "/tmp/input.xlsx",
+                "file_stem": "07-03-2026_10-00-00",
+                "status": "pending",
+                "email_status": "pending",
+            })
+            await session.commit()
+
+        pred_index = pd.date_range(
+            "2026-03-08", periods=2, freq="h", tz=TZ_ISTANBUL
+        )
+        pred_df = pd.DataFrame(
+            {
+                "consumption_mwh": [1200.0, 1210.0],
+                "period": ["day_ahead", "day_ahead"],
+            },
+            index=pred_index,
+        )
+        pred_df.attrs["weather_data"] = None
+        pred_df.attrs["raw_predictions"] = None
+        pred_df.attrs["metadata"] = {}
+        pred_df.attrs["epias_snapshot"] = None
+        pred_df.attrs["features_df"] = None
+        pred_df.attrs["forecast_mask"] = None
+
+        mock_prediction = MagicMock()
+        mock_prediction.run_prediction.return_value = pred_df
+        mock_prediction._data_loader = None
+        mock_prediction.get_feature_importance_top.return_value = None
+
+        mock_file = MagicMock()
+        mock_file.create_output_xlsx.return_value = Path("/tmp/output.xlsx")
+
+        mock_email = MagicMock()
+        # send_with_retry raises an unexpected exception
+        mock_email.send_with_retry.side_effect = OSError(22, "Invalid argument")
+
+        await job_manager.process_job_db(
+            job_id="email_exc_1",
+            excel_path="/tmp/input.xlsx",
+            email="user@example.com",
+            file_stem="07-03-2026_10-00-00",
+            created_at=datetime.now(tz=TZ_ISTANBUL),
+            session_factory=db_session_factory,
+            prediction_service=mock_prediction,
+            file_service=mock_file,
+            email_service=mock_email,
+        )
+
+        async with db_session_factory() as session:
+            job = await session.get(JobModel, "email_exc_1")
+            assert job is not None
+            assert job.status == "completed"
+            assert job.email_status == "failed"
+
+    @pytest.mark.asyncio
+    async def test_process_job_in_memory_email_failure_still_completes(
+        self, job_manager: JobManager
+    ) -> None:
+        """Test in-memory job completes even when email fails."""
+        job = Job(
+            email="test@example.com",
+            excel_path=Path("/tmp/test.xlsx"),
+            file_stem="07-03-2026_10-00-00",
+        )
+        job_manager._jobs[job.id] = job
+
+        pred_index = pd.date_range(
+            "2026-03-08", periods=2, freq="h", tz=TZ_ISTANBUL
+        )
+        pred_df = pd.DataFrame(
+            {"consumption_mwh": [1200.0, 1210.0],
+             "period": ["day_ahead", "day_ahead"]},
+            index=pred_index,
+        )
+
+        mock_prediction = MagicMock()
+        mock_prediction.run_prediction.return_value = pred_df
+
+        mock_file = MagicMock()
+        mock_file.create_output_xlsx.return_value = Path("/tmp/output.xlsx")
+
+        mock_email = MagicMock()
+        mock_email.send_with_retry.side_effect = OSError(22, "Invalid argument")
+
+        await job_manager.process_job_in_memory(
+            job=job,
+            prediction_service=mock_prediction,
+            file_service=mock_file,
+            email_service=mock_email,
+        )
+
+        assert job.status == JobStatus.COMPLETED
+        assert job.result_path == Path("/tmp/output.xlsx")
+        assert job.completed_at is not None
 
 
 class TestRunDriftCheck:

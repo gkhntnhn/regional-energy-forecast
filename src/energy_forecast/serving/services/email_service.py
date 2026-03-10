@@ -169,6 +169,11 @@ class EmailService:
             raise EmailDeliveryError(f"SMTP error: {e}") from e
         except TimeoutError as e:
             raise EmailDeliveryError("SMTP connection timeout") from e
+        except OSError as e:
+            logger.opt(exception=True).error(
+                "SMTP socket error (likely Windows IPv6/IPv4 issue): {}", e
+            )
+            raise EmailDeliveryError(f"SMTP connection error: {e}") from e
 
     def send_with_retry(
         self,

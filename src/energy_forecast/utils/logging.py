@@ -7,11 +7,14 @@ import sys
 from loguru import logger
 
 
-def setup_logger(level: str = "INFO") -> None:
+def setup_logger(level: str = "INFO", log_file: str | None = None) -> None:
     """Configure loguru logger for the project.
 
     Args:
         level: Logging level (DEBUG, INFO, WARNING, ERROR).
+        log_file: Optional file path for persistent logging.
+            When set, logs are written to the file with rotation (50 MB)
+            and retention (5 files). Tracebacks are included automatically.
     """
     logger.remove()
     logger.add(
@@ -23,6 +26,25 @@ def setup_logger(level: str = "INFO") -> None:
             "<cyan>{name}</cyan> - <level>{message}</level>"
         ),
     )
+
+    if log_file is not None:
+        from pathlib import Path
+
+        log_path = Path(log_file)
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        logger.add(
+            log_file,
+            level=level,
+            format=(
+                "{time:YYYY-MM-DD HH:mm:ss.SSS} | "
+                "{level:<8} | "
+                "{name}:{function}:{line} - {message}"
+            ),
+            rotation="50 MB",
+            retention=5,
+            backtrace=True,
+            diagnose=True,
+        )
 
 
 def suppress_training_noise() -> None:

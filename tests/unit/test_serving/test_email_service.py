@@ -140,6 +140,47 @@ class TestEmailService:
             )
 
     @patch("energy_forecast.serving.services.email_service.smtplib.SMTP")
+    def test_send_prediction_result_os_error(
+        self,
+        mock_smtp: MagicMock,
+        email_service: EmailService,
+        sample_attachment: Path,
+    ) -> None:
+        """Test OSError (Errno 22) during SMTP connection raises EmailDeliveryError."""
+        mock_smtp.side_effect = OSError(22, "Invalid argument")
+
+        with pytest.raises(EmailDeliveryError, match="SMTP connection error"):
+            email_service.send_prediction_result(
+                to_email="user@test.com",
+                attachment_path=sample_attachment,
+                job_id="test123",
+                created_at="2025-01-01 10:00:00",
+            )
+
+    @patch("energy_forecast.serving.services.email_service.smtplib.SMTP")
+    def test_send_with_retry_returns_failure_on_os_error(
+        self,
+        mock_smtp: MagicMock,
+        email_service: EmailService,
+        sample_attachment: Path,
+    ) -> None:
+        """Test send_with_retry gracefully handles OSError across retries."""
+        mock_smtp.side_effect = OSError(22, "Invalid argument")
+
+        success, attempts, error_msg = email_service.send_with_retry(
+            to_email="user@test.com",
+            attachment_path=sample_attachment,
+            job_id="test123",
+            created_at="2025-01-01 10:00:00",
+            max_retries=2,
+        )
+
+        assert success is False
+        assert attempts == 2
+        assert error_msg is not None
+        assert "SMTP connection error" in error_msg
+
+    @patch("energy_forecast.serving.services.email_service.smtplib.SMTP")
     def test_send_error_notification(
         self,
         mock_smtp: MagicMock,

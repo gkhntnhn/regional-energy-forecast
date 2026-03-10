@@ -100,6 +100,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     load_dotenv()  # populate os.environ from .env (needed for GDrive, etc.)
 
+    # Configure file-based logging for persistent traceback capture
+    from energy_forecast.utils.logging import setup_logger
+
+    setup_logger(level="DEBUG", log_file="logs/api_server.log")
+
     logger.info("Starting Energy Forecast API...")
 
     # Load configuration
