@@ -12,6 +12,7 @@ load_dotenv()
 from alembic import context
 from sqlalchemy import create_engine
 
+import energy_forecast.db.models  # noqa: F401, E402  # register all models for autogenerate
 from energy_forecast.db.base import Base
 
 # Alembic Config object

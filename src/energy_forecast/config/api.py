@@ -87,8 +87,8 @@ class MonitoringConfig(BaseModel, frozen=True):
 class DatabaseConfig(BaseModel, frozen=True):
     """Database connection pool configuration."""
 
-    pool_size: int = Field(default=2, ge=1)
-    max_overflow: int = Field(default=2, ge=0)
+    pool_size: int = Field(default=5, ge=1)
+    max_overflow: int = Field(default=5, ge=0)
     pool_timeout: int = Field(default=30, ge=5)
     pool_recycle: int = Field(default=300, ge=60)
     pool_pre_ping: bool = True

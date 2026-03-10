@@ -649,13 +649,22 @@ def main() -> int:
     # in forecast rows marks the prediction target.
     weather_prefixes = (
         "temperature", "humidity", "dew_point", "apparent_temperature",
-        "precipitation", "snow_depth", "weather_code", "surface_pressure",
+        "precipitation", "snow_depth", "surface_pressure",
         "wind_speed", "wind_direction", "shortwave_radiation",
     )
     weather_cols = [c for c in merged_df.columns if c.startswith(weather_prefixes)]
     if weather_cols:
         merged_df[weather_cols] = merged_df[weather_cols].ffill().bfill()
         logger.info("Forward/back-filled {} weather columns", len(weather_cols))
+
+    # weather_code and weather_group: categorical — only forward-fill (no bfill)
+    # These use dominant-city strategy and should already be populated;
+    # ffill handles rare gaps without inventing future weather states.
+    cat_prefixes = ("weather_code", "weather_group")
+    cat_weather_cols = [c for c in merged_df.columns if c.startswith(cat_prefixes)]
+    if cat_weather_cols:
+        merged_df[cat_weather_cols] = merged_df[cat_weather_cols].ffill()
+        logger.info("Forward-filled {} categorical weather columns", len(cat_weather_cols))
 
     # Step 6: Run feature pipeline
     logger.info("[6/6] Running feature pipeline...")

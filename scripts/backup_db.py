@@ -55,8 +55,8 @@ def backup_database(output_dir: Path | None = None) -> Path | None:
     docker_cmd = [
         "docker", "exec", container,
         "pg_dump",
-        "-U", os.environ.get("POSTGRES_USER", "forecast_user"),
-        "-d", os.environ.get("POSTGRES_DB", "energy_forecast"),
+        "-U", os.environ["POSTGRES_USER"],
+        "-d", os.environ["POSTGRES_DB"],
         "--no-owner", "--no-acl",
     ]
     local_cmd = [

@@ -123,3 +123,4 @@ docs/code-walkthrough/
 
 # Deployment targets (internal planning, not committed)
 docs/M11-deployment-targets.md
+scripts/backtest_daily.py

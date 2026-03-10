@@ -410,25 +410,28 @@ class AnalyticsRepository:
     ) -> list[dict[str, Any]]:
         """Ensemble vs individual model stats (avg, median, p95).
 
-        Note: median and p95 require Python-side computation even for PG,
-        since percentile_cont is not available in all PG versions.
-        Falls back to Python-side for all dialects.
+        Note: median and p95 require Python-side computation for dual-mode
+        compatibility (percentile_cont not portable across dialects).
+        Only fetches model_source and error_pct columns instead of full ORM load.
         """
         cutoff = datetime.now(tz=TZ_ISTANBUL) - timedelta(days=days)
         stmt = (
-            select(PredictionModel)
+            select(
+                PredictionModel.model_source,
+                PredictionModel.error_pct,
+            )
             .where(
                 PredictionModel.actual_mwh.is_not(None),
                 PredictionModel.forecast_dt >= cutoff,
             )
         )
         result = await self._session.execute(stmt)
-        rows = result.scalars().all()
+        rows = result.all()
 
         by_model: dict[str, list[float]] = defaultdict(list)
-        for r in rows:
-            if r.model_source and r.error_pct is not None:
-                by_model[r.model_source].append(r.error_pct)
+        for model_source, error_pct in rows:
+            if model_source and error_pct is not None:
+                by_model[model_source].append(error_pct)
 
         out: list[dict[str, Any]] = []
         for model, errs in sorted(by_model.items()):
@@ -454,54 +457,65 @@ class AnalyticsRepository:
     async def get_weather_horizon_accuracy(
         self, weeks: int = 8
     ) -> list[dict[str, Any]]:
-        """T (0-24h) vs T+1 (24-48h) weather forecast accuracy."""
+        """T (0-24h) vs T+1 (24-48h) weather forecast accuracy.
+
+        Uses a self-join to pair forecasts with actuals in a single query,
+        avoiding full table scans into Python memory.
+        """
         cutoff = datetime.now(tz=TZ_ISTANBUL) - timedelta(weeks=weeks)
 
-        # Load forecasts
-        fc_stmt = (
-            select(WeatherSnapshotModel)
+        compare_cols = [
+            "temperature_2m", "apparent_temperature",
+            "wind_speed_10m", "shortwave_radiation", "precipitation",
+        ]
+
+        # Aliased tables for self-join: fc (forecast) LEFT JOIN act (actual)
+        fc = WeatherSnapshotModel.__table__.alias("fc")
+        act = WeatherSnapshotModel.__table__.alias("act")
+
+        # Select forecast + actual columns for comparison
+        select_cols = [
+            fc.c.forecast_dt,
+            fc.c.fetched_at,
+        ]
+        for col in compare_cols:
+            select_cols.append(fc.c[col].label(f"fc_{col}"))
+            select_cols.append(act.c[col].label(f"act_{col}"))
+
+        stmt = (
+            select(*select_cols)
+            .select_from(
+                fc.join(
+                    act,
+                    (fc.c.forecast_dt == act.c.forecast_dt)
+                    & (act.c.is_actual.is_(True)),
+                )
+            )
             .where(
-                WeatherSnapshotModel.is_actual.is_(False),
-                WeatherSnapshotModel.forecast_dt >= cutoff,
+                fc.c.is_actual.is_(False),
+                fc.c.forecast_dt >= cutoff,
             )
         )
-        fc_result = await self._session.execute(fc_stmt)
-        forecasts = {s.forecast_dt: s for s in fc_result.scalars().all()}
+        result = await self._session.execute(stmt)
+        rows = result.all()
 
-        if not forecasts:
+        if not rows:
             return []
-
-        # Load actuals for same datetime range
-        act_stmt = (
-            select(WeatherSnapshotModel)
-            .where(
-                WeatherSnapshotModel.is_actual.is_(True),
-                WeatherSnapshotModel.forecast_dt.in_(list(forecasts.keys())),
-            )
-        )
-        act_result = await self._session.execute(act_stmt)
-        actuals = {s.forecast_dt: s for s in act_result.scalars().all()}
 
         # Classify T vs T+1 by comparing forecast_dt date to fetched_at date
         buckets: dict[str, dict[str, list[float]]] = {
             "T": defaultdict(list),
             "T+1": defaultdict(list),
         }
-        compare_cols = [
-            "temperature_2m", "apparent_temperature",
-            "wind_speed_10m", "shortwave_radiation", "precipitation",
-        ]
-        for dt, fc in forecasts.items():
-            act = actuals.get(dt)
-            if act is None:
-                continue
-            # T if forecast_dt is same day as fetched_at, else T+1
-            fc_date = fc.forecast_dt.date() if hasattr(fc.forecast_dt, "date") else fc.forecast_dt
-            fetch_date = fc.fetched_at.date() if hasattr(fc.fetched_at, "date") else fc.fetched_at
+        for row in rows:
+            dt = row.forecast_dt
+            fc_date = dt.date() if hasattr(dt, "date") else dt
+            fa = row.fetched_at
+            fetch_date = fa.date() if hasattr(fa, "date") else fa
             horizon = "T" if fc_date == fetch_date else "T+1"
             for col in compare_cols:
-                fc_val = getattr(fc, col, None)
-                act_val = getattr(act, col, None)
+                fc_val = getattr(row, f"fc_{col}", None)
+                act_val = getattr(row, f"act_{col}", None)
                 if fc_val is not None and act_val is not None:
                     buckets[horizon][col].append(abs(fc_val - act_val))
 
@@ -518,40 +532,56 @@ class AnalyticsRepository:
             if cols
         ]
 
-    async def get_weather_variable_accuracy(self) -> list[dict[str, Any]]:
-        """Per-variable weather forecast MAE (all time)."""
-        fc_stmt = (
-            select(WeatherSnapshotModel)
-            .where(WeatherSnapshotModel.is_actual.is_(False))
-        )
-        fc_result = await self._session.execute(fc_stmt)
-        forecasts = {s.forecast_dt: s for s in fc_result.scalars().all()}
+    async def get_weather_variable_accuracy(
+        self, days: int = 90
+    ) -> list[dict[str, Any]]:
+        """Per-variable weather forecast MAE.
 
-        if not forecasts:
-            return []
+        Args:
+            days: Lookback window (default 90). Prevents unbounded full table scan.
 
-        act_stmt = (
-            select(WeatherSnapshotModel)
-            .where(
-                WeatherSnapshotModel.is_actual.is_(True),
-                WeatherSnapshotModel.forecast_dt.in_(list(forecasts.keys())),
-            )
-        )
-        act_result = await self._session.execute(act_stmt)
-        actuals = {s.forecast_dt: s for s in act_result.scalars().all()}
+        Uses a self-join to pair forecasts with actuals in a single query.
+        """
+        cutoff = datetime.now(tz=TZ_ISTANBUL) - timedelta(days=days)
 
         compare_cols = [
             "temperature_2m", "apparent_temperature",
             "wind_speed_10m", "shortwave_radiation", "precipitation",
         ]
+
+        fc = WeatherSnapshotModel.__table__.alias("fc")
+        act = WeatherSnapshotModel.__table__.alias("act")
+
+        select_cols = []
+        for col in compare_cols:
+            select_cols.append(fc.c[col].label(f"fc_{col}"))
+            select_cols.append(act.c[col].label(f"act_{col}"))
+
+        stmt = (
+            select(*select_cols)
+            .select_from(
+                fc.join(
+                    act,
+                    (fc.c.forecast_dt == act.c.forecast_dt)
+                    & (act.c.is_actual.is_(True)),
+                )
+            )
+            .where(
+                fc.c.is_actual.is_(False),
+                fc.c.forecast_dt >= cutoff,
+            )
+        )
+        result = await self._session.execute(stmt)
+        rows = result.all()
+
+        if not rows:
+            return []
+
         errors: dict[str, list[float]] = defaultdict(list)
-        for dt, fc in forecasts.items():
-            act = actuals.get(dt)
-            if act is None:
-                continue
+        for row in rows:
             for col in compare_cols:
-                fc_val = getattr(fc, col, None)
-                act_val = getattr(act, col, None)
+                fc_val = getattr(row, f"fc_{col}", None)
+                act_val = getattr(row, f"act_{col}", None)
                 if fc_val is not None and act_val is not None:
                     errors[col].append(abs(fc_val - act_val))
 

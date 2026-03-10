@@ -236,6 +236,15 @@ class GoogleDriveStorage:
             pass
         return e
 
+    @staticmethod
+    def _sanitize_query_value(value: str) -> str:
+        """Sanitize a value for Google Drive API query strings.
+
+        Strips single quotes (GDrive query syntax delimiter) and backslashes
+        to prevent query injection. Folder IDs are also validated.
+        """
+        return value.replace("\\", "").replace("'", "")
+
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=2, max=30),
@@ -244,8 +253,14 @@ class GoogleDriveStorage:
     )
     def _find_folder(self, name: str, parent_id: str) -> str | None:
         """Find existing folder by name under parent."""
+        import re
+
         service = self._get_service()
-        safe_name = name.replace("'", "\\'")
+        safe_name = self._sanitize_query_value(name)
+        # Validate parent_id format (GDrive IDs are alphanumeric + hyphens + underscores)
+        if not re.match(r"^[a-zA-Z0-9_-]+$", parent_id):
+            logger.warning("Invalid parent_id format: {}", parent_id)
+            return None
         query = (
             f"name='{safe_name}' and "
             f"'{parent_id}' in parents and "
