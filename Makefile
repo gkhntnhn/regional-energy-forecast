@@ -1,4 +1,4 @@
-.PHONY: install test lint format serve train-catboost train-prophet train-tft train-ensemble prepare-data clean generate-holidays backfill-epias db-up db-down db-migrate db-revision db-downgrade fetch-weather-actuals db-backup promote-model cleanup-old-data cleanup-dry-run seed-db seed-db-full seed-weather mlflow-up mlflow-logs help
+.PHONY: install test lint format serve train-catboost train-prophet train-tft train-ensemble prepare-data clean generate-holidays backfill-epias db-up db-down db-migrate db-revision db-downgrade fetch-weather-actuals db-backup promote-model cleanup-old-data cleanup-dry-run seed-db seed-db-full seed-weather export-weather mlflow-up mlflow-logs help
 
 install: ## Install dependencies
 	uv sync --all-extras
@@ -74,8 +74,11 @@ seed-db: ## Seed DB with sample data (data/seed/)
 seed-db-full: ## Seed DB with all parquet data (full import)
 	uv run python scripts/seed_db.py --full
 
-seed-weather: ## Seed weather_cache from OpenMeteo API (historical)
+seed-weather: ## Seed weather_cache (parquet-first, API fallback)
 	uv run python scripts/seed_weather.py
+
+export-weather: ## Export weather_cache DB to yearly parquet files
+	uv run python scripts/export_weather.py
 
 mlflow-up: ## Start MLflow + DB (Docker Compose)
 	docker compose up -d

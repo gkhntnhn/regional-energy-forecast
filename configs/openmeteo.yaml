@@ -30,3 +30,5 @@ cache:
   backend: "sqlite"
   path: "data/external/weather_cache.db"
   ttl_hours: 6
+  parquet_dir: "data/external/weather"
+  file_pattern: "weather_cache_{year}.parquet"

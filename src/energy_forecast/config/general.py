@@ -235,6 +235,8 @@ class WeatherCacheConfig(BaseModel, frozen=True):
     backend: Literal["sqlite"] = "sqlite"
     path: str = "data/external/weather_cache.db"
     ttl_hours: int = Field(default=6, ge=1)
+    parquet_dir: str = "data/external/weather"
+    file_pattern: str = "weather_cache_{year}.parquet"
 
 
 class OpenMeteoConfig(BaseModel, frozen=True):

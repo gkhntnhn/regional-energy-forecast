@@ -1,12 +1,13 @@
-"""Seed weather_cache table from OpenMeteo historical API.
+"""Seed weather_cache table from parquet files or OpenMeteo API.
 
-Fetches per-city hourly weather data and writes to weather_cache table.
-Uses monthly chunks to stay within OpenMeteo API limits.
+Priority: parquet file (fast) -> OpenMeteo API (slow, dual-write).
+Only seeds source='historical' data.
 
 Usage:
-    python scripts/seed_weather.py                            # Last 1 year
+    python scripts/seed_weather.py                            # Last 6 years
     python scripts/seed_weather.py --start 2020-01-01         # From date to today
     python scripts/seed_weather.py --start 2024-01-01 --end 2024-12-31
+    python scripts/seed_weather.py --force-api                # Skip parquet, fetch from API
     python scripts/seed_weather.py --dry-run                  # Show plan, don't write
 """
 
@@ -33,13 +34,13 @@ load_dotenv()
 def parse_args() -> argparse.Namespace:
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(
-        description="Seed weather_cache table from OpenMeteo historical API.",
+        description="Seed weather_cache table from parquet or OpenMeteo API.",
     )
     parser.add_argument(
         "--start",
         type=str,
         default=None,
-        help="Start date YYYY-MM-DD (default: 1 year ago).",
+        help="Start date YYYY-MM-DD (default: 2020-01-01).",
     )
     parser.add_argument(
         "--end",
@@ -57,6 +58,11 @@ def parse_args() -> argparse.Namespace:
         type=float,
         default=2.0,
         help="Seconds between API requests (default: 2.0).",
+    )
+    parser.add_argument(
+        "--force-api",
+        action="store_true",
+        help="Skip parquet cache, always fetch from API.",
     )
     return parser.parse_args()
 
@@ -79,6 +85,76 @@ def generate_monthly_chunks(
         ))
         current = chunk_end + timedelta(days=1)
     return chunks
+
+
+def _load_year_from_parquet(
+    parquet_dir: Path,
+    file_pattern: str,
+    year: int,
+) -> pd.DataFrame | None:
+    """Load a year's weather data from parquet file.
+
+    Returns DataFrame with columns: datetime, city, source, + weather vars.
+    Returns None if file doesn't exist.
+    """
+    path = parquet_dir / file_pattern.format(year=year)
+    if not path.exists():
+        return None
+    df = pd.read_parquet(path)
+    logger.info("[PARQUET READ] Weather {} from {} ({} rows)", year, path, len(df))
+    return df
+
+
+def _parquet_to_db_rows(df: pd.DataFrame) -> list[dict[str, object]]:
+    """Convert parquet DataFrame to list of dicts for DB upsert."""
+    rows: list[dict[str, object]] = []
+    for _, row in df.iterrows():
+        d: dict[str, object] = {}
+        for col in df.columns:
+            val = row[col]
+            if col == "datetime":
+                d[col] = val
+            elif col in ("city", "source"):
+                d[col] = str(val)
+            elif pd.notna(val):
+                d[col] = float(val)
+            else:
+                d[col] = None
+        rows.append(d)
+    return rows
+
+
+def _save_year_to_parquet(
+    city_dfs: list[tuple[object, pd.DataFrame]],
+    year: int,
+    parquet_dir: Path,
+    file_pattern: str,
+) -> None:
+    """Save per-city API data to yearly parquet file."""
+    all_rows: list[dict[str, object]] = []
+    for city, df in city_dfs:
+        for idx, row in df.iterrows():
+            d: dict[str, object] = {
+                "datetime": idx,
+                "city": city.name,  # type: ignore[union-attr]
+                "source": "historical",
+            }
+            for col in df.columns:
+                val = row[col]
+                d[col] = float(val) if pd.notna(val) else None
+            all_rows.append(d)
+
+    if not all_rows:
+        return
+
+    out_df = pd.DataFrame(all_rows)
+    if "datetime" in out_df.columns:
+        out_df["datetime"] = pd.to_datetime(out_df["datetime"]).dt.tz_localize(None)
+
+    parquet_dir.mkdir(parents=True, exist_ok=True)
+    path = parquet_dir / file_pattern.format(year=year)
+    out_df.to_parquet(path, engine="pyarrow", compression="snappy", index=False)
+    logger.info("[PARQUET WRITE] Weather {} -> {} ({} rows)", year, path, len(out_df))
 
 
 def main() -> int:
@@ -105,16 +181,11 @@ def main() -> int:
 
     logger.info("Weather seed: {} to {}", start_date, end_date)
 
-    # Generate monthly chunks
-    chunks = generate_monthly_chunks(start_date, end_date)
-    logger.info("Plan: {} monthly chunks", len(chunks))
-
-    if args.dry_run:
-        for i, (cs, ce) in enumerate(chunks, 1):
-            logger.info("  Chunk {}: {} to {}", i, cs, ce)
-        logger.info("Dry run — no DB writes. {} chunks x 4 cities = {} API calls",
-                     len(chunks), len(chunks) * 4)
-        return 0
+    # Determine years in range
+    start_year = int(start_date[:4])
+    end_year = int(end_date[:4])
+    years = list(range(start_year, end_year + 1))
+    logger.info("Year range: {} ({} years)", years, len(years))
 
     # Connect to DB
     db_url = os.getenv("DATABASE_URL_SYNC")
@@ -130,6 +201,17 @@ def main() -> int:
     configs_dir = PROJECT_ROOT / "configs"
     settings = load_config(configs_dir)
 
+    parquet_dir = Path(settings.openmeteo.cache.parquet_dir)
+    file_pattern = settings.openmeteo.cache.file_pattern
+
+    if args.dry_run:
+        for yr in years:
+            pq_path = parquet_dir / file_pattern.format(year=yr)
+            source = "parquet" if pq_path.exists() and not args.force_api else "API"
+            logger.info("  {} -> source: {} ({})", yr, source, pq_path)
+        logger.info("Dry run -- no DB writes.")
+        return 0
+
     engine = create_sync_engine(db_url)
     factory = create_sync_session_factory(engine)
     session = factory()
@@ -137,47 +219,91 @@ def main() -> int:
 
     total_rows = 0
     start_time = time.monotonic()
+    parquet_loaded = 0
+    api_fetched = 0
 
     try:
-        for i, (chunk_start, chunk_end) in enumerate(chunks, 1):
-            logger.info("[{}/{}] Fetching {} to {}", i, len(chunks), chunk_start, chunk_end)
+        for yr in years:
+            # --- Strategy 1: Load from parquet ---
+            if not args.force_api:
+                df = _load_year_from_parquet(parquet_dir, file_pattern, yr)
+                if df is not None:
+                    rows = _parquet_to_db_rows(df)
+                    # Filter rows within requested date range
+                    rows = [
+                        r for r in rows
+                        if start_date <= pd.Timestamp(r["datetime"]).strftime("%Y-%m-%d") <= end_date
+                    ]
+                    if rows:
+                        count = dao.upsert_weather(rows)
+                        session.commit()
+                        total_rows += count
+                        parquet_loaded += 1
+                        logger.info("  {} -> DB from parquet ({} rows)", yr, count)
+                    continue
 
-            # Fetch per-city data from API (no DB session — raw API fetch)
-            with OpenMeteoClient(
-                config=settings.openmeteo,
-                region=settings.region,
-                timezone=settings.project.timezone,
-            ) as client:
-                city_dfs = client._fetch_all_cities(
-                    url=settings.openmeteo.api.base_url_historical,
-                    start_date=chunk_start,
-                    end_date=chunk_end,
-                )
+            # --- Strategy 2: Fetch from API (monthly chunks) ---
+            logger.info("  {} -> Fetching from API...", yr)
+            yr_start = max(start_date, f"{yr}-01-01")
+            yr_end = min(end_date, f"{yr}-12-31")
+            chunks = generate_monthly_chunks(yr_start, yr_end)
 
-            # Write per-city data to DB
-            chunk_rows = 0
-            for city, df in city_dfs:
-                rows: list[dict[str, object]] = []
-                for idx, row in df.iterrows():
-                    d: dict[str, object] = {
-                        "datetime": idx,
-                        "city": city.name,
-                        "source": "historical",
-                    }
-                    for col in df.columns:
-                        val = row[col]
-                        d[col] = float(val) if pd.notna(val) else None
-                    rows.append(d)
-                count = dao.upsert_weather(rows)
-                chunk_rows += count
+            # Collect all city_dfs for this year (for parquet dual-write)
+            year_city_data: dict[str, list[tuple[object, pd.DataFrame]]] = {}
 
-            session.commit()
-            total_rows += chunk_rows
-            logger.info("  Written {} rows ({} total)", chunk_rows, total_rows)
+            for j, (chunk_start, chunk_end) in enumerate(chunks, 1):
+                logger.info("    [{}/{}] {} to {}", j, len(chunks), chunk_start, chunk_end)
 
-            # Rate limit
-            if i < len(chunks):
-                time.sleep(args.delay)
+                with OpenMeteoClient(
+                    config=settings.openmeteo,
+                    region=settings.region,
+                    timezone=settings.project.timezone,
+                ) as client:
+                    city_dfs = client._fetch_all_cities(
+                        url=settings.openmeteo.api.base_url_historical,
+                        start_date=chunk_start,
+                        end_date=chunk_end,
+                    )
+
+                # Write per-city data to DB
+                chunk_rows = 0
+                for city, df in city_dfs:
+                    rows_list: list[dict[str, object]] = []
+                    for idx, row in df.iterrows():
+                        d: dict[str, object] = {
+                            "datetime": idx,
+                            "city": city.name,
+                            "source": "historical",
+                        }
+                        for col in df.columns:
+                            val = row[col]
+                            d[col] = float(val) if pd.notna(val) else None
+                        rows_list.append(d)
+                    count = dao.upsert_weather(rows_list)
+                    chunk_rows += count
+
+                    # Accumulate for parquet write
+                    if city.name not in year_city_data:
+                        year_city_data[city.name] = []
+                    year_city_data[city.name].append((city, df))
+
+                session.commit()
+                total_rows += chunk_rows
+                logger.info("    Written {} rows", chunk_rows)
+
+                # Rate limit
+                if j < len(chunks):
+                    time.sleep(args.delay)
+
+            # Dual-write: save this year to parquet
+            all_city_dfs: list[tuple[object, pd.DataFrame]] = []
+            for city_name, pairs in year_city_data.items():
+                for pair in pairs:
+                    all_city_dfs.append(pair)
+            if all_city_dfs:
+                _save_year_to_parquet(all_city_dfs, yr, parquet_dir, file_pattern)
+
+            api_fetched += 1
 
     except Exception as e:
         logger.error("Seed failed: {}", e)
@@ -187,7 +313,11 @@ def main() -> int:
         session.close()
 
     elapsed = time.monotonic() - start_time
-    logger.info("Weather seed complete: {} rows in {:.1f}s", total_rows, elapsed)
+    logger.info(
+        "Weather seed complete: {} rows in {:.1f}s "
+        "(parquet: {} years, API: {} years)",
+        total_rows, elapsed, parquet_loaded, api_fetched,
+    )
     return 0
 
 
