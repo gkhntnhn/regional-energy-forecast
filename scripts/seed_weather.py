@@ -94,7 +94,7 @@ def main() -> int:
 
     # Default date range
     if args.start is None:
-        start_date = (datetime.now() - timedelta(days=365)).strftime("%Y-%m-%d")
+        start_date = "2020-01-01"
     else:
         start_date = args.start
 

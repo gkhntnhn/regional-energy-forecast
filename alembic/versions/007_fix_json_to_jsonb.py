@@ -19,7 +19,7 @@ branch_labels = None
 depends_on = None
 
 # JSON columns that should be JSONB
-_JOBS_JSON_COLS = ["config_snapshot", "feature_importance", "metadata", "epias_snapshot"]
+_JOBS_JSON_COLS = ["config_snapshot", "metadata", "epias_snapshot"]
 _AUDIT_JSON_COLS = ["details"]
 
 

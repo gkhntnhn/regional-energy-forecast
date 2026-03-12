@@ -599,6 +599,7 @@ def main() -> int:
                 logger.info("[DB READ] Holidays loaded ({} entries)", len(holidays_df))
         except Exception as e:
             logger.warning("Holiday DB load failed: {}", e)
+            db_session.rollback()
 
     # Step 3: Fetch EPIAS data
     logger.info("[3/6] Fetching EPIAS data...")
