@@ -9,9 +9,9 @@ thresholds:
   # R2: Selective extreme flags (zero-importance flags disabled)
   extreme_flags:
     cold: true       # Keep — winter Bursa'da anlamli
-    hot: false       # R2 DISABLED: zero CatBoost importance
-    wind: false      # R2 DISABLED: zero CatBoost importance
-    precip: false    # R2 DISABLED: zero CatBoost importance
+    hot: true        # Re-enabled for broader ensemble feature set
+    wind: true       # Re-enabled for broader ensemble feature set
+    precip: true     # Re-enabled for broader ensemble feature set
 
 comfort_index:
   method: "apparent_temperature"
@@ -31,7 +31,7 @@ weather_lags:
   # R1 pruning: 8→4 hours, 3→2 columns (wind_speed lags near-zero importance)
   # R2 pruning: humidity 48h lag dropped (autocorrelated, near-zero importance)
   enabled: true
-  hours: [6, 12, 24]          # DROPPED R2: 48h (autocorrelated humidity)
+  hours: [6, 12, 24, 48]      # 48h re-enabled for broader ensemble feature set
   columns:
     - temperature_2m           # keep — strong thermal inertia
     - relative_humidity_2m     # keep — comfort signal
@@ -41,14 +41,14 @@ quadratic_temperature:
   enabled: true
 
 severity:
-  # R2: DISABLED — wth_severity and wth_is_severe both zero/near-zero importance
-  enabled: false
+  # Re-enabled for broader ensemble feature set
+  enabled: true
   wind_threshold: 25.0
   precip_threshold: 5.0
 
 interactions:
   # R2: cdd_x_is_peak disabled (zero importance), others kept
-  cdd_x_is_peak: false
+  cdd_x_is_peak: true
 
 heat_index:
   # Steadman simplified heat index — captures humidity-amplified heat stress

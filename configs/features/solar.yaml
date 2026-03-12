@@ -22,10 +22,8 @@ features:
   # DROPPED R2: sol_cloud_proxy (1 - clearness_index, redundant)
   # DROPPED R2: sol_is_daylight (zero CatBoost importance)
 
-# R2: Zero-importance features disabled
-disabled_features:
-  - sol_cloud_proxy
-  - sol_is_daylight
+# Re-enabled for broader ensemble feature set
+disabled_features: []
 
 lead:
   # Solar lead/lag features (NOT leakage — deterministic astronomical calculation)

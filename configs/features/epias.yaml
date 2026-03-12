@@ -5,26 +5,28 @@ source:
   file_pattern: "epias_market_{year}.parquet"
 
 variables:
-  # R2 prune: 5→4 (Bilateral near-zero importance)
   - FDPP                          # KGÜP toplam — planlanan üretim (region=TR1 gerektirir)
   - Real_Time_Consumption
   - DAM_Purchase
   - Load_Forecast
-  # DROPPED: Bilateral_Agreement_Purchase (near-zero R1 importance)
+  - Bilateral_Agreement_Purchase  # Re-enabled for broader ensemble feature set
 
 lags:
   min_lag: 48
   values:
     - 48
-    - 168           # DROPPED: 72 (3-day lag weak, R1 near-zero importance)
+    - 72            # Re-enabled for broader ensemble feature set
+    - 168
 
 rolling:
   # shift(1) THEN rolling()
   windows:
     - 24
-    - 168           # DROPPED: 48 (redundant between 24 and 168)
+    - 48            # Re-enabled for broader ensemble feature set
+    - 168
   functions:
-    - mean          # DROPPED: std (near-zero importance in R1)
+    - mean
+    - std           # Re-enabled for broader ensemble feature set
 
 expanding:
   min_periods: 48
@@ -41,15 +43,18 @@ generation:
   variables:
     - gen_total           # aggregate — most informative
     - gen_natural_gas     # dominant thermal source (~40% of generation)
-    # DROPPED R2: gen_wind, gen_sun, gen_dammed_hydro (each <0.05% importance)
-    # DROPPED R1: 12 minor fuel types
+    - gen_wind            # Re-enabled for broader ensemble feature set
+    - gen_sun             # Re-enabled for broader ensemble feature set
+    - gen_dammed_hydro    # Re-enabled for broader ensemble feature set
   lags:
     min_lag: 48
     values:
-      - 48              # DROPPED: 168 (weekly gen lag weak)
+      - 48
+      - 168             # Re-enabled for broader ensemble feature set
   rolling:
     windows:
-      - 24              # DROPPED: 168
+      - 24
+      - 168             # Re-enabled for broader ensemble feature set
     functions:
       - mean
   expanding:

@@ -44,7 +44,5 @@ business_hours:
   peak_start: 17
   peak_end: 22
 
-# R2: Zero-importance features disabled (hardcoded in code, controlled here)
-disabled_features:
-  - is_ramp_evening      # zero CatBoost importance
-  - is_heating_season    # zero CatBoost importance (is_cooling_season kept)
+# Re-enabled for broader ensemble feature set
+disabled_features: []

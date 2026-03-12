@@ -12,7 +12,7 @@ training:
   random_seed: 42
   verbose: 500
 
-# R2: 36→28 categorical features (pruned zero-importance + misclassified)
+# 35 categorical features (28 R2 + 7 re-enabled for broader ensemble)
 categorical_features:
   # Time
   - hour
@@ -39,7 +39,7 @@ categorical_features:
   - is_business_hours
   - is_peak
   - is_ramp_morning
-  # DROPPED R2: is_ramp_evening (zero importance, removed from pipeline)
+  - is_ramp_evening        # Re-enabled
   - is_friday
   - is_monday
   - is_sunday
@@ -47,13 +47,15 @@ categorical_features:
   - weather_code
   - weather_group
   - wth_extreme_cold
-  # DROPPED R2: wth_extreme_hot, wth_extreme_wind, wth_heavy_precip (zero importance, disabled)
-  # DROPPED R2: wth_is_severe, wth_severity (severity disabled in pipeline)
+  - wth_extreme_hot        # Re-enabled
+  - wth_extreme_wind       # Re-enabled
+  - wth_heavy_precip       # Re-enabled
+  - wth_is_severe          # Re-enabled
   # Season / solar
   - is_cooling_season
-  # DROPPED R2: is_heating_season (zero importance, removed from pipeline)
-  # DROPPED R2: sol_is_daylight (zero importance, removed from pipeline)
-  # DROPPED R2: sol_daylight_hours (continuous value, was misclassified as categorical)
+  - is_heating_season      # Re-enabled
+  - sol_is_daylight        # Re-enabled
+  # NOTE: wth_severity (0-3 int) and sol_cloud_proxy (float) are numeric, NOT categorical
 
 nan_handling:
   categorical: "missing"

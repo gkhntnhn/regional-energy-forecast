@@ -1,7 +1,7 @@
 # Temporal Fusion Transformer configuration (NeuralForecast)
 # R2 → R3: Migrated from pytorch-forecasting to NeuralForecast API
 architecture:
-  hidden_size: 4              # LOCAL SMOKE TEST (RunPod: 128) — 8GB RAM safe
+  hidden_size: 8              # LOCAL SMOKE TEST (RunPod: 128) — 8GB RAM safe
   n_head: 2                   # attention_head_size → n_head (NF naming)
   n_rnn_layers: 1             # lstm_layers → n_rnn_layers (NF naming)
   dropout: 0.1
@@ -9,7 +9,7 @@ architecture:
 training:
   encoder_length: 168  # 7 days → input_size
   prediction_length: 48       # h (forecast horizon)
-  max_steps: 30               # LOCAL SMOKE TEST (prod: 10000) — 30 steps
+  max_steps: 50               # Smoke: 50 steps (prod: 10000)
   windows_batch_size: 128     # LOCAL SMOKE TEST (RunPod: 2048) — 8GB RAM safe
   learning_rate: 0.001
   early_stop_patience_steps: 100  # Step-based early stopping
