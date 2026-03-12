@@ -88,7 +88,7 @@ class JobNotFoundError(APIError):
 
 
 class JobQueueFullError(APIError):
-    """Job queue is full / active job running (429)."""
+    """Job queue is full — max capacity reached (429)."""
 
     status_code = 429
-    default_detail = "A prediction job is currently running. Please try again later."
+    default_detail = "Queue is full. Please try again later."

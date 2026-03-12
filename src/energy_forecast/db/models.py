@@ -124,7 +124,7 @@ class JobModel(Base):
 
     __table_args__ = (
         CheckConstraint(
-            "status IN ('pending', 'running', 'completed', 'failed', 'archived')",
+            "status IN ('pending', 'queued', 'running', 'completed', 'failed', 'archived')",
             name="ck_jobs_status",
         ),
         CheckConstraint(

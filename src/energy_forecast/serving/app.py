@@ -9,7 +9,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated
 
-from fastapi import BackgroundTasks, Depends, FastAPI, Form, HTTPException, Request, UploadFile
+from fastapi import Depends, FastAPI, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -187,8 +187,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     if not settings.env.api_key:
         logger.warning("API_KEY is empty — all authenticated endpoints will reject requests")
 
-    # Initialize job manager
-    app.state.job_manager = JobManager()
+    # Initialize job manager with queue
+    app.state.job_manager = JobManager(max_queue_size=5)
+    app.state.job_manager.start_worker()
 
     # Initialize database (if DATABASE_URL is set)
     if settings.env.database_url:
@@ -229,6 +230,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     logger.info("Shutting down Energy Forecast API...")
     if _scheduler_task is not None:
         _scheduler_task.cancel()
+    await app.state.job_manager.stop_worker()
     app.state.file_service.cleanup_old_files()
     app.state.job_manager.cleanup_old_jobs()
     if app.state.db_engine:
@@ -339,24 +341,22 @@ async def health() -> HealthResponse:
 @limiter.limit("10/minute")
 async def predict(
     request: Request,
-    background_tasks: BackgroundTasks,
     file: UploadFile,
     email: Annotated[EmailStr, Form()],
     _auth: HTTPAuthorizationCredentials = Depends(verify_api_key),  # noqa: B008
 ) -> JobResponse:
     """Submit a prediction job.
 
-    Uploads Excel file, creates a job, and queues it for processing.
-    Only one job can run at a time. Returns 429 if a job is already running.
+    Uploads Excel file, creates a job, and enqueues it for sequential processing.
+    Returns 429 if the queue is full (max_queue_size exceeded).
 
     Args:
         request: FastAPI request object.
-        background_tasks: Background task queue.
         file: Uploaded Excel file with consumption data.
         email: Email address to send results.
 
     Returns:
-        Job creation response with job_id.
+        Job creation response with job_id and queue position.
     """
     # TODO(future): forecast_type toggle (GOP-only vs GOP+GİP) — currently only T+1 (24h)
     # Get services from app state
@@ -405,8 +405,7 @@ async def predict(
         except Exception as e:
             logger.warning("Audit log failed: {}", e)
 
-        background_tasks.add_task(
-            job_manager.process_job_db,
+        position = job_manager.enqueue(
             job_id=job.id,
             excel_path=str(excel_path),
             email=str(email),
@@ -416,40 +415,48 @@ async def predict(
             prediction_service=prediction_service,
             file_service=file_service,
             email_service=email_service,
+            is_db_mode=True,
+            job_ref=None,
         )
+
+        msg = "Job queued successfully. Results will be sent to your email."
+        if position > 1:
+            msg = f"Job queued at position {position}. Results will be sent to your email."
 
         return JobResponse(
             job_id=job.id,
             status=JobStatus(job.status),
-            message="Job queued successfully. Results will be sent to your email.",
+            message=msg,
             created_at=job.created_at,
         )
 
     # In-memory fallback
-    if job_manager.has_active_job_in_memory():
-        active_job = job_manager.get_active_job_in_memory()
-        job_id_str = active_job.id if active_job else "unknown"
-        raise JobQueueFullError(
-            f"A prediction job is currently running (ID: {job_id_str}). "
-            "Please try again later."
-        )
-
     job_mem = job_manager.create_job_in_memory(
         email=str(email), excel_path=excel_path, file_stem=file_stem
     )
 
-    background_tasks.add_task(
-        job_manager.process_job_in_memory,
-        job=job_mem,
+    position = job_manager.enqueue(
+        job_id=job_mem.id,
+        excel_path=str(excel_path),
+        email=str(email),
+        file_stem=file_stem,
+        created_at=job_mem.created_at,
+        session_factory=None,
         prediction_service=prediction_service,
         file_service=file_service,
         email_service=email_service,
+        is_db_mode=False,
+        job_ref=job_mem,
     )
+
+    msg = "Job queued successfully. Results will be sent to your email."
+    if position > 1:
+        msg = f"Job queued at position {position}. Results will be sent to your email."
 
     return JobResponse(
         job_id=job_mem.id,
         status=job_mem.status,
-        message="Job queued successfully. Results will be sent to your email.",
+        message=msg,
         created_at=job_mem.created_at,
     )
 
@@ -459,18 +466,20 @@ async def get_active_status(request: Request) -> dict[str, object]:
     """Check if a prediction job is currently running (no auth required).
 
     Used by the frontend to disable the form when a job is in progress.
+    Returns real queue_size from the asyncio.Queue.
     """
     job_manager: JobManager = request.app.state.job_manager
-    use_db: bool = getattr(request.app.state, "use_db", False)
+    qsize = job_manager.queue_size
 
+    use_db: bool = getattr(request.app.state, "use_db", False)
     if use_db:
         session_factory = request.app.state.session_factory
         async with session_factory() as session:
             active = await job_manager.get_active_job_db(session)
-        return {"busy": active is not None, "queue_size": 1 if active else 0}
+        return {"busy": active is not None, "queue_size": qsize}
 
     active_mem = job_manager.get_active_job_in_memory()
-    return {"busy": active_mem is not None, "queue_size": 1 if active_mem else 0}
+    return {"busy": active_mem is not None, "queue_size": qsize}
 
 
 @app.get("/status/{job_id}", response_model=JobStatusResponse)

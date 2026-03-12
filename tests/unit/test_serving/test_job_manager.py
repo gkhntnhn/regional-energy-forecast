@@ -84,8 +84,8 @@ class TestJobManager:
         assert job.id in job_manager._jobs
         assert job.status == JobStatus.PENDING
 
-    def test_create_job_when_active_raises(self, job_manager: JobManager) -> None:
-        """Test job creation fails when another is active."""
+    def test_create_job_when_active_queues(self, job_manager: JobManager) -> None:
+        """Test second job gets QUEUED status when another is active."""
         job = job_manager.create_job_in_memory(
             email="test@test.com",
             excel_path=Path("/tmp/test.xlsx"),
@@ -94,12 +94,12 @@ class TestJobManager:
         job_manager._jobs[job.id].status = JobStatus.RUNNING
         job_manager._active_job_id = job.id
 
-        with pytest.raises(JobQueueFullError):
-            job_manager.create_job_in_memory(
-                email="test2@test.com",
-                excel_path=Path("/tmp/test2.xlsx"),
-                file_stem="01-03-2026_12-00-01",
-            )
+        job2 = job_manager.create_job_in_memory(
+            email="test2@test.com",
+            excel_path=Path("/tmp/test2.xlsx"),
+            file_stem="01-03-2026_12-00-01",
+        )
+        assert job2.status == JobStatus.QUEUED
 
     def test_get_job(self, job_manager: JobManager) -> None:
         """Test getting job by ID."""
@@ -306,10 +306,10 @@ class TestJobManagerDB:
         assert job.email_status == "pending"
 
     @pytest.mark.asyncio
-    async def test_create_job_db_raises_when_active_exists(
+    async def test_create_job_db_queues_when_active_exists(
         self, job_manager: JobManager, db_session: Any
     ) -> None:
-        """Test create_job_db raises JobQueueFullError when active job exists."""
+        """Test create_job_db creates second job with 'queued' status."""
         await job_manager.create_job_db(
             session=db_session,
             email="first@example.com",
@@ -317,13 +317,13 @@ class TestJobManagerDB:
             file_stem="07-03-2026_10-00-00",
         )
 
-        with pytest.raises(JobQueueFullError, match="A job is already running"):
-            await job_manager.create_job_db(
-                session=db_session,
-                email="second@example.com",
-                excel_path=Path("/tmp/second.xlsx"),
-                file_stem="07-03-2026_10-00-01",
-            )
+        job2 = await job_manager.create_job_db(
+            session=db_session,
+            email="second@example.com",
+            excel_path=Path("/tmp/second.xlsx"),
+            file_stem="07-03-2026_10-00-01",
+        )
+        assert job2.status == "queued"
 
     @pytest.mark.asyncio
     async def test_create_job_db_allows_after_completion(
@@ -1474,3 +1474,152 @@ class TestRunDriftCheck:
             # Should run through without error; warning is severity,
             # email_on_warning defaults to False in DriftConfig
             await _run_drift_check(db_session_factory, mock_email)
+
+
+# ---------------------------------------------------------------------------
+# Queue tests
+# ---------------------------------------------------------------------------
+
+
+class TestJobQueue:
+    """Tests for asyncio.Queue-based job processing."""
+
+    def test_enqueue_returns_position(self) -> None:
+        """Test enqueue returns 1-based queue position."""
+        jm = JobManager(max_queue_size=5)
+        pos = jm.enqueue(
+            job_id="q1", excel_path="/tmp/a.xlsx", email="a@a.com",
+            file_stem="s1", created_at=datetime.now(tz=TZ_ISTANBUL),
+            session_factory=None, prediction_service=MagicMock(),
+            file_service=MagicMock(), email_service=MagicMock(),
+            is_db_mode=False, job_ref=MagicMock(),
+        )
+        assert pos == 1
+
+    def test_enqueue_full_raises(self) -> None:
+        """Test enqueue raises JobQueueFullError when queue is at max."""
+        jm = JobManager(max_queue_size=2)
+        for i in range(2):
+            jm.enqueue(
+                job_id=f"q{i}", excel_path="/tmp/a.xlsx", email="a@a.com",
+                file_stem="s", created_at=datetime.now(tz=TZ_ISTANBUL),
+                session_factory=None, prediction_service=MagicMock(),
+                file_service=MagicMock(), email_service=MagicMock(),
+                is_db_mode=False, job_ref=MagicMock(),
+            )
+        with pytest.raises(JobQueueFullError, match="Queue is full"):
+            jm.enqueue(
+                job_id="q_overflow", excel_path="/tmp/a.xlsx", email="a@a.com",
+                file_stem="s", created_at=datetime.now(tz=TZ_ISTANBUL),
+                session_factory=None, prediction_service=MagicMock(),
+                file_service=MagicMock(), email_service=MagicMock(),
+                is_db_mode=False, job_ref=MagicMock(),
+            )
+
+    def test_queue_size_property(self) -> None:
+        """Test queue_size reflects enqueued items."""
+        jm = JobManager(max_queue_size=5)
+        assert jm.queue_size == 0
+        jm.enqueue(
+            job_id="q1", excel_path="/tmp/a.xlsx", email="a@a.com",
+            file_stem="s", created_at=datetime.now(tz=TZ_ISTANBUL),
+            session_factory=None, prediction_service=MagicMock(),
+            file_service=MagicMock(), email_service=MagicMock(),
+            is_db_mode=False, job_ref=MagicMock(),
+        )
+        assert jm.queue_size == 1
+
+    @pytest.mark.asyncio
+    async def test_worker_processes_sequentially(self) -> None:
+        """Test worker loop processes jobs one at a time in order."""
+        import asyncio
+
+        jm = JobManager(max_queue_size=5)
+        order: list[str] = []
+
+        job1 = Job(
+            id="seq1", email="a@a.com",
+            excel_path=Path("/tmp/a.xlsx"), file_stem="s1",
+        )
+        job2 = Job(
+            id="seq2", email="b@b.com",
+            excel_path=Path("/tmp/b.xlsx"), file_stem="s2",
+        )
+        jm._jobs[job1.id] = job1
+        jm._jobs[job2.id] = job2
+
+        mock_pred = MagicMock()
+        pred_df = pd.DataFrame(
+            {"prediction": [1000]},
+            index=pd.date_range("2025-01-01", periods=1, freq="h"),
+        )
+        mock_pred.run_prediction.return_value = pred_df
+
+        mock_file = MagicMock()
+        mock_file.create_output_xlsx.return_value = Path("/tmp/out.xlsx")
+
+        mock_email = MagicMock()
+        mock_email.send_with_retry.return_value = (True, 1, None)
+
+        # Patch process_job_in_memory to track order
+        original_process = jm.process_job_in_memory
+
+        async def tracked_process(job: Job, **kwargs: Any) -> None:
+            order.append(job.id)
+            await original_process(job=job, **kwargs)
+
+        jm.process_job_in_memory = tracked_process  # type: ignore[assignment]
+
+        jm.start_worker()
+
+        jm.enqueue(
+            job_id=job1.id, excel_path="/tmp/a.xlsx", email="a@a.com",
+            file_stem="s1", created_at=job1.created_at,
+            session_factory=None, prediction_service=mock_pred,
+            file_service=mock_file, email_service=mock_email,
+            is_db_mode=False, job_ref=job1,
+        )
+        jm.enqueue(
+            job_id=job2.id, excel_path="/tmp/b.xlsx", email="b@b.com",
+            file_stem="s2", created_at=job2.created_at,
+            session_factory=None, prediction_service=mock_pred,
+            file_service=mock_file, email_service=mock_email,
+            is_db_mode=False, job_ref=job2,
+        )
+
+        # Wait for queue to drain
+        await asyncio.wait_for(jm._queue.join(), timeout=5.0)
+        await jm.stop_worker()
+
+        assert order == ["seq1", "seq2"]
+
+    @pytest.mark.asyncio
+    async def test_start_stop_worker(self) -> None:
+        """Test worker start and stop lifecycle."""
+        jm = JobManager(max_queue_size=3)
+        assert jm._worker_task is None
+
+        jm.start_worker()
+        assert jm._worker_task is not None
+        assert not jm._worker_task.done()
+
+        await jm.stop_worker()
+        assert jm._worker_task is None
+
+    def test_stats_include_queued(self) -> None:
+        """Test get_stats_in_memory includes queued status."""
+        jm = JobManager(max_queue_size=5)
+        job = jm.create_job_in_memory(
+            "a@a.com", Path("/tmp/a.xlsx"), "s1"
+        )
+        job.status = JobStatus.RUNNING
+        jm._active_job_id = job.id
+
+        job2 = jm.create_job_in_memory(
+            "b@b.com", Path("/tmp/b.xlsx"), "s2"
+        )
+        assert job2.status == JobStatus.QUEUED
+
+        stats = jm.get_stats_in_memory()
+        assert stats["queued"] == 1
+        assert stats["running"] == 1

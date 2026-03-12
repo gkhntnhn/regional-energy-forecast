@@ -30,15 +30,25 @@ class JobRepository:
         return await self._session.get(JobModel, job_id)
 
     async def get_active_job(self) -> JobModel | None:
-        """Return the currently active (pending/running) job, if any."""
+        """Return the currently active (pending/running/queued) job, if any."""
         stmt = (
             select(JobModel)
-            .where(JobModel.status.in_(["pending", "running"]))
+            .where(JobModel.status.in_(["pending", "running", "queued"]))
             .order_by(JobModel.created_at.desc())
             .limit(1)
         )
         result = await self._session.execute(stmt)
         return result.scalar_one_or_none()
+
+    async def count_active_jobs(self) -> int:
+        """Count jobs in pending/queued/running status."""
+        from sqlalchemy import func
+
+        stmt = select(func.count()).select_from(JobModel).where(
+            JobModel.status.in_(["pending", "running", "queued"])
+        )
+        result = await self._session.execute(stmt)
+        return result.scalar_one()
 
     async def update_status(
         self, job_id: str, status: str, **kwargs: Any

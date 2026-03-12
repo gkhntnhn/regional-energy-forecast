@@ -19,6 +19,7 @@ class JobStatus(StrEnum):
     """Job processing status."""
 
     PENDING = "pending"
+    QUEUED = "queued"
     RUNNING = "running"
     COMPLETED = "completed"
     FAILED = "failed"

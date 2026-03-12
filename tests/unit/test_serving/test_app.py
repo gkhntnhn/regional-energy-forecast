@@ -202,12 +202,12 @@ class TestPredictEndpoint:
 
         assert response.status_code == 503
 
-    def test_predict_job_already_running(
+    def test_predict_job_queued_when_active(
         self,
         test_client: TestClient,
         mock_prediction_service: MagicMock,
     ) -> None:
-        """Test prediction when another job is running."""
+        """Test second prediction is queued when another job is running."""
         mock_prediction_service.is_ready = True
 
         # First request - should succeed
@@ -228,7 +228,7 @@ class TestPredictEndpoint:
         app.state.job_manager._jobs[job_id].status = JobStatus.RUNNING
         app.state.job_manager._active_job_id = job_id
 
-        # Second request - should fail with 429
+        # Second request - should be accepted and queued
         excel_content2 = BytesIO(b"fake excel content")
         response2 = test_client.post(
             "/predict",
@@ -236,7 +236,10 @@ class TestPredictEndpoint:
             data={"email": "test2@example.com"},
             headers=AUTH_HEADER,
         )
-        assert response2.status_code == 429
+        assert response2.status_code == 200
+        data2 = response2.json()
+        assert data2["status"] == "queued"
+        assert "position" in data2["message"]
 
 
 class TestStatusEndpoint:
