@@ -32,6 +32,7 @@ expanding:
   min_periods: 48
   functions:
     - mean
+    - std
 
 drop_raw: true
 
@@ -41,26 +42,42 @@ generation:
   # R2 prune: 5→2 variables (individual fuels near-zero, aggregate + dominant thermal yeter)
   # Composite ratios: renewable_ratio = 1 - (natural_gas / total)
   variables:
-    - gen_total           # aggregate — most informative
-    - gen_natural_gas     # dominant thermal source (~40% of generation)
-    - gen_wind            # Re-enabled for broader ensemble feature set
-    - gen_sun             # Re-enabled for broader ensemble feature set
-    - gen_dammed_hydro    # Re-enabled for broader ensemble feature set
+    - gen_total
+    - gen_natural_gas
+    - gen_wind
+    - gen_sun
+    - gen_dammed_hydro
+    - gen_asphaltite_coal
+    - gen_biomass
+    - gen_black_coal
+    - gen_fueloil
+    - gen_geothermal
+    - gen_import_coal
+    - gen_import_export
+    - gen_lignite
+    - gen_lng
+    - gen_naphta
+    - gen_river
+    - gen_wasteheat
   lags:
     min_lag: 48
     values:
       - 48
-      - 168             # Re-enabled for broader ensemble feature set
+      - 72
+      - 168
   rolling:
     windows:
       - 24
-      - 168             # Re-enabled for broader ensemble feature set
+      - 48
+      - 168
     functions:
       - mean
+      - std
   expanding:
     min_periods: 48
     functions:
       - mean
+      - std
   drop_raw: true
   composites:
     # Supply-side mix ratios from lagged generation data

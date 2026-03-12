@@ -9,7 +9,7 @@ architecture:
 training:
   encoder_length: 168  # 7 days → input_size
   prediction_length: 48       # h (forecast horizon)
-  max_steps: 50               # Smoke: 50 steps (prod: 10000)
+  max_steps: 5                # Quick test (prod: 10000)
   windows_batch_size: 128     # LOCAL SMOKE TEST (RunPod: 2048) — 8GB RAM safe
   learning_rate: 0.001
   early_stop_patience_steps: 100  # Step-based early stopping

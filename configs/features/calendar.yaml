@@ -29,13 +29,11 @@ anticipation:
   # Forward-looking holiday windows: "is there a holiday in the next N days?"
   # NOT leakage — calendar is deterministic (known future)
   enabled: true
-  windows: [3, 7]    # DROPPED: 15 (too far out, minimal signal in R1)
+  windows: [3, 7, 15]
 
 spline_seasonality:
-  # Periodic spline encoding for hour (more flexible than sin/cos)
-  # DISABLED: R1 analysis showed 0.26% total importance (92% waste),
-  # cyclical sin/cos encoding already captures periodicity
-  enabled: false
+  # Periodic spline encoding for hour
+  enabled: true
   n_splines: 12
 
 business_hours:

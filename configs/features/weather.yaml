@@ -33,8 +33,11 @@ weather_lags:
   enabled: true
   hours: [6, 12, 24, 48]      # 48h re-enabled for broader ensemble feature set
   columns:
-    - temperature_2m           # keep — strong thermal inertia
-    - relative_humidity_2m     # keep — comfort signal
+    - temperature_2m
+    - relative_humidity_2m
+    - apparent_temperature
+    - wind_speed_10m
+    - dew_point_2m
 
 quadratic_temperature:
   # Energy-temperature is U-shaped: both cold and hot extremes increase demand
