@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -364,9 +365,13 @@ class TestOptunaStorage:
         settings.paths.models_dir = str(tmp_path)
 
         trainer = TFTTrainer(settings)
-        result = trainer._optuna_storage("tft")
+        # Clear DATABASE_URL_SYNC so optuna_storage falls back to SQLite
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("DATABASE_URL_SYNC", None)
+            result = trainer._optuna_storage("tft")
 
         assert result is not None
+        assert isinstance(result, str)
         assert result.startswith("sqlite:///")
         assert "optuna_studies" in result
         assert result.endswith("tft.db")
@@ -896,13 +901,9 @@ class TestRun:
         ):
             trainer.run(sample_df)
 
-        # The tft subdirectory should exist
+        # The tft subdirectory should exist (model saved directly, no timestamped subdir)
         tft_dir = tmp_path / "tft"
         assert tft_dir.exists()
-        # There should be a timestamped subdirectory
-        subdirs = list(tft_dir.iterdir())
-        assert len(subdirs) == 1
-        assert subdirs[0].name.startswith("tft_")
 
     def test_run_logs_to_tracker(
         self,

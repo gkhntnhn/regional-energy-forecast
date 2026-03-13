@@ -184,7 +184,9 @@ class TestGoogleDriveStorage:
             "forecast.parquet": "uploaded_file_id",
         }
         assert mock_upload.call_count == 2
-        mock_ensure.assert_called_once_with(["forecasts", "2026", "03", "07", "14-34_job_123"])
+        mock_ensure.assert_called_once_with(
+            ["forecasts", "2026", "03", "07", "14-34-00-000_job_123"]
+        )
 
     @patch("energy_forecast.storage.gdrive.GoogleDriveStorage._upload_file")
     @patch("energy_forecast.storage.gdrive.GoogleDriveStorage._ensure_folder_path")

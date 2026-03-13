@@ -85,7 +85,7 @@ class TestEnabledTracker:
         tracker._mlflow = mock_mlflow
         model = MagicMock()
         tracker.log_model(model, artifact_path="catboost")
-        mock_mlflow.catboost.log_model.assert_called_once_with(model, artifact_path="catboost")
+        mock_mlflow.catboost.log_model.assert_called_once_with(model, name="catboost")
 
     def test_log_feature_importance_when_enabled(self, mock_mlflow: MagicMock) -> None:
         tracker = ExperimentTracker(enabled=False)
