@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, Request
-from fastapi.responses import FileResponse
 from loguru import logger
 
 from energy_forecast.db.repositories.analytics_repo import AnalyticsRepository
@@ -36,9 +35,7 @@ def _get_session_factory(request: Request) -> Any:
 
 
 @admin_router.get("/analytics/mape/daily")
-async def get_daily_mape(
-    request: Request, days: int = 30
-) -> list[dict[str, Any]]:
+async def get_daily_mape(request: Request, days: int = 30) -> list[dict[str, Any]]:
     """Daily production MAPE trend."""
     sf = _get_session_factory(request)
     if sf is None:
@@ -49,9 +46,7 @@ async def get_daily_mape(
 
 
 @admin_router.get("/analytics/mape/weekly")
-async def get_weekly_mape(
-    request: Request, weeks: int = 12
-) -> list[dict[str, Any]]:
+async def get_weekly_mape(request: Request, weeks: int = 12) -> list[dict[str, Any]]:
     """Weekly MAPE trend with T vs T+1 breakdown."""
     sf = _get_session_factory(request)
     if sf is None:
@@ -78,9 +73,7 @@ async def get_hourly_mape(request: Request) -> list[dict[str, Any]]:
 
 
 @admin_router.get("/analytics/models/mape")
-async def get_per_model_mape(
-    request: Request, days: int = 30
-) -> list[dict[str, Any]]:
+async def get_per_model_mape(request: Request, days: int = 30) -> list[dict[str, Any]]:
     """Per-model production MAPE comparison."""
     sf = _get_session_factory(request)
     if sf is None:
@@ -104,9 +97,7 @@ async def get_hourly_model_performance(
 
 
 @admin_router.get("/analytics/models/comparison")
-async def get_model_comparison(
-    request: Request, days: int = 30
-) -> list[dict[str, Any]]:
+async def get_model_comparison(request: Request, days: int = 30) -> list[dict[str, Any]]:
     """Ensemble vs individual model stats."""
     sf = _get_session_factory(request)
     if sf is None:
@@ -122,9 +113,7 @@ async def get_model_comparison(
 
 
 @admin_router.get("/analytics/weather/horizon")
-async def get_weather_horizon(
-    request: Request, weeks: int = 8
-) -> list[dict[str, Any]]:
+async def get_weather_horizon(request: Request, weeks: int = 8) -> list[dict[str, Any]]:
     """T vs T+1 weather forecast accuracy."""
     sf = _get_session_factory(request)
     if sf is None:
@@ -153,9 +142,7 @@ async def get_weather_variables(
 
 
 @admin_router.get("/analytics/features/trend")
-async def get_feature_trend(
-    request: Request, days: int = 30
-) -> list[dict[str, Any]]:
+async def get_feature_trend(request: Request, days: int = 30) -> list[dict[str, Any]]:
     """Feature importance change over time."""
     sf = _get_session_factory(request)
     if sf is None:
@@ -171,9 +158,7 @@ async def get_feature_trend(
 
 
 @admin_router.get("/analytics/epias/accuracy")
-async def get_epias_accuracy(
-    request: Request, days: int = 30
-) -> list[dict[str, Any]]:
+async def get_epias_accuracy(request: Request, days: int = 30) -> list[dict[str, Any]]:
     """EPIAS Load_Forecast vs Real_Time_Consumption accuracy."""
     sf = _get_session_factory(request)
     if sf is None:
@@ -189,9 +174,7 @@ async def get_epias_accuracy(
 
 
 @admin_router.get("/jobs/history")
-async def get_job_history(
-    request: Request, page: int = 1, size: int = 20
-) -> dict[str, Any]:
+async def get_job_history(request: Request, page: int = 1, size: int = 20) -> dict[str, Any]:
     """Paginated job history."""
     sf = _get_session_factory(request)
     if sf is None:
@@ -202,9 +185,7 @@ async def get_job_history(
 
 
 @admin_router.get("/jobs/{job_id}/details")
-async def get_job_details(
-    request: Request, job_id: str
-) -> dict[str, Any]:
+async def get_job_details(request: Request, job_id: str) -> dict[str, Any]:
     """Detailed job info with predictions and weather snapshots."""
     sf = _get_session_factory(request)
     if sf is None:
@@ -225,9 +206,7 @@ async def get_job_details(
             "progress": job.progress,
             "error": job.error,
             "created_at": job.created_at.isoformat(),
-            "completed_at": (
-                job.completed_at.isoformat() if job.completed_at else None
-            ),
+            "completed_at": (job.completed_at.isoformat() if job.completed_at else None),
             "metadata": job.metadata_,
             "epias_snapshot": job.epias_snapshot,
             "predictions": [
@@ -250,9 +229,7 @@ async def get_job_details(
 
 
 @admin_router.get("/models/runs")
-async def get_model_runs(
-    request: Request, model_type: str | None = None
-) -> list[dict[str, Any]]:
+async def get_model_runs(request: Request, model_type: str | None = None) -> list[dict[str, Any]]:
     """Training history from model_runs table."""
     sf = _get_session_factory(request)
     if sf is None:
@@ -309,16 +286,12 @@ async def system_health(request: Request) -> dict[str, Any]:
             logger.warning("DB health check failed: {}", e)
 
     prediction_service = getattr(request.app.state, "prediction_service", None)
-    models_loaded = (
-        prediction_service.is_ready if prediction_service else False
-    )
+    models_loaded = prediction_service.is_ready if prediction_service else False
 
     return {
         "database": "connected" if db_ok else "disconnected",
         "models_loaded": models_loaded,
         "model_info": (
-            prediction_service.get_model_info()
-            if prediction_service and models_loaded
-            else {}
+            prediction_service.get_model_info() if prediction_service and models_loaded else {}
         ),
     }

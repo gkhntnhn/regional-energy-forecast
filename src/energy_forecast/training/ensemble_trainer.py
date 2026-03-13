@@ -150,19 +150,13 @@ class EnsembleTrainer:
 
         # Stacking requires >= 2 models; fall back to weighted_average
         if self._mode == "stacking" and len(self._active_models) < 2:
-            logger.warning(
-                "Stacking requires >= 2 models, falling back to weighted_average"
-            )
+            logger.warning("Stacking requires >= 2 models, falling back to weighted_average")
             self._mode = "weighted_average"
 
-        logger.info(
-            "Ensemble active models: {} | mode: {}", self._active_models, self._mode
-        )
+        logger.info("Ensemble active models: {} | mode: {}", self._active_models, self._mode)
 
         # Create sub-trainers in active_models order (first model trains first)
-        _factory: dict[
-            str, Callable[[], CatBoostTrainer | ProphetTrainer | TFTTrainer]
-        ] = {
+        _factory: dict[str, Callable[[], CatBoostTrainer | ProphetTrainer | TFTTrainer]] = {
             "catboost": lambda: CatBoostTrainer(settings, tracker),
             "prophet": lambda: ProphetTrainer(settings, tracker),
             "tft": lambda: TFTTrainer(settings, tracker),
@@ -220,10 +214,7 @@ class EnsembleTrainer:
                 {
                     "active_models": ",".join(self._active_models),
                     "ensemble_mode": self._mode,
-                    **{
-                        f"weight_{m}": w
-                        for m, w in training_result.optimized_weights.items()
-                    },
+                    **{f"weight_{m}": w for m, w in training_result.optimized_weights.items()},
                 }
             )
             self._tracker.log_metrics(
@@ -252,9 +243,7 @@ class EnsembleTrainer:
                 }
                 # Per-model per-split MAPE
                 for model_name, model_metric in sr.model_metrics.items():
-                    split_batch[
-                        f"{model_name}_split_{sr.split_idx:02d}_mape"
-                    ] = model_metric.mape
+                    split_batch[f"{model_name}_split_{sr.split_idx:02d}_mape"] = model_metric.mape
                 self._tracker.log_metrics(split_batch)
 
             # Stacking: log meta-model artifact + feature importance
@@ -325,9 +314,7 @@ class EnsembleTrainer:
                 logger.warning("{} training failed: {}", model_name, e)
 
                 if not self._ensemble_config.fallback.enabled:
-                    raise RuntimeError(
-                        f"{model_name} failed and fallback disabled: {e}"
-                    ) from e
+                    raise RuntimeError(f"{model_name} failed and fallback disabled: {e}") from e
 
         return results, errors
 
@@ -340,9 +327,7 @@ class EnsembleTrainer:
     ) -> EnsembleTrainingResult:
         """Compute ensemble predictions and optimize weights or train meta-learner."""
         split_results = self._collect_split_metrics(model_results)
-        default_weights = self._ensemble_config.weights.get_normalized(
-            self._active_models
-        )
+        default_weights = self._ensemble_config.weights.get_normalized(self._active_models)
 
         if self._mode == "stacking":
             return self._compute_stacking_ensemble(
@@ -403,7 +388,8 @@ class EnsembleTrainer:
 
         # Recompute val metrics with optimized weights
         final_split_results = self._compute_weighted_ensemble(
-            split_results, optimized_w,
+            split_results,
+            optimized_w,
         )
 
         ensemble_mapes = [sr.ensemble_metrics.mape for sr in final_split_results]
@@ -429,14 +415,15 @@ class EnsembleTrainer:
     # -- Delegate methods (backward-compat for tests calling private API) --
 
     def _collect_split_metrics(
-        self, model_results: dict[str, ModelResult],
+        self,
+        model_results: dict[str, ModelResult],
     ) -> list[EnsembleSplitResult]:
         """Delegate to ``ensemble_weights.collect_split_metrics``."""
-        default_weights = self._ensemble_config.weights.get_normalized(
-            self._active_models
-        )
+        default_weights = self._ensemble_config.weights.get_normalized(self._active_models)
         return collect_split_metrics(
-            model_results, self._active_models, default_weights,
+            model_results,
+            self._active_models,
+            default_weights,
         )
 
     def _optimize_weights(
@@ -446,8 +433,10 @@ class EnsembleTrainer:
     ) -> dict[str, float]:
         """Delegate to ``ensemble_weights.optimize_weights``."""
         return optimize_weights(
-            split_results, initial_weights,
-            self._active_models, self._ensemble_config.optimization.bounds,
+            split_results,
+            initial_weights,
+            self._active_models,
+            self._ensemble_config.optimization.bounds,
         )
 
     def _compute_weighted_ensemble(
@@ -457,7 +446,9 @@ class EnsembleTrainer:
     ) -> list[EnsembleSplitResult]:
         """Delegate to ``ensemble_weights.compute_weighted_ensemble``."""
         return compute_weighted_ensemble(
-            split_results, weights, self._active_models,
+            split_results,
+            weights,
+            self._active_models,
         )
 
     def _compute_weighted_test_mape(
@@ -467,7 +458,9 @@ class EnsembleTrainer:
     ) -> list[float]:
         """Delegate to ``ensemble_weights.compute_weighted_test_mape``."""
         return compute_weighted_test_mape(
-            model_results, weights, self._active_models,
+            model_results,
+            weights,
+            self._active_models,
         )
 
     def _build_oof_dataframe(
@@ -479,11 +472,16 @@ class EnsembleTrainer:
         cv_config = self._settings.hyperparameters.cross_validation
         context_features = list(self._ensemble_config.stacking.context_features)
         return build_oof_dataframe(
-            model_results, df, self._active_models, cv_config, context_features,
+            model_results,
+            df,
+            self._active_models,
+            cv_config,
+            context_features,
         )
 
     def _train_meta_learner(
-        self, oof_df: pd.DataFrame,
+        self,
+        oof_df: pd.DataFrame,
     ) -> tuple[CatBoostRegressor, float]:
         """Delegate to ``ensemble_stacking.train_meta_learner``."""
         meta_config = self._ensemble_config.stacking.meta_learner
@@ -500,8 +498,12 @@ class EnsembleTrainer:
         cv_config = self._settings.hyperparameters.cross_validation
         context_features = list(self._ensemble_config.stacking.context_features)
         return compute_stacking_test_mape(
-            self._meta_model, model_results, df,
-            self._active_models, cv_config, context_features,
+            self._meta_model,
+            model_results,
+            df,
+            self._active_models,
+            cv_config,
+            context_features,
         )
 
     def _generate_comparison_df(
@@ -511,7 +513,9 @@ class EnsembleTrainer:
     ) -> pd.DataFrame:
         """Delegate to ``ensemble_report.generate_comparison_df``."""
         return generate_comparison_df(
-            model_results, training_result, self._active_models,
+            model_results,
+            training_result,
+            self._active_models,
         )
 
     def _print_summary(
@@ -521,8 +525,10 @@ class EnsembleTrainer:
     ) -> None:
         """Delegate to ``ensemble_report.print_summary``."""
         print_summary(
-            comparison_df, training_result,
-            self._active_models, self._ensemble_config,
+            comparison_df,
+            training_result,
+            self._active_models,
+            self._ensemble_config,
         )
 
 

@@ -112,9 +112,7 @@ class PredictionService:
                     "tft": self._settings.ensemble.weights.tft,
                 },
                 "target_col": "consumption",
-                "prophet_regressors": [
-                    r.name for r in self._settings.prophet.regressors
-                ],
+                "prophet_regressors": [r.name for r in self._settings.prophet.regressors],
             }
             self._ensemble = EnsembleForecaster(ensemble_config)
 
@@ -136,9 +134,7 @@ class PredictionService:
                 prophet_path=self._config.prophet_path
                 if self._config.prophet_path.exists()
                 else None,
-                tft_path=self._config.tft_path
-                if self._config.tft_path.exists()
-                else None,
+                tft_path=self._config.tft_path if self._config.tft_path.exists() else None,
             )
 
             self._models_loaded = True
@@ -228,8 +224,7 @@ class PredictionService:
                     if pd.notna(epias_df[col].iloc[-1])
                 }
                 epias_meta["nan_summary"] = {
-                    col: int(epias_df[col].isna().sum())
-                    for col in epias_df.columns
+                    col: int(epias_df[col].isna().sum()) for col in epias_df.columns
                 }
 
             # Step 4: Fetch weather data (historical + forecast)
@@ -240,9 +235,16 @@ class PredictionService:
             # Fill missing weather values (forecast rows may have gaps)
             # Matches prepare_dataset.py logic — only weather columns, never consumption/EPIAS
             weather_prefixes = (
-                "temperature", "humidity", "dew_point", "apparent_temperature",
-                "precipitation", "snow_depth", "surface_pressure",
-                "wind_speed", "wind_direction", "shortwave_radiation",
+                "temperature",
+                "humidity",
+                "dew_point",
+                "apparent_temperature",
+                "precipitation",
+                "snow_depth",
+                "surface_pressure",
+                "wind_speed",
+                "wind_direction",
+                "shortwave_radiation",
             )
             weather_cols = [c for c in merged_df.columns if c.startswith(weather_prefixes)]
             if weather_cols:
@@ -260,7 +262,8 @@ class PredictionService:
                 if self._sync_session_factory is not None:
                     holidays_df = self._load_holidays_from_db()
                     self._feature_pipeline = FeaturePipeline(
-                        self._settings, holidays_df=holidays_df,
+                        self._settings,
+                        holidays_df=holidays_df,
                     )
                 features_df = self._feature_pipeline.run(merged_df)
                 self._last_feature_count = len(features_df.columns)
@@ -467,10 +470,7 @@ class PredictionService:
         Returns:
             List of {"feature": name, "importance": value} dicts, or None if unavailable.
         """
-        if (
-            self._ensemble is None
-            or self._ensemble._catboost_model is None
-        ):
+        if self._ensemble is None or self._ensemble._catboost_model is None:
             return None
         try:
             model = self._ensemble._catboost_model
@@ -539,9 +539,7 @@ class PredictionService:
             return None, None
 
     @staticmethod
-    def write_metadata_json(
-        job_id: str, lineage_data: dict[str, Any]
-    ) -> Path | None:
+    def write_metadata_json(job_id: str, lineage_data: dict[str, Any]) -> Path | None:
         """Write job metadata JSON to archive directory."""
         try:
             archive_dir = Path("data/archive/jobs") / job_id
@@ -554,9 +552,7 @@ class PredictionService:
                 "config_snapshot": lineage_data.get("config_snapshot", {}),
             }
             path = archive_dir / "metadata.json"
-            path.write_text(
-                json.dumps(metadata, indent=2, ensure_ascii=False)
-            )
+            path.write_text(json.dumps(metadata, indent=2, ensure_ascii=False))
             return path
         except Exception as e:
             logger.warning("Metadata JSON write failed: {}", e)

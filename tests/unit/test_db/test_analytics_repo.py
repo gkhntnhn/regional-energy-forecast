@@ -31,14 +31,8 @@ def _make_prediction(
     actual: float | None = 1250.0,
     day_offset: int = 0,
 ) -> PredictionModel:
-    dt = datetime(2026, 3, 1, hour, tzinfo=TZ_ISTANBUL) + timedelta(
-        days=day_offset
-    )
-    error = (
-        abs(consumption - actual) / actual * 100
-        if actual is not None and actual > 0
-        else None
-    )
+    dt = datetime(2026, 3, 1, hour, tzinfo=TZ_ISTANBUL) + timedelta(days=day_offset)
+    error = abs(consumption - actual) / actual * 100 if actual is not None and actual > 0 else None
     return PredictionModel(
         job_id=job_id,
         forecast_dt=dt,
@@ -58,9 +52,7 @@ def _make_job(
     metadata: dict[str, Any] | None = None,
     epias_snapshot: dict[str, Any] | None = None,
 ) -> JobModel:
-    dt = datetime(2026, 3, 1, 10, tzinfo=TZ_ISTANBUL) + timedelta(
-        days=day_offset
-    )
+    dt = datetime(2026, 3, 1, 10, tzinfo=TZ_ISTANBUL) + timedelta(days=day_offset)
     return JobModel(
         id=job_id,
         email="test@test.com",
@@ -102,9 +94,7 @@ async def test_get_daily_mape(db_session: AsyncSession) -> None:
     job = _make_job("j1")
     db_session.add(job)
     for h in range(24):
-        db_session.add(
-            _make_prediction("j1", h, consumption=1200.0, actual=1250.0)
-        )
+        db_session.add(_make_prediction("j1", h, consumption=1200.0, actual=1250.0))
     await db_session.flush()
 
     repo = AnalyticsRepository(db_session)
@@ -127,9 +117,7 @@ async def test_get_weekly_mape(db_session: AsyncSession) -> None:
     job = _make_job("j1")
     db_session.add(job)
     for h in range(24):
-        db_session.add(
-            _make_prediction("j1", h, consumption=1200.0, actual=1250.0)
-        )
+        db_session.add(_make_prediction("j1", h, consumption=1200.0, actual=1250.0))
     await db_session.flush()
 
     repo = AnalyticsRepository(db_session)
@@ -143,12 +131,8 @@ async def test_get_weekly_mape(db_session: AsyncSession) -> None:
 async def test_get_hourly_mape(db_session: AsyncSession) -> None:
     job = _make_job("j1")
     db_session.add(job)
-    db_session.add(
-        _make_prediction("j1", 10, consumption=1200.0, actual=1250.0)
-    )
-    db_session.add(
-        _make_prediction("j1", 14, consumption=1300.0, actual=1250.0)
-    )
+    db_session.add(_make_prediction("j1", 10, consumption=1200.0, actual=1250.0))
+    db_session.add(_make_prediction("j1", 14, consumption=1300.0, actual=1250.0))
     await db_session.flush()
 
     repo = AnalyticsRepository(db_session)
@@ -167,12 +151,8 @@ async def test_get_hourly_mape(db_session: AsyncSession) -> None:
 async def test_get_per_model_mape(db_session: AsyncSession) -> None:
     job = _make_job("j1")
     db_session.add(job)
-    db_session.add(
-        _make_prediction("j1", 10, model_source="ensemble", actual=1250.0)
-    )
-    db_session.add(
-        _make_prediction("j1", 10, model_source="catboost", actual=1250.0)
-    )
+    db_session.add(_make_prediction("j1", 10, model_source="ensemble", actual=1250.0))
+    db_session.add(_make_prediction("j1", 10, model_source="catboost", actual=1250.0))
     await db_session.flush()
 
     repo = AnalyticsRepository(db_session)
@@ -188,12 +168,8 @@ async def test_get_hourly_model_performance(
 ) -> None:
     job = _make_job("j1")
     db_session.add(job)
-    db_session.add(
-        _make_prediction("j1", 10, model_source="ensemble", actual=1250.0)
-    )
-    db_session.add(
-        _make_prediction("j1", 10, model_source="catboost", actual=1250.0)
-    )
+    db_session.add(_make_prediction("j1", 10, model_source="ensemble", actual=1250.0))
+    db_session.add(_make_prediction("j1", 10, model_source="catboost", actual=1250.0))
     await db_session.flush()
 
     repo = AnalyticsRepository(db_session)
@@ -231,12 +207,8 @@ async def test_get_weather_variable_accuracy(
     db_session: AsyncSession,
 ) -> None:
     dt = datetime(2026, 3, 1, 12, tzinfo=TZ_ISTANBUL)
-    db_session.add(
-        _make_weather(dt, is_actual=False, job_id=None, temperature=16.0)
-    )
-    db_session.add(
-        _make_weather(dt, is_actual=True, temperature=15.0)
-    )
+    db_session.add(_make_weather(dt, is_actual=False, job_id=None, temperature=16.0))
+    db_session.add(_make_weather(dt, is_actual=True, temperature=15.0))
     await db_session.flush()
 
     repo = AnalyticsRepository(db_session)
@@ -388,12 +360,8 @@ async def test_get_model_runs(db_session: AsyncSession) -> None:
 async def test_get_model_runs_filter(
     db_session: AsyncSession,
 ) -> None:
-    db_session.add(
-        ModelRunModel(model_type="catboost", status="completed")
-    )
-    db_session.add(
-        ModelRunModel(model_type="prophet", status="completed")
-    )
+    db_session.add(ModelRunModel(model_type="catboost", status="completed"))
+    db_session.add(ModelRunModel(model_type="prophet", status="completed"))
     await db_session.flush()
 
     repo = AnalyticsRepository(db_session)

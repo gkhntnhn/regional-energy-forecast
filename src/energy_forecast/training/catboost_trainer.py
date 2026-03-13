@@ -88,7 +88,9 @@ class CatBoostTrainer:
     def _optuna_storage(self, model_name: str) -> optuna.storages.RDBStorage | str | None:
         """Return Optuna storage (delegates to shared ``optuna_storage``)."""
         return optuna_storage(
-            self._search_config.n_trials, model_name, self._settings.paths.models_dir,
+            self._search_config.n_trials,
+            model_name,
+            self._settings.paths.models_dir,
         )
 
     # -- X/y split (resolves M4 leakage audit warning) --
@@ -101,9 +103,7 @@ class CatBoostTrainer:
 
     # -- Categorical preparation --
 
-    def _prepare_categoricals(
-        self, x: pd.DataFrame
-    ) -> tuple[pd.DataFrame, list[int]]:
+    def _prepare_categoricals(self, x: pd.DataFrame) -> tuple[pd.DataFrame, list[int]]:
         """Convert categoricals to str, fill NaN, return (df_copy, column indices).
 
         Returns a defensive copy to avoid mutating the caller's DataFrame.
@@ -285,13 +285,9 @@ class CatBoostTrainer:
             best_result = TrainingResult(
                 split_results=[],
                 avg_val_mape=study.best_value,
-                avg_test_mape=float(
-                    study.best_trial.user_attrs.get("avg_test_mape", float("nan"))
-                ),
+                avg_test_mape=float(study.best_trial.user_attrs.get("avg_test_mape", float("nan"))),
                 std_val_mape=0.0,
-                avg_best_iteration=int(
-                    study.best_trial.user_attrs.get("avg_best_iteration", 500)
-                ),
+                avg_best_iteration=int(study.best_trial.user_attrs.get("avg_best_iteration", 500)),
                 feature_names=list(x_sample.columns),
             )
         else:
@@ -380,7 +376,8 @@ class CatBoostTrainer:
                 }
             )
             self._tracker.log_config_snapshot(
-                self._settings.catboost.model_dump(), "catboost_config.yaml",
+                self._settings.catboost.model_dump(),
+                "catboost_config.yaml",
             )
 
         with self._tracker.start_run("catboost_final"):
@@ -407,11 +404,10 @@ class CatBoostTrainer:
             # Log ALL feature importances as artifact (JSON)
             with tempfile.TemporaryDirectory() as tmpdir:
                 fi_path = Path(tmpdir) / "feature_importance_all.json"
-                sorted_fi = dict(
-                    sorted(importance.items(), key=lambda x: x[1], reverse=True)
-                )
+                sorted_fi = dict(sorted(importance.items(), key=lambda x: x[1], reverse=True))
                 fi_path.write_text(
-                    json.dumps(sorted_fi, indent=2), encoding="utf-8",
+                    json.dumps(sorted_fi, indent=2),
+                    encoding="utf-8",
                 )
                 self._tracker.log_artifact(str(fi_path))
 
@@ -420,11 +416,15 @@ class CatBoostTrainer:
                 last_sr = best_result.split_results[-1]
                 if last_sr.val_predictions is not None and last_sr.val_actuals is not None:
                     self._tracker.log_predictions_summary(
-                        last_sr.val_actuals, last_sr.val_predictions, prefix="final_val",
+                        last_sr.val_actuals,
+                        last_sr.val_predictions,
+                        prefix="final_val",
                     )
                 if last_sr.test_predictions is not None and last_sr.test_actuals is not None:
                     self._tracker.log_predictions_summary(
-                        last_sr.test_actuals, last_sr.test_predictions, prefix="final_test",
+                        last_sr.test_actuals,
+                        last_sr.test_predictions,
+                        prefix="final_test",
                     )
 
             elapsed = time.monotonic() - start

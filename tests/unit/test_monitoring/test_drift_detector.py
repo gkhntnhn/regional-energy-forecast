@@ -130,9 +130,7 @@ class TestMapeThreshold:
         assert mape_alerts[0].severity == "critical"
 
     @pytest.mark.asyncio
-    async def test_insufficient_samples(
-        self, db_session: AsyncSession
-    ) -> None:
+    async def test_insufficient_samples(self, db_session: AsyncSession) -> None:
         """Less than min_samples → no alert even if MAPE high."""
         await _seed_predictions(db_session, count=10, error_pct=9.0)
         cfg = DriftConfig(min_samples=24)
@@ -141,13 +139,9 @@ class TestMapeThreshold:
         assert len(mape_alerts) == 0
 
     @pytest.mark.asyncio
-    async def test_non_ensemble_ignored(
-        self, db_session: AsyncSession
-    ) -> None:
+    async def test_non_ensemble_ignored(self, db_session: AsyncSession) -> None:
         """Only ensemble predictions are checked."""
-        await _seed_predictions(
-            db_session, count=48, error_pct=9.0, model_source="catboost"
-        )
+        await _seed_predictions(db_session, count=48, error_pct=9.0, model_source="catboost")
         alerts = await check_model_drift(db_session)
         assert len(alerts) == 0
 
@@ -209,9 +203,7 @@ class TestBiasShift:
     """Tests for systematic over/under-prediction detection."""
 
     @pytest.mark.asyncio
-    async def test_over_prediction_bias(
-        self, db_session: AsyncSession
-    ) -> None:
+    async def test_over_prediction_bias(self, db_session: AsyncSession) -> None:
         """Systematic over-prediction → bias alert."""
         # Predicted 1050, actual 1000 → +5% bias
         await _seed_predictions(
@@ -232,9 +224,7 @@ class TestBiasShift:
         assert "fazla" in bias_alerts[0].message
 
     @pytest.mark.asyncio
-    async def test_under_prediction_bias(
-        self, db_session: AsyncSession
-    ) -> None:
+    async def test_under_prediction_bias(self, db_session: AsyncSession) -> None:
         """Systematic under-prediction → bias alert."""
         # Predicted 950, actual 1000 → -5% bias
         await _seed_predictions(

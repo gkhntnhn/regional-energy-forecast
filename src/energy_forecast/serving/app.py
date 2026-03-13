@@ -43,7 +43,6 @@ if TYPE_CHECKING:
     pass
 
 
-
 # ---------------------------------------------------------------------------
 # Authentication
 # ---------------------------------------------------------------------------
@@ -63,11 +62,10 @@ async def verify_api_key(
     expected_key: str = getattr(request.app.state, "api_key", "")
     if not expected_key:
         raise HTTPException(status_code=401, detail="API key not configured on server")
-    if credentials is None or not secrets.compare_digest(
-        credentials.credentials, expected_key
-    ):
+    if credentials is None or not secrets.compare_digest(credentials.credentials, expected_key):
         raise HTTPException(status_code=401, detail="Invalid or missing API key")
     return credentials
+
 
 # ---------------------------------------------------------------------------
 # Rate Limiter
@@ -172,7 +170,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         logger.info("Sync DB session factory created for prediction service")
 
     app.state.prediction_service = PredictionService(
-        pred_config, settings, sync_session_factory=sync_session_factory,
+        pred_config,
+        settings,
+        sync_session_factory=sync_session_factory,
     )
 
     # Try to load models (warn if not available)
@@ -206,9 +206,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.db_engine = None
         app.state.session_factory = None
         app.state.use_db = False
-        logger.warning(
-            "DATABASE_URL not set — using in-memory job storage (dev mode)"
-        )
+        logger.warning("DATABASE_URL not set — using in-memory job storage (dev mode)")
 
     # Start weather actuals scheduler (DB mode only)
     _scheduler_task = None
@@ -217,9 +215,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
         from energy_forecast.jobs.weather_actuals import run_scheduler
 
-        _scheduler_task = asyncio.create_task(
-            run_scheduler(app.state.session_factory, settings)
-        )
+        _scheduler_task = asyncio.create_task(run_scheduler(app.state.session_factory, settings))
         logger.info("Weather actuals scheduler started (daily at 04:00)")
 
     logger.info("Energy Forecast API started successfully")
@@ -278,6 +274,7 @@ app.add_middleware(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
+
 # Admin dashboard HTML — served without auth (JS handles its own token auth)
 @app.get("/admin", include_in_schema=False)
 @app.get("/admin/", include_in_schema=False)
@@ -287,6 +284,7 @@ async def admin_dashboard() -> FileResponse:
         Path(__file__).parent / "static" / "admin.html",
         headers={"Cache-Control": "no-cache"},
     )
+
 
 # Admin API router (analytics endpoints) — auth required
 from energy_forecast.serving.routers.admin import admin_router  # noqa: E402
@@ -410,9 +408,7 @@ async def predict(
                 await audit.log(
                     action="predict_request",
                     user_email=str(email),
-                    ip_address=(
-                        request.client.host if request.client else None
-                    ),
+                    ip_address=(request.client.host if request.client else None),
                     details={
                         "job_id": job.id,
                         "file_name": file.filename,
@@ -580,9 +576,7 @@ async def list_jobs(
                     "status": j.status,
                     "email": j.email[:3] + "***",
                     "created_at": j.created_at.isoformat(),
-                    "completed_at": (
-                        j.completed_at.isoformat() if j.completed_at else None
-                    ),
+                    "completed_at": (j.completed_at.isoformat() if j.completed_at else None),
                 }
                 for j in db_jobs
             ],
@@ -598,9 +592,7 @@ async def list_jobs(
                 "status": j.status,
                 "email": j.email[:3] + "***",
                 "created_at": j.created_at.isoformat(),
-                "completed_at": (
-                    j.completed_at.isoformat() if j.completed_at else None
-                ),
+                "completed_at": (j.completed_at.isoformat() if j.completed_at else None),
             }
             for j in jobs
         ],

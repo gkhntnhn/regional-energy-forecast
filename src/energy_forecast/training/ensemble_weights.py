@@ -56,9 +56,7 @@ def collect_split_metrics(
         y_true: np.ndarray[Any, np.dtype[np.floating[Any]]] | None = None
 
         for model_name in active_models:
-            split_result = model_results[model_name].training_result.split_results[
-                split_idx
-            ]
+            split_result = model_results[model_name].training_result.split_results[split_idx]
             model_metrics[model_name] = split_result.val_metrics
 
             # Extract real predictions (available after trainer fix)
@@ -70,9 +68,7 @@ def collect_split_metrics(
         # Truncate to common length (models may predict different lengths)
         if model_predictions:
             min_len = min(len(p) for p in model_predictions.values())
-            model_predictions = {
-                m: p[:min_len] for m, p in model_predictions.items()
-            }
+            model_predictions = {m: p[:min_len] for m, p in model_predictions.items()}
             if y_true is not None:
                 y_true = y_true[:min_len]
 
@@ -89,10 +85,7 @@ def collect_split_metrics(
                 "Split {}: no raw predictions, using metric approximation",
                 split_idx,
             )
-            ensemble_mape = sum(
-                default_weights[m] * model_metrics[m].mape
-                for m in active_models
-            )
+            ensemble_mape = sum(default_weights[m] * model_metrics[m].mape for m in active_models)
             dw = default_weights
             am = active_models
             mm = model_metrics
@@ -166,10 +159,7 @@ def optimize_weights(
                 mapes.append(mape_fn(sr.y_true, blended))
             else:
                 # Fallback: weighted average of MAPEs (approximation)
-                ensemble_mape = sum(
-                    w_dict[m] * sr.model_metrics[m].mape
-                    for m in active_models
-                )
+                ensemble_mape = sum(w_dict[m] * sr.model_metrics[m].mape for m in active_models)
                 mapes.append(ensemble_mape)
 
         return float(np.mean(mapes))
@@ -195,9 +185,7 @@ def optimize_weights(
         options={"ftol": 1e-6, "maxiter": 100},
     )
 
-    optimized_weights = {
-        m: float(result.x[i]) for i, m in enumerate(active_models)
-    }
+    optimized_weights = {m: float(result.x[i]) for i, m in enumerate(active_models)}
     optimized_mape = float(result.fun)
 
     logger.info(
@@ -229,9 +217,8 @@ def compute_weighted_ensemble(
     updated_results: list[EnsembleSplitResult] = []
 
     for sr in split_results:
-        has_preds = (
-            len(sr.model_predictions) == len(active_models)
-            and all(len(p) > 1 for p in sr.model_predictions.values())
+        has_preds = len(sr.model_predictions) == len(active_models) and all(
+            len(p) > 1 for p in sr.model_predictions.values()
         )
 
         if has_preds:

@@ -131,9 +131,7 @@ class TestFetchAndStoreActuals:
         mock_repo.has_actuals_for_date.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_fetches_and_stores_actuals_successfully(
-        self, settings: Settings
-    ) -> None:
+    async def test_fetches_and_stores_actuals_successfully(self, settings: Settings) -> None:
         """Test fetch_and_store_actuals fetches weather data and stores in DB."""
         # Arrange
         weather_df = _make_weather_df("2026-03-05")
@@ -234,9 +232,7 @@ class TestFetchAndStoreActuals:
         mock_client.fetch_historical.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_openmeteo_client_receives_correct_dates(
-        self, settings: Settings
-    ) -> None:
+    async def test_openmeteo_client_receives_correct_dates(self, settings: Settings) -> None:
         """Test fetch_and_store_actuals passes T-2 date range to OpenMeteo client."""
         # Arrange
         mock_repo_check = AsyncMock()
@@ -300,9 +296,7 @@ class TestFetchAndStoreActuals:
         )
 
     @pytest.mark.asyncio
-    async def test_openmeteo_client_created_with_correct_config(
-        self, settings: Settings
-    ) -> None:
+    async def test_openmeteo_client_created_with_correct_config(self, settings: Settings) -> None:
         """Test OpenMeteoClient init with settings.openmeteo, .region, .project.timezone."""
         # Arrange
         mock_repo = AsyncMock()
@@ -323,8 +317,10 @@ class TestFetchAndStoreActuals:
 
         def make_repo(session: object) -> AsyncMock:
             nonlocal call_count
-            r = mock_repo if call_count == 0 else AsyncMock(
-                bulk_create_actuals=AsyncMock(return_value=24)
+            r = (
+                mock_repo
+                if call_count == 0
+                else AsyncMock(bulk_create_actuals=AsyncMock(return_value=24))
             )
             call_count += 1
             return r

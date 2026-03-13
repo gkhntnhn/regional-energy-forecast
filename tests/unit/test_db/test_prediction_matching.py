@@ -93,7 +93,8 @@ async def test_match_error_pct_calculation(
     matched = [p for p in preds if p.actual_mwh is not None]
     assert len(matched) == 1
     assert matched[0].error_pct == pytest.approx(
-        abs(1100.0 - 1000.0) / 1100.0 * 100, rel=1e-3,
+        abs(1100.0 - 1000.0) / 1100.0 * 100,
+        rel=1e-3,
     )
 
 

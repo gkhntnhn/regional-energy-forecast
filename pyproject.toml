@@ -163,4 +163,5 @@ show_missing = true
 [dependency-groups]
 dev = [
     "debugpy>=1.8.20",
+    "types-requests>=2.32.4.20260107",
 ]

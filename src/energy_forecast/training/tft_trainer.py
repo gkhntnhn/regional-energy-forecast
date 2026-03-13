@@ -96,7 +96,9 @@ class TFTTrainer:
     def _optuna_storage(self, model_name: str) -> optuna.storages.RDBStorage | str | None:
         """Return Optuna storage (delegates to shared ``optuna_storage``)."""
         return optuna_storage(
-            self._search_config.n_trials, model_name, self._settings.paths.models_dir,
+            self._search_config.n_trials,
+            model_name,
+            self._settings.paths.models_dir,
         )
 
     # -- Build TFT config with overrides --
@@ -197,9 +199,7 @@ class TFTTrainer:
         if trial is not None:
             from optuna.integration import PyTorchLightningPruningCallback
 
-            callbacks.append(
-                PyTorchLightningPruningCallback(trial, monitor="valid_loss")
-            )
+            callbacks.append(PyTorchLightningPruningCallback(trial, monitor="valid_loss"))
 
         # Create and train model (try/finally ensures GPU memory cleanup on pruning)
         model = TFTForecaster(tft_config)
@@ -222,16 +222,15 @@ class TFTTrainer:
             gc.collect()
             # empty_cache evicts ALL GPU cache — unsafe when parallel threads share
             # the same CUDA context (n_jobs > 1).  Let PyTorch manage memory instead.
-            if (
-                torch.cuda.is_available()
-                and self._tft_config.optimization.n_jobs <= 1
-            ):
+            if torch.cuda.is_available() and self._tft_config.optimization.n_jobs <= 1:
                 torch.cuda.empty_cache()
 
         # Align predictions with actuals
-        y_train = np.asarray(train_df[self._target_col].values[-len(train_pred):], dtype=np.float64)
-        y_val = np.asarray(val_df[self._target_col].values[-len(val_pred):], dtype=np.float64)
-        y_test = np.asarray(test_df[self._target_col].values[-len(test_pred):], dtype=np.float64)
+        y_train = np.asarray(
+            train_df[self._target_col].values[-len(train_pred) :], dtype=np.float64
+        )
+        y_val = np.asarray(val_df[self._target_col].values[-len(val_pred) :], dtype=np.float64)
+        y_test = np.asarray(test_df[self._target_col].values[-len(test_pred) :], dtype=np.float64)
 
         from energy_forecast.models.base import PREDICTION_COL
 
@@ -273,9 +272,7 @@ class TFTTrainer:
         results: list[TFTSplitResult] = []
 
         for info, train_df, val_df, test_df in self._splitter.iter_splits(df):
-            result = self._train_split(
-                info, train_df, val_df, test_df, params, max_steps
-            )
+            result = self._train_split(info, train_df, val_df, test_df, params, max_steps)
             results.append(result)
             logger.info(
                 "Split {} | val={} MAPE={:.2f}% | test={} MAPE={:.2f}%",
@@ -342,9 +339,7 @@ class TFTTrainer:
             test_mapes: list[float] = []
             split_results: list[TFTSplitResult] = []
 
-            for _fold_idx, (info, train_df, val_df, test_df) in enumerate(
-                selected_splits
-            ):
+            for _fold_idx, (info, train_df, val_df, test_df) in enumerate(selected_splits):
                 try:
                     result = self._train_split(
                         info,
@@ -395,7 +390,7 @@ class TFTTrainer:
             sampler=TPESampler(seed=self._tft_config.training.random_seed),
             pruner=MedianPruner(
                 n_startup_trials=2,  # First 2 trials run uninterrupted (reference)
-                n_warmup_steps=3,    # First 3 val checks per trial safe (model stabilization)
+                n_warmup_steps=3,  # First 3 val checks per trial safe (model stabilization)
             ),
         )
 
@@ -407,9 +402,7 @@ class TFTTrainer:
             self._search_config.n_trials,
             n_jobs,
         )
-        study.optimize(
-            objective, n_trials=self._search_config.n_trials, n_jobs=n_jobs
-        )
+        study.optimize(objective, n_trials=self._search_config.n_trials, n_jobs=n_jobs)
 
         logger.info(
             "Optimization done — best val MAPE: {:.2f}%, params: {}",
@@ -426,12 +419,8 @@ class TFTTrainer:
             best_result = TFTTrainingResult(
                 split_results=cached_splits,
                 avg_val_mape=study.best_value,
-                avg_test_mape=float(
-                    study.best_trial.user_attrs.get("avg_test_mape", float("nan"))
-                ),
-                std_val_mape=float(
-                    np.std([sr.val_metrics.mape for sr in cached_splits])
-                ),
+                avg_test_mape=float(study.best_trial.user_attrs.get("avg_test_mape", float("nan"))),
+                std_val_mape=float(np.std([sr.val_metrics.mape for sr in cached_splits])),
             )
             logger.info("Using cached predictions from trial {}", best_trial_num)
         elif self._skip_validation:
@@ -439,9 +428,7 @@ class TFTTrainer:
             best_result = TFTTrainingResult(
                 split_results=[],
                 avg_val_mape=study.best_value,
-                avg_test_mape=float(
-                    study.best_trial.user_attrs.get("avg_test_mape", float("nan"))
-                ),
+                avg_test_mape=float(study.best_trial.user_attrs.get("avg_test_mape", float("nan"))),
                 std_val_mape=0.0,
             )
         else:
@@ -533,16 +520,13 @@ class TFTTrainer:
                 }
             )
             self._tracker.log_config_snapshot(
-                self._tft_config.model_dump(), "tft_config.yaml",
+                self._tft_config.model_dump(),
+                "tft_config.yaml",
             )
             self._tracker.log_params(
                 {
-                    "futr_exog_list": ",".join(
-                        self._tft_config.covariates.time_varying_known
-                    ),
-                    "hist_exog_list": ",".join(
-                        self._tft_config.covariates.time_varying_unknown
-                    ),
+                    "futr_exog_list": ",".join(self._tft_config.covariates.time_varying_known),
+                    "hist_exog_list": ",".join(self._tft_config.covariates.time_varying_unknown),
                 }
             )
 

@@ -65,33 +65,25 @@ class TestRawExcelSchemaNegative:
 
     def test_time_negative_raises(self) -> None:
         """time=-1 is below ge=0 boundary."""
-        df = pd.DataFrame(
-            {"date": ["2024-01-01"], "time": [-1], "consumption": [1000.0]}
-        )
+        df = pd.DataFrame({"date": ["2024-01-01"], "time": [-1], "consumption": [1000.0]})
         with pytest.raises(SchemaError):
             RawExcelSchema.validate(df)
 
     def test_time_24_raises(self) -> None:
         """time=24 is above le=23 boundary."""
-        df = pd.DataFrame(
-            {"date": ["2024-01-01"], "time": [24], "consumption": [1000.0]}
-        )
+        df = pd.DataFrame({"date": ["2024-01-01"], "time": [24], "consumption": [1000.0]})
         with pytest.raises(SchemaError):
             RawExcelSchema.validate(df)
 
     def test_consumption_exceeds_max_raises(self) -> None:
         """consumption > 10000 violates le=10000 constraint."""
-        df = pd.DataFrame(
-            {"date": ["2024-01-01"], "time": [0], "consumption": [10001.0]}
-        )
+        df = pd.DataFrame({"date": ["2024-01-01"], "time": [0], "consumption": [10001.0]})
         with pytest.raises(SchemaError):
             RawExcelSchema.validate(df)
 
     def test_non_numeric_consumption_raises(self) -> None:
         """Non-numeric consumption that cannot be coerced raises SchemaError."""
-        df = pd.DataFrame(
-            {"date": ["2024-01-01"], "time": [0], "consumption": ["not_a_number"]}
-        )
+        df = pd.DataFrame({"date": ["2024-01-01"], "time": [0], "consumption": ["not_a_number"]})
         with pytest.raises((SchemaError, SchemaErrors)):
             RawExcelSchema.validate(df)
 

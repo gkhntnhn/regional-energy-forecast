@@ -261,9 +261,7 @@ class TestTFTForecasterSaveLoad:
         """Test save raises if model not fitted."""
         model = TFTForecaster(tft_config)
 
-        with tempfile.TemporaryDirectory() as tmpdir, pytest.raises(
-            ValueError, match="unfitted"
-        ):
+        with tempfile.TemporaryDirectory() as tmpdir, pytest.raises(ValueError, match="unfitted"):
             model.save(Path(tmpdir))
 
     @pytest.mark.slow

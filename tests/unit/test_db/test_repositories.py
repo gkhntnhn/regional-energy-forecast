@@ -49,9 +49,7 @@ class TestJobRepository:
         assert job.status == "pending"
 
     @pytest.mark.asyncio
-    async def test_get_by_id(
-        self, db_session: AsyncSession, _seed_job: JobModel
-    ) -> None:
+    async def test_get_by_id(self, db_session: AsyncSession, _seed_job: JobModel) -> None:
         """Test fetching a job by ID."""
         await db_session.flush()
         repo = JobRepository(db_session)
@@ -60,18 +58,14 @@ class TestJobRepository:
         assert job.email == "test@example.com"
 
     @pytest.mark.asyncio
-    async def test_get_by_id_not_found(
-        self, db_session: AsyncSession
-    ) -> None:
+    async def test_get_by_id_not_found(self, db_session: AsyncSession) -> None:
         """Test fetching nonexistent job."""
         repo = JobRepository(db_session)
         job = await repo.get_by_id("nonexistent")
         assert job is None
 
     @pytest.mark.asyncio
-    async def test_get_active_job(
-        self, db_session: AsyncSession, _seed_job: JobModel
-    ) -> None:
+    async def test_get_active_job(self, db_session: AsyncSession, _seed_job: JobModel) -> None:
         """Test finding active job."""
         _seed_job.status = "running"
         await db_session.flush()
@@ -82,18 +76,14 @@ class TestJobRepository:
         assert active.id == "repo_test_01"
 
     @pytest.mark.asyncio
-    async def test_get_active_job_none(
-        self, db_session: AsyncSession
-    ) -> None:
+    async def test_get_active_job_none(self, db_session: AsyncSession) -> None:
         """Test no active job when all are completed."""
         repo = JobRepository(db_session)
         active = await repo.get_active_job()
         assert active is None
 
     @pytest.mark.asyncio
-    async def test_update_status(
-        self, db_session: AsyncSession, _seed_job: JobModel
-    ) -> None:
+    async def test_update_status(self, db_session: AsyncSession, _seed_job: JobModel) -> None:
         """Test status update."""
         await db_session.flush()
         repo = JobRepository(db_session)
@@ -106,9 +96,7 @@ class TestJobRepository:
         assert job.completed_at is not None
 
     @pytest.mark.asyncio
-    async def test_update_progress(
-        self, db_session: AsyncSession, _seed_job: JobModel
-    ) -> None:
+    async def test_update_progress(self, db_session: AsyncSession, _seed_job: JobModel) -> None:
         """Test progress update."""
         await db_session.flush()
         repo = JobRepository(db_session)
@@ -119,9 +107,7 @@ class TestJobRepository:
         assert job.progress == "Step 2 of 5"
 
     @pytest.mark.asyncio
-    async def test_update_metadata(
-        self, db_session: AsyncSession, _seed_job: JobModel
-    ) -> None:
+    async def test_update_metadata(self, db_session: AsyncSession, _seed_job: JobModel) -> None:
         """Test metadata update."""
         await db_session.flush()
         repo = JobRepository(db_session)
@@ -138,16 +124,12 @@ class TestJobRepository:
         assert job.excel_hash == "abc123"
 
     @pytest.mark.asyncio
-    async def test_update_email_status(
-        self, db_session: AsyncSession, _seed_job: JobModel
-    ) -> None:
+    async def test_update_email_status(self, db_session: AsyncSession, _seed_job: JobModel) -> None:
         """Test email status update."""
         await db_session.flush()
         repo = JobRepository(db_session)
         now = datetime.now(tz=TZ_ISTANBUL)
-        await repo.update_email_status(
-            "repo_test_01", "sent", attempts=1, sent_at=now
-        )
+        await repo.update_email_status("repo_test_01", "sent", attempts=1, sent_at=now)
 
         job = await repo.get_by_id("repo_test_01")
         assert job is not None
@@ -155,9 +137,7 @@ class TestJobRepository:
         assert job.email_attempts == 1
 
     @pytest.mark.asyncio
-    async def test_get_all(
-        self, db_session: AsyncSession, _seed_job: JobModel
-    ) -> None:
+    async def test_get_all(self, db_session: AsyncSession, _seed_job: JobModel) -> None:
         """Test listing all jobs."""
         await db_session.flush()
         repo = JobRepository(db_session)
@@ -165,9 +145,7 @@ class TestJobRepository:
         assert len(jobs) >= 1
 
     @pytest.mark.asyncio
-    async def test_get_stats(
-        self, db_session: AsyncSession, _seed_job: JobModel
-    ) -> None:
+    async def test_get_stats(self, db_session: AsyncSession, _seed_job: JobModel) -> None:
         """Test job statistics."""
         await db_session.flush()
         repo = JobRepository(db_session)
@@ -180,9 +158,7 @@ class TestPredictionRepository:
     """Tests for PredictionRepository."""
 
     @pytest.mark.asyncio
-    async def test_bulk_create(
-        self, db_session: AsyncSession, _seed_job: JobModel
-    ) -> None:
+    async def test_bulk_create(self, db_session: AsyncSession, _seed_job: JobModel) -> None:
         """Test bulk inserting predictions."""
         await db_session.flush()
         repo = PredictionRepository(db_session)
@@ -200,9 +176,7 @@ class TestPredictionRepository:
         assert count == 24
 
     @pytest.mark.asyncio
-    async def test_get_by_job_id(
-        self, db_session: AsyncSession, _seed_job: JobModel
-    ) -> None:
+    async def test_get_by_job_id(self, db_session: AsyncSession, _seed_job: JobModel) -> None:
         """Test fetching predictions by job ID."""
         await db_session.flush()
         repo = PredictionRepository(db_session)
@@ -210,9 +184,7 @@ class TestPredictionRepository:
             [
                 {
                     "job_id": "repo_test_01",
-                    "forecast_dt": datetime(
-                        2026, 3, 7, 0, 0, tzinfo=TZ_ISTANBUL
-                    ),
+                    "forecast_dt": datetime(2026, 3, 7, 0, 0, tzinfo=TZ_ISTANBUL),
                     "consumption_mwh": 1234.5,
                     "period": "day_ahead",
                     "model_source": "ensemble",
@@ -234,18 +206,14 @@ class TestPredictionRepository:
             [
                 {
                     "job_id": "repo_test_01",
-                    "forecast_dt": datetime(
-                        2026, 3, 7, 0, 0, tzinfo=TZ_ISTANBUL
-                    ),
+                    "forecast_dt": datetime(2026, 3, 7, 0, 0, tzinfo=TZ_ISTANBUL),
                     "consumption_mwh": 1000.0,
                     "period": "day_ahead",
                     "model_source": "catboost",
                 },
                 {
                     "job_id": "repo_test_01",
-                    "forecast_dt": datetime(
-                        2026, 3, 7, 0, 0, tzinfo=TZ_ISTANBUL
-                    ),
+                    "forecast_dt": datetime(2026, 3, 7, 0, 0, tzinfo=TZ_ISTANBUL),
                     "consumption_mwh": 1100.0,
                     "period": "day_ahead",
                     "model_source": "ensemble",

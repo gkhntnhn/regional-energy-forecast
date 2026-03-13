@@ -238,9 +238,7 @@ class EpiasClient:
             var_info = _VARIABLE_MAP[var_name]
             try:
                 if var_info.get("quarterly"):
-                    var_df = self._fetch_variable_quarterly(
-                        var_info, var_name, year
-                    )
+                    var_df = self._fetch_variable_quarterly(var_info, var_name, year)
                 else:
                     var_df = self._fetch_variable(
                         endpoint=var_info["endpoint"],
@@ -298,8 +296,12 @@ class EpiasClient:
             else:
                 df = self._db.get_epias_market_year(year)
             if not df.empty:
-                logger.info("[DB READ] EPIAS {} {} from DB ({} rows)",
-                            "generation" if is_gen else "market", year, len(df))
+                logger.info(
+                    "[DB READ] EPIAS {} {} from DB ({} rows)",
+                    "generation" if is_gen else "market",
+                    year,
+                    len(df),
+                )
                 # Normalize index to tz-naive DatetimeIndex for compatibility
                 idx = pd.DatetimeIndex(df.index)
                 if idx.tz is not None:
@@ -321,8 +323,11 @@ class EpiasClient:
         # 2. Parquet fallback
         if self._db is not None:
             is_gen = self._is_generation_pattern(file_pattern)
-            logger.info("[DB MISS] EPIAS {} {} not in DB, trying parquet",
-                        "generation" if is_gen else "market", year)
+            logger.info(
+                "[DB MISS] EPIAS {} {} not in DB, trying parquet",
+                "generation" if is_gen else "market",
+                year,
+            )
         pattern = file_pattern or self.file_pattern
         path = self.cache_dir / pattern.format(year=year)
         if not path.exists():
@@ -360,11 +365,19 @@ class EpiasClient:
                 else:
                     rows = self._df_to_market_rows(df)
                     count = self._db.upsert_epias_market(rows)
-                logger.info("[DB WRITE] EPIAS {} {} upserted ({} rows)",
-                            "generation" if is_gen else "market", year, count)
+                logger.info(
+                    "[DB WRITE] EPIAS {} {} upserted ({} rows)",
+                    "generation" if is_gen else "market",
+                    year,
+                    count,
+                )
             except Exception as e:
-                logger.warning("[DB WRITE FAIL] EPIAS {} {} (continuing): {}",
-                               "generation" if is_gen else "market", year, e)
+                logger.warning(
+                    "[DB WRITE FAIL] EPIAS {} {} (continuing): {}",
+                    "generation" if is_gen else "market",
+                    year,
+                    e,
+                )
 
         # 2. Parquet backup (always)
         pattern = file_pattern or self.file_pattern
@@ -461,9 +474,7 @@ class EpiasClient:
         if combined.index.tz is not None:
             combined.index = combined.index.tz_localize(None)
 
-        mask = (combined.index >= start_dt) & (
-            combined.index <= end_dt + pd.Timedelta(hours=23)
-        )
+        mask = (combined.index >= start_dt) & (combined.index <= end_dt + pd.Timedelta(hours=23))
         return combined.loc[mask]
 
     def fetch_generation_year(self, year: int) -> pd.DataFrame:

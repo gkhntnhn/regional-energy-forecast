@@ -132,9 +132,7 @@ class TestJobManager:
         job2.status = JobStatus.FAILED
         job2.completed_at = datetime.now(tz=TZ_ISTANBUL)
 
-        job_manager.create_job_in_memory(
-            "c@c.com", Path("/tmp/c.xlsx"), "01-03-2026_12-00-02"
-        )
+        job_manager.create_job_in_memory("c@c.com", Path("/tmp/c.xlsx"), "01-03-2026_12-00-02")
 
         stats = job_manager.get_stats_in_memory()
 
@@ -154,20 +152,14 @@ class TestJobManager:
         assert active is not None
         assert active.id == job.id
 
-    def test_get_active_job_returns_none_when_inactive(
-        self, job_manager: JobManager
-    ) -> None:
+    def test_get_active_job_returns_none_when_inactive(self, job_manager: JobManager) -> None:
         """Test get_active_job_in_memory returns None when no active job."""
         assert job_manager.get_active_job_in_memory() is None
 
     def test_get_all_jobs(self, job_manager: JobManager) -> None:
         """Test get_all_jobs_in_memory returns all jobs."""
-        job_manager.create_job_in_memory(
-            "a@a.com", Path("/tmp/a.xlsx"), "01-03-2026_12-00-00"
-        )
-        job_manager.create_job_in_memory(
-            "b@b.com", Path("/tmp/b.xlsx"), "01-03-2026_12-00-01"
-        )
+        job_manager.create_job_in_memory("a@a.com", Path("/tmp/a.xlsx"), "01-03-2026_12-00-00")
+        job_manager.create_job_in_memory("b@b.com", Path("/tmp/b.xlsx"), "01-03-2026_12-00-01")
 
         all_jobs = job_manager.get_all_jobs_in_memory()
         assert len(all_jobs) == 2
@@ -250,9 +242,7 @@ class TestJobManagerProcessJob:
         mock_email.send_error_notification.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_process_job_failure_email_error_swallowed(
-        self, job_manager: JobManager
-    ) -> None:
+    async def test_process_job_failure_email_error_swallowed(self, job_manager: JobManager) -> None:
         """Test error notification failure is swallowed (not re-raised)."""
         job = job_manager.create_job_in_memory(
             "test@test.com", Path("/tmp/test.xlsx"), "01-03-2026_12-00-00"
@@ -462,20 +452,20 @@ class TestProcessJobDB:
         # Seed a pending job
         async with db_session_factory() as session:
             repo = JobRepository(session)
-            await repo.create({
-                "id": "success12345",
-                "email": "user@example.com",
-                "excel_path": "/tmp/input.xlsx",
-                "file_stem": "07-03-2026_10-00-00",
-                "status": "pending",
-                "email_status": "pending",
-            })
+            await repo.create(
+                {
+                    "id": "success12345",
+                    "email": "user@example.com",
+                    "excel_path": "/tmp/input.xlsx",
+                    "file_stem": "07-03-2026_10-00-00",
+                    "status": "pending",
+                    "email_status": "pending",
+                }
+            )
             await session.commit()
 
         # Build mock prediction result
-        pred_index = pd.date_range(
-            "2026-03-08", periods=48, freq="h", tz=TZ_ISTANBUL
-        )
+        pred_index = pd.date_range("2026-03-08", periods=48, freq="h", tz=TZ_ISTANBUL)
         pred_df = pd.DataFrame(
             {
                 "consumption_mwh": [1200.0 + i for i in range(48)],
@@ -537,20 +527,20 @@ class TestProcessJobDB:
         # Seed a pending job
         async with db_session_factory() as session:
             repo = JobRepository(session)
-            await repo.create({
-                "id": "fail_job_123",
-                "email": "user@example.com",
-                "excel_path": "/tmp/input.xlsx",
-                "file_stem": "07-03-2026_10-00-00",
-                "status": "pending",
-                "email_status": "pending",
-            })
+            await repo.create(
+                {
+                    "id": "fail_job_123",
+                    "email": "user@example.com",
+                    "excel_path": "/tmp/input.xlsx",
+                    "file_stem": "07-03-2026_10-00-00",
+                    "status": "pending",
+                    "email_status": "pending",
+                }
+            )
             await session.commit()
 
         mock_prediction = MagicMock()
-        mock_prediction.run_prediction.side_effect = RuntimeError(
-            "Pipeline crashed"
-        )
+        mock_prediction.run_prediction.side_effect = RuntimeError("Pipeline crashed")
         mock_prediction._data_loader = None
 
         mock_file = MagicMock()
@@ -591,20 +581,20 @@ class TestProcessJobDB:
         # Seed a pending job
         async with db_session_factory() as session:
             repo = JobRepository(session)
-            await repo.create({
-                "id": "pred_store_1",
-                "email": "user@example.com",
-                "excel_path": "/tmp/input.xlsx",
-                "file_stem": "07-03-2026_10-00-00",
-                "status": "pending",
-                "email_status": "pending",
-            })
+            await repo.create(
+                {
+                    "id": "pred_store_1",
+                    "email": "user@example.com",
+                    "excel_path": "/tmp/input.xlsx",
+                    "file_stem": "07-03-2026_10-00-00",
+                    "status": "pending",
+                    "email_status": "pending",
+                }
+            )
             await session.commit()
 
         # Build prediction result with 4 rows for brevity
-        pred_index = pd.date_range(
-            "2026-03-08", periods=4, freq="h", tz=TZ_ISTANBUL
-        )
+        pred_index = pd.date_range("2026-03-08", periods=4, freq="h", tz=TZ_ISTANBUL)
         pred_df = pd.DataFrame(
             {
                 "consumption_mwh": [1200.0, 1210.0, 1220.0, 1230.0],
@@ -646,9 +636,7 @@ class TestProcessJobDB:
         async with db_session_factory() as session:
             from sqlalchemy import select
 
-            stmt = select(PredictionModel).where(
-                PredictionModel.job_id == "pred_store_1"
-            )
+            stmt = select(PredictionModel).where(PredictionModel.job_id == "pred_store_1")
             result = await session.execute(stmt)
             preds = list(result.scalars().all())
             assert len(preds) == 4
@@ -666,19 +654,19 @@ class TestProcessJobDB:
         # Seed a pending job
         async with db_session_factory() as session:
             repo = JobRepository(session)
-            await repo.create({
-                "id": "model_preds1",
-                "email": "user@example.com",
-                "excel_path": "/tmp/input.xlsx",
-                "file_stem": "07-03-2026_10-00-00",
-                "status": "pending",
-                "email_status": "pending",
-            })
+            await repo.create(
+                {
+                    "id": "model_preds1",
+                    "email": "user@example.com",
+                    "excel_path": "/tmp/input.xlsx",
+                    "file_stem": "07-03-2026_10-00-00",
+                    "status": "pending",
+                    "email_status": "pending",
+                }
+            )
             await session.commit()
 
-        pred_index = pd.date_range(
-            "2026-03-08", periods=2, freq="h", tz=TZ_ISTANBUL
-        )
+        pred_index = pd.date_range("2026-03-08", periods=2, freq="h", tz=TZ_ISTANBUL)
         pred_df = pd.DataFrame(
             {
                 "consumption_mwh": [1200.0, 1210.0],
@@ -729,9 +717,7 @@ class TestProcessJobDB:
         async with db_session_factory() as session:
             from sqlalchemy import select
 
-            stmt = select(PredictionModel).where(
-                PredictionModel.job_id == "model_preds1"
-            )
+            stmt = select(PredictionModel).where(PredictionModel.job_id == "model_preds1")
             result = await session.execute(stmt)
             preds = list(result.scalars().all())
             assert len(preds) == 6
@@ -749,19 +735,19 @@ class TestProcessJobDB:
 
         async with db_session_factory() as session:
             repo = JobRepository(session)
-            await repo.create({
-                "id": "email_test_1",
-                "email": "user@example.com",
-                "excel_path": "/tmp/input.xlsx",
-                "file_stem": "07-03-2026_10-00-00",
-                "status": "pending",
-                "email_status": "pending",
-            })
+            await repo.create(
+                {
+                    "id": "email_test_1",
+                    "email": "user@example.com",
+                    "excel_path": "/tmp/input.xlsx",
+                    "file_stem": "07-03-2026_10-00-00",
+                    "status": "pending",
+                    "email_status": "pending",
+                }
+            )
             await session.commit()
 
-        pred_index = pd.date_range(
-            "2026-03-08", periods=2, freq="h", tz=TZ_ISTANBUL
-        )
+        pred_index = pd.date_range("2026-03-08", periods=2, freq="h", tz=TZ_ISTANBUL)
         pred_df = pd.DataFrame(
             {
                 "consumption_mwh": [1200.0, 1210.0],
@@ -814,14 +800,16 @@ class TestProcessJobDB:
 
         async with db_session_factory() as session:
             repo = JobRepository(session)
-            await repo.create({
-                "id": "err_email_01",
-                "email": "user@example.com",
-                "excel_path": "/tmp/input.xlsx",
-                "file_stem": "07-03-2026_10-00-00",
-                "status": "pending",
-                "email_status": "pending",
-            })
+            await repo.create(
+                {
+                    "id": "err_email_01",
+                    "email": "user@example.com",
+                    "excel_path": "/tmp/input.xlsx",
+                    "file_stem": "07-03-2026_10-00-00",
+                    "status": "pending",
+                    "email_status": "pending",
+                }
+            )
             await session.commit()
 
         mock_prediction = MagicMock()
@@ -859,19 +847,19 @@ class TestProcessJobDB:
 
         async with db_session_factory() as session:
             repo = JobRepository(session)
-            await repo.create({
-                "id": "weather_nf1",
-                "email": "user@example.com",
-                "excel_path": "/tmp/input.xlsx",
-                "file_stem": "07-03-2026_10-00-00",
-                "status": "pending",
-                "email_status": "pending",
-            })
+            await repo.create(
+                {
+                    "id": "weather_nf1",
+                    "email": "user@example.com",
+                    "excel_path": "/tmp/input.xlsx",
+                    "file_stem": "07-03-2026_10-00-00",
+                    "status": "pending",
+                    "email_status": "pending",
+                }
+            )
             await session.commit()
 
-        pred_index = pd.date_range(
-            "2026-03-08", periods=2, freq="h", tz=TZ_ISTANBUL
-        )
+        pred_index = pd.date_range("2026-03-08", periods=2, freq="h", tz=TZ_ISTANBUL)
         pred_df = pd.DataFrame(
             {
                 "consumption_mwh": [1200.0, 1210.0],
@@ -933,19 +921,19 @@ class TestProcessJobDB:
 
         async with db_session_factory() as session:
             repo = JobRepository(session)
-            await repo.create({
-                "id": "fi_test_001",
-                "email": "user@example.com",
-                "excel_path": "/tmp/input.xlsx",
-                "file_stem": "07-03-2026_10-00-00",
-                "status": "pending",
-                "email_status": "pending",
-            })
+            await repo.create(
+                {
+                    "id": "fi_test_001",
+                    "email": "user@example.com",
+                    "excel_path": "/tmp/input.xlsx",
+                    "file_stem": "07-03-2026_10-00-00",
+                    "status": "pending",
+                    "email_status": "pending",
+                }
+            )
             await session.commit()
 
-        pred_index = pd.date_range(
-            "2026-03-08", periods=2, freq="h", tz=TZ_ISTANBUL
-        )
+        pred_index = pd.date_range("2026-03-08", periods=2, freq="h", tz=TZ_ISTANBUL)
         pred_df = pd.DataFrame(
             {
                 "consumption_mwh": [1200.0, 1210.0],
@@ -1007,14 +995,16 @@ class TestProcessJobDB:
 
         async with db_session_factory() as session:
             repo = JobRepository(session)
-            await repo.create({
-                "id": "swallow_err1",
-                "email": "user@example.com",
-                "excel_path": "/tmp/input.xlsx",
-                "file_stem": "07-03-2026_10-00-00",
-                "status": "pending",
-                "email_status": "pending",
-            })
+            await repo.create(
+                {
+                    "id": "swallow_err1",
+                    "email": "user@example.com",
+                    "excel_path": "/tmp/input.xlsx",
+                    "file_stem": "07-03-2026_10-00-00",
+                    "status": "pending",
+                    "email_status": "pending",
+                }
+            )
             await session.commit()
 
         mock_prediction = MagicMock()
@@ -1054,28 +1044,26 @@ class TestProcessJobDB:
 
         async with db_session_factory() as session:
             repo = JobRepository(session)
-            await repo.create({
-                "id": "match_test1",
-                "email": "user@example.com",
-                "excel_path": "/tmp/input.xlsx",
-                "file_stem": "07-03-2026_10-00-00",
-                "status": "pending",
-                "email_status": "pending",
-            })
+            await repo.create(
+                {
+                    "id": "match_test1",
+                    "email": "user@example.com",
+                    "excel_path": "/tmp/input.xlsx",
+                    "file_stem": "07-03-2026_10-00-00",
+                    "status": "pending",
+                    "email_status": "pending",
+                }
+            )
             await session.commit()
 
         # Build a consumption DataFrame that load_excel returns
-        consumption_idx = pd.date_range(
-            "2026-03-06", periods=48, freq="h", tz=TZ_ISTANBUL
-        )
+        consumption_idx = pd.date_range("2026-03-06", periods=48, freq="h", tz=TZ_ISTANBUL)
         consumption_df = pd.DataFrame(
             {"consumption": [1100.0 + i for i in range(48)]},
             index=consumption_idx,
         )
 
-        pred_index = pd.date_range(
-            "2026-03-08", periods=2, freq="h", tz=TZ_ISTANBUL
-        )
+        pred_index = pd.date_range("2026-03-08", periods=2, freq="h", tz=TZ_ISTANBUL)
         pred_df = pd.DataFrame(
             {
                 "consumption_mwh": [1200.0, 1210.0],
@@ -1136,19 +1124,19 @@ class TestProcessJobDB:
 
         async with db_session_factory() as session:
             repo = JobRepository(session)
-            await repo.create({
-                "id": "match_fail1",
-                "email": "user@example.com",
-                "excel_path": "/tmp/input.xlsx",
-                "file_stem": "07-03-2026_10-00-00",
-                "status": "pending",
-                "email_status": "pending",
-            })
+            await repo.create(
+                {
+                    "id": "match_fail1",
+                    "email": "user@example.com",
+                    "excel_path": "/tmp/input.xlsx",
+                    "file_stem": "07-03-2026_10-00-00",
+                    "status": "pending",
+                    "email_status": "pending",
+                }
+            )
             await session.commit()
 
-        pred_index = pd.date_range(
-            "2026-03-08", periods=2, freq="h", tz=TZ_ISTANBUL
-        )
+        pred_index = pd.date_range("2026-03-08", periods=2, freq="h", tz=TZ_ISTANBUL)
         pred_df = pd.DataFrame(
             {
                 "consumption_mwh": [1200.0, 1210.0],
@@ -1210,19 +1198,19 @@ class TestEmailNonFatal:
 
         async with db_session_factory() as session:
             repo = JobRepository(session)
-            await repo.create({
-                "id": "email_fail_1",
-                "email": "user@example.com",
-                "excel_path": "/tmp/input.xlsx",
-                "file_stem": "07-03-2026_10-00-00",
-                "status": "pending",
-                "email_status": "pending",
-            })
+            await repo.create(
+                {
+                    "id": "email_fail_1",
+                    "email": "user@example.com",
+                    "excel_path": "/tmp/input.xlsx",
+                    "file_stem": "07-03-2026_10-00-00",
+                    "status": "pending",
+                    "email_status": "pending",
+                }
+            )
             await session.commit()
 
-        pred_index = pd.date_range(
-            "2026-03-08", periods=2, freq="h", tz=TZ_ISTANBUL
-        )
+        pred_index = pd.date_range("2026-03-08", periods=2, freq="h", tz=TZ_ISTANBUL)
         pred_df = pd.DataFrame(
             {
                 "consumption_mwh": [1200.0, 1210.0],
@@ -1248,7 +1236,9 @@ class TestEmailNonFatal:
         mock_email = MagicMock()
         # send_with_retry returns (False, 2, "error msg") = all retries failed
         mock_email.send_with_retry.return_value = (
-            False, 2, "SMTP connection error: [Errno 22] Invalid argument"
+            False,
+            2,
+            "SMTP connection error: [Errno 22] Invalid argument",
         )
 
         await job_manager.process_job_db(
@@ -1281,19 +1271,19 @@ class TestEmailNonFatal:
 
         async with db_session_factory() as session:
             repo = JobRepository(session)
-            await repo.create({
-                "id": "email_exc_1",
-                "email": "user@example.com",
-                "excel_path": "/tmp/input.xlsx",
-                "file_stem": "07-03-2026_10-00-00",
-                "status": "pending",
-                "email_status": "pending",
-            })
+            await repo.create(
+                {
+                    "id": "email_exc_1",
+                    "email": "user@example.com",
+                    "excel_path": "/tmp/input.xlsx",
+                    "file_stem": "07-03-2026_10-00-00",
+                    "status": "pending",
+                    "email_status": "pending",
+                }
+            )
             await session.commit()
 
-        pred_index = pd.date_range(
-            "2026-03-08", periods=2, freq="h", tz=TZ_ISTANBUL
-        )
+        pred_index = pd.date_range("2026-03-08", periods=2, freq="h", tz=TZ_ISTANBUL)
         pred_df = pd.DataFrame(
             {
                 "consumption_mwh": [1200.0, 1210.0],
@@ -1350,12 +1340,9 @@ class TestEmailNonFatal:
         )
         job_manager._jobs[job.id] = job
 
-        pred_index = pd.date_range(
-            "2026-03-08", periods=2, freq="h", tz=TZ_ISTANBUL
-        )
+        pred_index = pd.date_range("2026-03-08", periods=2, freq="h", tz=TZ_ISTANBUL)
         pred_df = pd.DataFrame(
-            {"consumption_mwh": [1200.0, 1210.0],
-             "period": ["day_ahead", "day_ahead"]},
+            {"consumption_mwh": [1200.0, 1210.0], "period": ["day_ahead", "day_ahead"]},
             index=pred_index,
         )
 
@@ -1384,9 +1371,7 @@ class TestRunDriftCheck:
     """Tests for _run_drift_check standalone function."""
 
     @pytest.mark.asyncio
-    async def test_drift_check_no_config_file(
-        self, db_session_factory: Any
-    ) -> None:
+    async def test_drift_check_no_config_file(self, db_session_factory: Any) -> None:
         """Test _run_drift_check uses defaults when config file missing."""
         from unittest.mock import AsyncMock, patch
 
@@ -1404,9 +1389,7 @@ class TestRunDriftCheck:
             await _run_drift_check(db_session_factory, mock_email)
 
     @pytest.mark.asyncio
-    async def test_drift_check_disabled(
-        self, db_session_factory: Any
-    ) -> None:
+    async def test_drift_check_disabled(self, db_session_factory: Any) -> None:
         """Test _run_drift_check returns early when drift is disabled."""
         from unittest.mock import AsyncMock, patch
 
@@ -1417,22 +1400,23 @@ class TestRunDriftCheck:
         # Provide a YAML-like config with enabled=false
         yaml_data = {"drift_detection": {"enabled": False}}
 
-        with patch("builtins.open", create=True), patch(
-            "energy_forecast.serving.job_manager.Path.exists",
-            return_value=True,
-        ) as _p, patch(
-            "yaml.safe_load", return_value=yaml_data
-        ), patch(
-            "energy_forecast.monitoring.drift_detector.check_model_drift",
-            new_callable=AsyncMock,
-        ) as mock_check:
+        with (
+            patch("builtins.open", create=True),
+            patch(
+                "energy_forecast.serving.job_manager.Path.exists",
+                return_value=True,
+            ) as _p,
+            patch("yaml.safe_load", return_value=yaml_data),
+            patch(
+                "energy_forecast.monitoring.drift_detector.check_model_drift",
+                new_callable=AsyncMock,
+            ) as mock_check,
+        ):
             await _run_drift_check(db_session_factory, mock_email)
             mock_check.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_drift_check_exception_nonfatal(
-        self, db_session_factory: Any
-    ) -> None:
+    async def test_drift_check_exception_nonfatal(self, db_session_factory: Any) -> None:
         """Test _run_drift_check swallows exceptions gracefully."""
         from unittest.mock import AsyncMock, patch
 
@@ -1449,9 +1433,7 @@ class TestRunDriftCheck:
             await _run_drift_check(db_session_factory, mock_email)
 
     @pytest.mark.asyncio
-    async def test_drift_check_with_alerts_logs_warning(
-        self, db_session_factory: Any
-    ) -> None:
+    async def test_drift_check_with_alerts_logs_warning(self, db_session_factory: Any) -> None:
         """Test _run_drift_check logs warnings when alerts are returned."""
         from unittest.mock import AsyncMock, patch
 
@@ -1488,11 +1470,17 @@ class TestJobQueue:
         """Test enqueue returns 1-based queue position."""
         jm = JobManager(max_queue_size=5)
         pos = jm.enqueue(
-            job_id="q1", excel_path="/tmp/a.xlsx", email="a@a.com",
-            file_stem="s1", created_at=datetime.now(tz=TZ_ISTANBUL),
-            session_factory=None, prediction_service=MagicMock(),
-            file_service=MagicMock(), email_service=MagicMock(),
-            is_db_mode=False, job_ref=MagicMock(),
+            job_id="q1",
+            excel_path="/tmp/a.xlsx",
+            email="a@a.com",
+            file_stem="s1",
+            created_at=datetime.now(tz=TZ_ISTANBUL),
+            session_factory=None,
+            prediction_service=MagicMock(),
+            file_service=MagicMock(),
+            email_service=MagicMock(),
+            is_db_mode=False,
+            job_ref=MagicMock(),
         )
         assert pos == 1
 
@@ -1501,19 +1489,31 @@ class TestJobQueue:
         jm = JobManager(max_queue_size=2)
         for i in range(2):
             jm.enqueue(
-                job_id=f"q{i}", excel_path="/tmp/a.xlsx", email="a@a.com",
-                file_stem="s", created_at=datetime.now(tz=TZ_ISTANBUL),
-                session_factory=None, prediction_service=MagicMock(),
-                file_service=MagicMock(), email_service=MagicMock(),
-                is_db_mode=False, job_ref=MagicMock(),
+                job_id=f"q{i}",
+                excel_path="/tmp/a.xlsx",
+                email="a@a.com",
+                file_stem="s",
+                created_at=datetime.now(tz=TZ_ISTANBUL),
+                session_factory=None,
+                prediction_service=MagicMock(),
+                file_service=MagicMock(),
+                email_service=MagicMock(),
+                is_db_mode=False,
+                job_ref=MagicMock(),
             )
         with pytest.raises(JobQueueFullError, match="Queue is full"):
             jm.enqueue(
-                job_id="q_overflow", excel_path="/tmp/a.xlsx", email="a@a.com",
-                file_stem="s", created_at=datetime.now(tz=TZ_ISTANBUL),
-                session_factory=None, prediction_service=MagicMock(),
-                file_service=MagicMock(), email_service=MagicMock(),
-                is_db_mode=False, job_ref=MagicMock(),
+                job_id="q_overflow",
+                excel_path="/tmp/a.xlsx",
+                email="a@a.com",
+                file_stem="s",
+                created_at=datetime.now(tz=TZ_ISTANBUL),
+                session_factory=None,
+                prediction_service=MagicMock(),
+                file_service=MagicMock(),
+                email_service=MagicMock(),
+                is_db_mode=False,
+                job_ref=MagicMock(),
             )
 
     def test_queue_size_property(self) -> None:
@@ -1521,11 +1521,17 @@ class TestJobQueue:
         jm = JobManager(max_queue_size=5)
         assert jm.queue_size == 0
         jm.enqueue(
-            job_id="q1", excel_path="/tmp/a.xlsx", email="a@a.com",
-            file_stem="s", created_at=datetime.now(tz=TZ_ISTANBUL),
-            session_factory=None, prediction_service=MagicMock(),
-            file_service=MagicMock(), email_service=MagicMock(),
-            is_db_mode=False, job_ref=MagicMock(),
+            job_id="q1",
+            excel_path="/tmp/a.xlsx",
+            email="a@a.com",
+            file_stem="s",
+            created_at=datetime.now(tz=TZ_ISTANBUL),
+            session_factory=None,
+            prediction_service=MagicMock(),
+            file_service=MagicMock(),
+            email_service=MagicMock(),
+            is_db_mode=False,
+            job_ref=MagicMock(),
         )
         assert jm.queue_size == 1
 
@@ -1538,12 +1544,16 @@ class TestJobQueue:
         order: list[str] = []
 
         job1 = Job(
-            id="seq1", email="a@a.com",
-            excel_path=Path("/tmp/a.xlsx"), file_stem="s1",
+            id="seq1",
+            email="a@a.com",
+            excel_path=Path("/tmp/a.xlsx"),
+            file_stem="s1",
         )
         job2 = Job(
-            id="seq2", email="b@b.com",
-            excel_path=Path("/tmp/b.xlsx"), file_stem="s2",
+            id="seq2",
+            email="b@b.com",
+            excel_path=Path("/tmp/b.xlsx"),
+            file_stem="s2",
         )
         jm._jobs[job1.id] = job1
         jm._jobs[job2.id] = job2
@@ -1573,18 +1583,30 @@ class TestJobQueue:
         jm.start_worker()
 
         jm.enqueue(
-            job_id=job1.id, excel_path="/tmp/a.xlsx", email="a@a.com",
-            file_stem="s1", created_at=job1.created_at,
-            session_factory=None, prediction_service=mock_pred,
-            file_service=mock_file, email_service=mock_email,
-            is_db_mode=False, job_ref=job1,
+            job_id=job1.id,
+            excel_path="/tmp/a.xlsx",
+            email="a@a.com",
+            file_stem="s1",
+            created_at=job1.created_at,
+            session_factory=None,
+            prediction_service=mock_pred,
+            file_service=mock_file,
+            email_service=mock_email,
+            is_db_mode=False,
+            job_ref=job1,
         )
         jm.enqueue(
-            job_id=job2.id, excel_path="/tmp/b.xlsx", email="b@b.com",
-            file_stem="s2", created_at=job2.created_at,
-            session_factory=None, prediction_service=mock_pred,
-            file_service=mock_file, email_service=mock_email,
-            is_db_mode=False, job_ref=job2,
+            job_id=job2.id,
+            excel_path="/tmp/b.xlsx",
+            email="b@b.com",
+            file_stem="s2",
+            created_at=job2.created_at,
+            session_factory=None,
+            prediction_service=mock_pred,
+            file_service=mock_file,
+            email_service=mock_email,
+            is_db_mode=False,
+            job_ref=job2,
         )
 
         # Wait for queue to drain
@@ -1609,15 +1631,11 @@ class TestJobQueue:
     def test_stats_include_queued(self) -> None:
         """Test get_stats_in_memory includes queued status."""
         jm = JobManager(max_queue_size=5)
-        job = jm.create_job_in_memory(
-            "a@a.com", Path("/tmp/a.xlsx"), "s1"
-        )
+        job = jm.create_job_in_memory("a@a.com", Path("/tmp/a.xlsx"), "s1")
         job.status = JobStatus.RUNNING
         jm._active_job_id = job.id
 
-        job2 = jm.create_job_in_memory(
-            "b@b.com", Path("/tmp/b.xlsx"), "s2"
-        )
+        job2 = jm.create_job_in_memory("b@b.com", Path("/tmp/b.xlsx"), "s2")
         assert job2.status == JobStatus.QUEUED
 
         stats = jm.get_stats_in_memory()

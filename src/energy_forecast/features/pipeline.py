@@ -35,7 +35,9 @@ class FeaturePipeline:
     }
 
     def __init__(
-        self, config: Settings, holidays_df: pd.DataFrame | None = None,
+        self,
+        config: Settings,
+        holidays_df: pd.DataFrame | None = None,
     ) -> None:
         self._settings = config
         self._pipeline_cfg = config.pipeline
@@ -55,7 +57,8 @@ class FeaturePipeline:
             # Inject holidays_df into CalendarFE if available
             if name == "calendar" and self._holidays_df is not None:
                 engineer = cls(  # type: ignore[call-arg]
-                    feature_cfg.model_dump(), holidays_df=self._holidays_df,
+                    feature_cfg.model_dump(),
+                    holidays_df=self._holidays_df,
                 )
             else:
                 engineer = cls(feature_cfg.model_dump())

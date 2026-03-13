@@ -138,9 +138,7 @@ class TestAdminWithDb:
 
     @pytest.mark.usefixtures("_seed_predictions")
     def test_daily_mape(self, admin_client: TestClient) -> None:
-        resp = admin_client.get(
-            "/admin/analytics/mape/daily?days=30", headers=AUTH_HEADER
-        )
+        resp = admin_client.get("/admin/analytics/mape/daily?days=30", headers=AUTH_HEADER)
         assert resp.status_code == 200
         data = resp.json()
         assert isinstance(data, list)
@@ -150,59 +148,45 @@ class TestAdminWithDb:
 
     @pytest.mark.usefixtures("_seed_predictions")
     def test_weekly_mape(self, admin_client: TestClient) -> None:
-        resp = admin_client.get(
-            "/admin/analytics/mape/weekly?weeks=12", headers=AUTH_HEADER
-        )
+        resp = admin_client.get("/admin/analytics/mape/weekly?weeks=12", headers=AUTH_HEADER)
         assert resp.status_code == 200
         assert isinstance(resp.json(), list)
 
     @pytest.mark.usefixtures("_seed_predictions")
     def test_hourly_mape(self, admin_client: TestClient) -> None:
-        resp = admin_client.get(
-            "/admin/analytics/mape/hourly", headers=AUTH_HEADER
-        )
+        resp = admin_client.get("/admin/analytics/mape/hourly", headers=AUTH_HEADER)
         assert resp.status_code == 200
         data = resp.json()
         assert isinstance(data, list)
 
     @pytest.mark.usefixtures("_seed_predictions")
     def test_per_model_mape(self, admin_client: TestClient) -> None:
-        resp = admin_client.get(
-            "/admin/analytics/models/mape?days=30", headers=AUTH_HEADER
-        )
+        resp = admin_client.get("/admin/analytics/models/mape?days=30", headers=AUTH_HEADER)
         assert resp.status_code == 200
         data = resp.json()
         assert isinstance(data, list)
 
     @pytest.mark.usefixtures("_seed_predictions")
     def test_model_comparison(self, admin_client: TestClient) -> None:
-        resp = admin_client.get(
-            "/admin/analytics/models/comparison", headers=AUTH_HEADER
-        )
+        resp = admin_client.get("/admin/analytics/models/comparison", headers=AUTH_HEADER)
         assert resp.status_code == 200
         assert isinstance(resp.json(), list)
 
     @pytest.mark.usefixtures("_seed_predictions")
     def test_feature_trend(self, admin_client: TestClient) -> None:
-        resp = admin_client.get(
-            "/admin/analytics/features/trend?days=30", headers=AUTH_HEADER
-        )
+        resp = admin_client.get("/admin/analytics/features/trend?days=30", headers=AUTH_HEADER)
         assert resp.status_code == 200
         assert isinstance(resp.json(), list)
 
     @pytest.mark.usefixtures("_seed_predictions")
     def test_epias_accuracy(self, admin_client: TestClient) -> None:
-        resp = admin_client.get(
-            "/admin/analytics/epias/accuracy?days=30", headers=AUTH_HEADER
-        )
+        resp = admin_client.get("/admin/analytics/epias/accuracy?days=30", headers=AUTH_HEADER)
         assert resp.status_code == 200
         assert isinstance(resp.json(), list)
 
     @pytest.mark.usefixtures("_seed_predictions")
     def test_job_history(self, admin_client: TestClient) -> None:
-        resp = admin_client.get(
-            "/admin/jobs/history?page=1&size=10", headers=AUTH_HEADER
-        )
+        resp = admin_client.get("/admin/jobs/history?page=1&size=10", headers=AUTH_HEADER)
         assert resp.status_code == 200
         data = resp.json()
         assert "total" in data
@@ -210,9 +194,7 @@ class TestAdminWithDb:
 
     @pytest.mark.usefixtures("_seed_predictions")
     def test_job_details(self, admin_client: TestClient) -> None:
-        resp = admin_client.get(
-            "/admin/jobs/test_j1/details", headers=AUTH_HEADER
-        )
+        resp = admin_client.get("/admin/jobs/test_j1/details", headers=AUTH_HEADER)
         assert resp.status_code == 200
         data = resp.json()
         assert data["id"] == "test_j1"
@@ -220,18 +202,14 @@ class TestAdminWithDb:
 
     @pytest.mark.usefixtures("_seed_predictions")
     def test_model_runs(self, admin_client: TestClient) -> None:
-        resp = admin_client.get(
-            "/admin/models/runs?model_type=catboost", headers=AUTH_HEADER
-        )
+        resp = admin_client.get("/admin/models/runs?model_type=catboost", headers=AUTH_HEADER)
         assert resp.status_code == 200
         data = resp.json()
         assert isinstance(data, list)
 
     @pytest.mark.usefixtures("_seed_predictions")
     def test_system_health(self, admin_client: TestClient) -> None:
-        resp = admin_client.get(
-            "/admin/system/health", headers=AUTH_HEADER
-        )
+        resp = admin_client.get("/admin/system/health", headers=AUTH_HEADER)
         assert resp.status_code == 200
         data = resp.json()
         assert "database" in data

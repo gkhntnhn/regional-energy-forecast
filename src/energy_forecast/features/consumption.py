@@ -199,8 +199,10 @@ class ConsumptionFeatureEngineer(BaseFeatureEngineer):
         idx = cast(pd.DatetimeIndex, df.index)
         group_key = pd.Series(idx.dayofweek * 24 + idx.hour, index=df.index)
 
-        profile = df["consumption"].groupby(group_key).transform(
-            lambda g: g.expanding().mean().shift(min_lag)
+        profile = (
+            df["consumption"]
+            .groupby(group_key)
+            .transform(lambda g: g.expanding().mean().shift(min_lag))
         )
         df["consumption_hourly_profile"] = profile
         return df

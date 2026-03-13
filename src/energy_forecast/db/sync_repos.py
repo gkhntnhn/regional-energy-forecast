@@ -34,32 +34,69 @@ from energy_forecast.db.models import (
 
 # Column lists for ON CONFLICT DO UPDATE (mirrors async repos)
 _MARKET_UPDATE_COLS = [
-    "fdpp", "rtc", "dam_purchase", "bilateral", "load_forecast", "fetched_at",
+    "fdpp",
+    "rtc",
+    "dam_purchase",
+    "bilateral",
+    "load_forecast",
+    "fetched_at",
 ]
 _GENERATION_UPDATE_COLS = [
-    "gen_asphaltite_coal", "gen_biomass", "gen_black_coal", "gen_dammed_hydro",
-    "gen_fueloil", "gen_geothermal", "gen_import_coal", "gen_import_export",
-    "gen_lignite", "gen_lng", "gen_naphta", "gen_natural_gas", "gen_river",
-    "gen_sun", "gen_total", "gen_wasteheat", "gen_wind", "fetched_at",
+    "gen_asphaltite_coal",
+    "gen_biomass",
+    "gen_black_coal",
+    "gen_dammed_hydro",
+    "gen_fueloil",
+    "gen_geothermal",
+    "gen_import_coal",
+    "gen_import_export",
+    "gen_lignite",
+    "gen_lng",
+    "gen_naphta",
+    "gen_natural_gas",
+    "gen_river",
+    "gen_sun",
+    "gen_total",
+    "gen_wasteheat",
+    "gen_wind",
+    "fetched_at",
 ]
 _WEATHER_UPDATE_COLS = [
-    "temperature_2m", "apparent_temperature", "relative_humidity_2m",
-    "dew_point_2m", "precipitation", "snow_depth", "surface_pressure",
-    "wind_speed_10m", "wind_direction_10m", "shortwave_radiation",
-    "weather_code", "fetched_at",
+    "temperature_2m",
+    "apparent_temperature",
+    "relative_humidity_2m",
+    "dew_point_2m",
+    "precipitation",
+    "snow_depth",
+    "surface_pressure",
+    "wind_speed_10m",
+    "wind_direction_10m",
+    "shortwave_radiation",
+    "weather_code",
+    "fetched_at",
 ]
 _HOLIDAY_UPDATE_COLS = [
-    "holiday_name", "raw_holiday_name", "is_ramadan",
-    "bayram_gun_no", "bayrama_kalan_gun",
+    "holiday_name",
+    "raw_holiday_name",
+    "is_ramadan",
+    "bayram_gun_no",
+    "bayrama_kalan_gun",
 ]
 _PROFILE_UPDATE_COLS = [
-    "profile_residential_lv", "profile_residential_mv",
-    "profile_industrial_lv", "profile_industrial_mv",
-    "profile_commercial_lv", "profile_commercial_mv",
-    "profile_agricultural_irrigation_lv", "profile_agricultural_irrigation_mv",
-    "profile_lighting", "profile_government",
-    "profile_residential", "profile_industrial",
-    "profile_commercial", "profile_agricultural_irrigation",
+    "profile_residential_lv",
+    "profile_residential_mv",
+    "profile_industrial_lv",
+    "profile_industrial_mv",
+    "profile_commercial_lv",
+    "profile_commercial_mv",
+    "profile_agricultural_irrigation_lv",
+    "profile_agricultural_irrigation_mv",
+    "profile_lighting",
+    "profile_government",
+    "profile_residential",
+    "profile_industrial",
+    "profile_commercial",
+    "profile_agricultural_irrigation",
     "fetched_at",
 ]
 
@@ -78,10 +115,7 @@ def _rows_to_df(
     instances = result.scalars().all()
     if not instances:
         return pd.DataFrame()
-    rows = [
-        {k: v for k, v in obj.__dict__.items() if not k.startswith("_")}
-        for obj in instances
-    ]
+    rows = [{k: v for k, v in obj.__dict__.items() if not k.startswith("_")} for obj in instances]
     df = pd.DataFrame(rows)
     # ORM models use 'dt' attribute for 'datetime' column — rename back
     if "dt" in df.columns and "datetime" not in df.columns:
@@ -107,7 +141,9 @@ class SyncDataAccess:
     # -----------------------------------------------------------------
 
     def get_epias_market_range(
-        self, start: datetime, end: datetime,
+        self,
+        start: datetime,
+        end: datetime,
     ) -> pd.DataFrame:
         """Get market data between start and end (inclusive)."""
         stmt = (
@@ -147,7 +183,9 @@ class SyncDataAccess:
     # -----------------------------------------------------------------
 
     def get_epias_generation_range(
-        self, start: datetime, end: datetime,
+        self,
+        start: datetime,
+        end: datetime,
     ) -> pd.DataFrame:
         """Get generation data between start and end (inclusive)."""
         stmt = (
@@ -246,7 +284,9 @@ class SyncDataAccess:
     # -----------------------------------------------------------------
 
     def get_profile_range(
-        self, start: datetime, end: datetime,
+        self,
+        start: datetime,
+        end: datetime,
     ) -> pd.DataFrame:
         """Get profile coefficients in a datetime range."""
         stmt = (

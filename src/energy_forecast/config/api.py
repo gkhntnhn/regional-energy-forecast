@@ -79,9 +79,7 @@ class DriftDetectionConfig(BaseModel, frozen=True):
 class MonitoringConfig(BaseModel, frozen=True):
     """Monitoring configuration."""
 
-    drift_detection: DriftDetectionConfig = Field(
-        default_factory=DriftDetectionConfig
-    )
+    drift_detection: DriftDetectionConfig = Field(default_factory=DriftDetectionConfig)
 
 
 class DatabaseConfig(BaseModel, frozen=True):

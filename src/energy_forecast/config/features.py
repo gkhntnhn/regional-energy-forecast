@@ -364,9 +364,7 @@ class SolarLeadConfig(BaseModel, frozen=True):
     enabled: bool = True
     hours: list[int] = Field(default_factory=lambda: [1, 2, 3])
     lag_range: SolarLagRangeConfig = Field(default_factory=SolarLagRangeConfig)
-    lag_columns: list[str] = Field(
-        default_factory=lambda: ["sol_ghi", "sol_dni", "sol_dhi"]
-    )
+    lag_columns: list[str] = Field(default_factory=lambda: ["sol_ghi", "sol_dni", "sol_dhi"])
 
 
 class SolarConfig(BaseModel, frozen=True):

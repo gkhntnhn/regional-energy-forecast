@@ -11,19 +11,17 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import numpy as np
-import pandas as pd
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from energy_forecast.db.base import Base
 import energy_forecast.db.models  # noqa: F401
+from energy_forecast.db.base import Base
 from energy_forecast.db.models import (
     EpiasMarketModel,
     TurkishHolidayModel,
 )
 from energy_forecast.db.sync_repos import SyncDataAccess, _rows_to_df
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -63,9 +61,7 @@ class TestRowsToDf:
 
     def test_empty_result(self, sync_session: Session) -> None:
         """Empty query result returns empty DataFrame."""
-        result = sync_session.execute(
-            EpiasMarketModel.__table__.select()
-        )
+        result = sync_session.execute(EpiasMarketModel.__table__.select())
         df = _rows_to_df(result)
         assert df.empty
 
@@ -76,6 +72,7 @@ class TestRowsToDf:
         sync_session.flush()
 
         from sqlalchemy import select as sa_select
+
         result = sync_session.execute(sa_select(EpiasMarketModel))
         df = _rows_to_df(result)
         assert len(df) == 1
@@ -91,41 +88,52 @@ class TestEpiasMarketRead:
     """Read operations for EPIAS market — real SQLite engine."""
 
     def _seed_market(
-        self, session: Session, hours: int = 24, start: str = "2024-01-01",
+        self,
+        session: Session,
+        hours: int = 24,
+        start: str = "2024-01-01",
     ) -> None:
         """Insert sample market rows."""
         rng = np.random.default_rng(42)
         base = datetime.fromisoformat(start)
         for h in range(hours):
             dt = base + timedelta(hours=h)
-            session.add(EpiasMarketModel(
-                dt=dt,
-                rtc=float(rng.uniform(500, 1500)),
-                dam_purchase=float(rng.uniform(400, 1200)),
-                load_forecast=float(rng.uniform(600, 1600)),
-            ))
+            session.add(
+                EpiasMarketModel(
+                    dt=dt,
+                    rtc=float(rng.uniform(500, 1500)),
+                    dam_purchase=float(rng.uniform(400, 1200)),
+                    load_forecast=float(rng.uniform(600, 1600)),
+                )
+            )
         session.flush()
 
     def test_get_range_empty(self, dao: SyncDataAccess) -> None:
         """Empty DB returns empty DataFrame."""
         df = dao.get_epias_market_range(
-            datetime(2024, 1, 1), datetime(2024, 1, 2),
+            datetime(2024, 1, 1),
+            datetime(2024, 1, 2),
         )
         assert df.empty
 
     def test_get_range_with_data(
-        self, sync_session: Session, dao: SyncDataAccess,
+        self,
+        sync_session: Session,
+        dao: SyncDataAccess,
     ) -> None:
         """Returns data within requested range."""
         self._seed_market(sync_session, hours=48)
         df = dao.get_epias_market_range(
-            datetime(2024, 1, 1, 0), datetime(2024, 1, 1, 23),
+            datetime(2024, 1, 1, 0),
+            datetime(2024, 1, 1, 23),
         )
         assert len(df) == 24
         assert "rtc" in df.columns
 
     def test_get_year_with_data(
-        self, sync_session: Session, dao: SyncDataAccess,
+        self,
+        sync_session: Session,
+        dao: SyncDataAccess,
     ) -> None:
         """Year filter returns correct year data."""
         self._seed_market(sync_session, hours=48)
@@ -148,19 +156,23 @@ class TestHolidayRead:
 
     def _seed_holidays(self, session: Session) -> None:
         """Insert sample holidays."""
-        session.add(TurkishHolidayModel(
-            date=date(2024, 1, 1),
-            holiday_name="Yilbasi",
-            raw_holiday_name="Yılbaşı",
-            is_ramadan=False,
-        ))
-        session.add(TurkishHolidayModel(
-            date=date(2024, 4, 10),
-            holiday_name="Ramazan_Bayrami_1",
-            raw_holiday_name="Ramazan Bayramı 1. Gün",
-            is_ramadan=True,
-            bayram_gun_no=1,
-        ))
+        session.add(
+            TurkishHolidayModel(
+                date=date(2024, 1, 1),
+                holiday_name="Yilbasi",
+                raw_holiday_name="Yılbaşı",
+                is_ramadan=False,
+            )
+        )
+        session.add(
+            TurkishHolidayModel(
+                date=date(2024, 4, 10),
+                holiday_name="Ramazan_Bayrami_1",
+                raw_holiday_name="Ramazan Bayramı 1. Gün",
+                is_ramadan=True,
+                bayram_gun_no=1,
+            )
+        )
         session.flush()
 
     def test_get_holidays_empty(self, dao: SyncDataAccess) -> None:
@@ -169,7 +181,9 @@ class TestHolidayRead:
         assert df.empty
 
     def test_get_holidays(
-        self, sync_session: Session, dao: SyncDataAccess,
+        self,
+        sync_session: Session,
+        dao: SyncDataAccess,
     ) -> None:
         """Returns all holidays with date index."""
         self._seed_holidays(sync_session)
@@ -178,7 +192,9 @@ class TestHolidayRead:
         assert "holiday_name" in df.columns
 
     def test_get_holidays_range(
-        self, sync_session: Session, dao: SyncDataAccess,
+        self,
+        sync_session: Session,
+        dao: SyncDataAccess,
     ) -> None:
         """Date range filter works correctly."""
         self._seed_holidays(sync_session)
@@ -209,17 +225,26 @@ class TestUpsertMocked:
 
     @patch("energy_forecast.db.sync_repos.pg_insert")
     def test_upsert_market_calls_execute(
-        self, mock_pg: MagicMock, dao: SyncDataAccess,
+        self,
+        mock_pg: MagicMock,
+        dao: SyncDataAccess,
     ) -> None:
         """Non-empty rows trigger session.execute + flush."""
         mock_stmt = MagicMock()
         mock_pg.return_value = mock_stmt
         mock_stmt.on_conflict_do_update.return_value = mock_stmt
         # Mock excluded attribute for set_ dict
-        mock_stmt.excluded = {col: col for col in [
-            "fdpp", "rtc", "dam_purchase", "bilateral",
-            "load_forecast", "fetched_at",
-        ]}
+        mock_stmt.excluded = {
+            col: col
+            for col in [
+                "fdpp",
+                "rtc",
+                "dam_purchase",
+                "bilateral",
+                "load_forecast",
+                "fetched_at",
+            ]
+        }
 
         dao._session = MagicMock()
         rows: list[dict[str, Any]] = [{"datetime": datetime(2024, 1, 1), "rtc": 100.0}]

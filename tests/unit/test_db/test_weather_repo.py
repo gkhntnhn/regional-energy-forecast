@@ -53,16 +53,16 @@ async def _seed_job(db_session: AsyncSession) -> str:
 
 
 @pytest.mark.asyncio
-async def test_bulk_create_forecast(
-    db_session: AsyncSession, _seed_job: str
-) -> None:
+async def test_bulk_create_forecast(db_session: AsyncSession, _seed_job: str) -> None:
     """Forecast snapshots are created and linked to job."""
     repo = WeatherSnapshotRepository(db_session)
     weather_df = _make_weather_df("2026-03-05")
     fetched = datetime.now(tz=TZ)
 
     count = await repo.bulk_create_forecast(
-        job_id=_seed_job, weather_df=weather_df, fetched_at=fetched,
+        job_id=_seed_job,
+        weather_df=weather_df,
+        fetched_at=fetched,
     )
     assert count == 24
 
@@ -73,9 +73,7 @@ async def test_bulk_create_forecast(
 
 
 @pytest.mark.asyncio
-async def test_forecast_computes_hdd_cdd(
-    db_session: AsyncSession, _seed_job: str
-) -> None:
+async def test_forecast_computes_hdd_cdd(db_session: AsyncSession, _seed_job: str) -> None:
     """HDD and CDD are computed from temperature."""
     idx = pd.date_range("2026-03-05", periods=2, freq="h", tz=TZ)
     weather_df = pd.DataFrame(
@@ -111,7 +109,8 @@ async def test_bulk_create_actuals(db_session: AsyncSession) -> None:
     fetched = datetime.now(tz=TZ)
 
     count = await repo.bulk_create_actuals(
-        weather_df=weather_df, fetched_at=fetched,
+        weather_df=weather_df,
+        fetched_at=fetched,
     )
     assert count == 24
 
@@ -126,7 +125,8 @@ async def test_has_actuals_for_date(db_session: AsyncSession) -> None:
 
     weather_df = _make_weather_df("2026-03-03")
     await repo.bulk_create_actuals(
-        weather_df=weather_df, fetched_at=datetime.now(tz=TZ),
+        weather_df=weather_df,
+        fetched_at=datetime.now(tz=TZ),
     )
 
     assert await repo.has_actuals_for_date(target) is True
@@ -138,9 +138,7 @@ async def test_has_actuals_for_date(db_session: AsyncSession) -> None:
 
 
 @pytest.mark.asyncio
-async def test_forecast_vs_actual(
-    db_session: AsyncSession, _seed_job: str
-) -> None:
+async def test_forecast_vs_actual(db_session: AsyncSession, _seed_job: str) -> None:
     """Forecast vs actual comparison returns error values."""
     repo = WeatherSnapshotRepository(db_session)
 
@@ -150,7 +148,8 @@ async def test_forecast_vs_actual(
         index=pd.date_range("2026-03-05T00:00", periods=1, freq="h", tz=TZ),
     )
     await repo.bulk_create_forecast(
-        job_id=_seed_job, weather_df=fc_df,
+        job_id=_seed_job,
+        weather_df=fc_df,
         fetched_at=datetime.now(tz=TZ),
     )
 
@@ -160,7 +159,8 @@ async def test_forecast_vs_actual(
         index=pd.date_range("2026-03-05T00:00", periods=1, freq="h", tz=TZ),
     )
     await repo.bulk_create_actuals(
-        weather_df=act_df, fetched_at=datetime.now(tz=TZ),
+        weather_df=act_df,
+        fetched_at=datetime.now(tz=TZ),
     )
 
     comparison = await repo.get_forecast_vs_actual(_seed_job)
@@ -177,9 +177,7 @@ async def test_forecast_vs_actual(
 
 
 @pytest.mark.asyncio
-async def test_weather_code_stored_as_int(
-    db_session: AsyncSession, _seed_job: str
-) -> None:
+async def test_weather_code_stored_as_int(db_session: AsyncSession, _seed_job: str) -> None:
     """Weather code is stored as integer, not float."""
     idx = pd.date_range("2026-03-05", periods=1, freq="h", tz=TZ)
     weather_df = pd.DataFrame(
@@ -256,9 +254,7 @@ def test_build_snapshot_rows_naive_index() -> None:
 
 
 @pytest.mark.asyncio
-async def test_get_forecast_vs_actual_empty(
-    db_session: AsyncSession, _seed_job: str
-) -> None:
+async def test_get_forecast_vs_actual_empty(db_session: AsyncSession, _seed_job: str) -> None:
     """get_forecast_vs_actual returns empty list when no forecasts exist for a job."""
     repo = WeatherSnapshotRepository(db_session)
 
@@ -273,9 +269,7 @@ async def test_get_forecast_vs_actual_empty(
 
 
 @pytest.mark.asyncio
-async def test_get_weekly_accuracy_basic(
-    db_session: AsyncSession, _seed_job: str
-) -> None:
+async def test_get_weekly_accuracy_basic(db_session: AsyncSession, _seed_job: str) -> None:
     """get_weekly_accuracy returns weekly MAE when forecast+actual snapshots exist."""
     repo = WeatherSnapshotRepository(db_session)
 
@@ -286,7 +280,10 @@ async def test_get_weekly_accuracy_basic(
     # Week A: 7 days ago — 3 hours of data
     week_a_start = now - timedelta(days=7)
     week_a_idx = pd.date_range(
-        week_a_start.strftime("%Y-%m-%dT00:00"), periods=3, freq="h", tz=TZ,
+        week_a_start.strftime("%Y-%m-%dT00:00"),
+        periods=3,
+        freq="h",
+        tz=TZ,
     )
     fc_df_a = pd.DataFrame(
         {"temperature_2m": [10.0, 12.0, 14.0], "wind_speed_10m": [5.0, 6.0, 7.0]},
@@ -300,7 +297,10 @@ async def test_get_weekly_accuracy_basic(
     # Week B: 14 days ago — 2 hours of data
     week_b_start = now - timedelta(days=14)
     week_b_idx = pd.date_range(
-        week_b_start.strftime("%Y-%m-%dT00:00"), periods=2, freq="h", tz=TZ,
+        week_b_start.strftime("%Y-%m-%dT00:00"),
+        periods=2,
+        freq="h",
+        tz=TZ,
     )
     fc_df_b = pd.DataFrame(
         {"temperature_2m": [20.0, 22.0], "wind_speed_10m": [10.0, 12.0]},
@@ -313,17 +313,24 @@ async def test_get_weekly_accuracy_basic(
 
     # Insert forecasts (linked to job)
     await repo.bulk_create_forecast(
-        job_id=_seed_job, weather_df=fc_df_a, fetched_at=datetime.now(tz=TZ),
+        job_id=_seed_job,
+        weather_df=fc_df_a,
+        fetched_at=datetime.now(tz=TZ),
     )
     # Need a second job for week B forecasts
     job2 = JobModel(
-        id="weather_test2", email="t@t.com",
-        excel_path="/tmp/t2.xlsx", file_stem="t2", status="completed",
+        id="weather_test2",
+        email="t@t.com",
+        excel_path="/tmp/t2.xlsx",
+        file_stem="t2",
+        status="completed",
     )
     db_session.add(job2)
     await db_session.flush()
     await repo.bulk_create_forecast(
-        job_id="weather_test2", weather_df=fc_df_b, fetched_at=datetime.now(tz=TZ),
+        job_id="weather_test2",
+        weather_df=fc_df_b,
+        fetched_at=datetime.now(tz=TZ),
     )
 
     # Insert actuals (no job_id)

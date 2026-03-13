@@ -36,9 +36,7 @@ class PredictionRepository:
         result = await self._session.execute(stmt)
         return list(result.scalars().all())
 
-    async def get_ensemble_by_job_id(
-        self, job_id: str
-    ) -> list[PredictionModel]:
+    async def get_ensemble_by_job_id(self, job_id: str) -> list[PredictionModel]:
         """Return only ensemble predictions for a given job."""
         stmt = (
             select(PredictionModel)
@@ -51,9 +49,7 @@ class PredictionRepository:
         result = await self._session.execute(stmt)
         return list(result.scalars().all())
 
-    async def match_predictions_with_actuals(
-        self, consumption_df: pd.DataFrame
-    ) -> int:
+    async def match_predictions_with_actuals(self, consumption_df: pd.DataFrame) -> int:
         """Match previous predictions with actual consumption from Excel.
 
         When a new Excel is uploaded, it contains actual consumption up to
@@ -75,12 +71,9 @@ class PredictionRepository:
             dt_max = dt_max.tz_localize(TZ_ISTANBUL)
 
         # Find unmatched predictions within the consumption data range
-        stmt = (
-            select(PredictionModel)
-            .where(
-                PredictionModel.actual_mwh.is_(None),
-                PredictionModel.forecast_dt <= dt_max,
-            )
+        stmt = select(PredictionModel).where(
+            PredictionModel.actual_mwh.is_(None),
+            PredictionModel.forecast_dt <= dt_max,
         )
         result = await self._session.execute(stmt)
 
@@ -107,9 +100,7 @@ class PredictionRepository:
 
             if actual_val is not None and actual_val > 0:
                 pred.actual_mwh = actual_val
-                pred.error_pct = (
-                    abs(actual_val - pred.consumption_mwh) / actual_val * 100
-                )
+                pred.error_pct = abs(actual_val - pred.consumption_mwh) / actual_val * 100
                 pred.matched_at = now
                 matched_count += 1
 

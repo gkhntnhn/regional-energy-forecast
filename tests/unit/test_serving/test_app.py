@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 from io import BytesIO
 from pathlib import Path
-from typing import Any
 from unittest.mock import MagicMock
 
 import pandas as pd
@@ -76,7 +75,6 @@ def test_client(
     app.state.session_factory = None
 
     return TestClient(app, raise_server_exceptions=False)
-
 
 
 class TestHealthEndpoint:
@@ -285,6 +283,7 @@ class TestJobsEndpoint:
         # Reset job manager
         from energy_forecast.serving.app import app
         from energy_forecast.serving.job_manager import JobManager
+
         app.state.job_manager = JobManager()
 
         response = test_client.get("/jobs", headers=AUTH_HEADER)
@@ -421,18 +420,14 @@ class TestApiErrorHandler:
 class TestStatusUnexpectedError:
     """Tests for get_status unexpected exception path (lines 390-392)."""
 
-    def test_get_status_unexpected_error_returns_500(
-        self, test_client: TestClient
-    ) -> None:
+    def test_get_status_unexpected_error_returns_500(self, test_client: TestClient) -> None:
         """Test that a non-JobNotFoundError exception returns 500."""
         from energy_forecast.serving.app import app
 
         # Replace job_manager with a mock that raises RuntimeError
         original_manager = app.state.job_manager
         mock_manager = MagicMock()
-        mock_manager.get_job_in_memory = MagicMock(
-            side_effect=RuntimeError("DB connection lost")
-        )
+        mock_manager.get_job_in_memory = MagicMock(side_effect=RuntimeError("DB connection lost"))
         app.state.job_manager = mock_manager
 
         try:

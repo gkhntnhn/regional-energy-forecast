@@ -32,13 +32,9 @@ class GDriveTransientError(Exception):
 class GoogleDriveStorage:
     """Upload job artifacts to Google Drive for archival."""
 
-    SCOPES: ClassVar[list[str]] = [
-        "https://www.googleapis.com/auth/drive.file"
-    ]
+    SCOPES: ClassVar[list[str]] = ["https://www.googleapis.com/auth/drive.file"]
 
-    def __init__(
-        self, credentials_path: str, root_folder_id: str
-    ) -> None:
+    def __init__(self, credentials_path: str, root_folder_id: str) -> None:
         self._credentials_path = credentials_path
         self._root_folder_id = root_folder_id
         self._service: Any = None
@@ -100,9 +96,7 @@ class GoogleDriveStorage:
             if creds and creds.expired and creds.refresh_token:
                 creds.refresh(Request())
             else:
-                flow = InstalledAppFlow.from_client_secrets_file(
-                    str(creds_path), self.SCOPES
-                )
+                flow = InstalledAppFlow.from_client_secrets_file(str(creds_path), self.SCOPES)
                 creds = flow.run_local_server(port=0)
                 logger.info("OAuth2 authorization successful")
 
@@ -145,14 +139,10 @@ class GoogleDriveStorage:
         for name, path in files.items():
             if path.exists():
                 try:
-                    file_id = self._upload_file(
-                        name, path, target_folder_id
-                    )
+                    file_id = self._upload_file(name, path, target_folder_id)
                     uploaded[name] = file_id
                 except Exception as e:
-                    logger.warning(
-                        "GDrive upload failed for {}: {}", name, e
-                    )
+                    logger.warning("GDrive upload failed for {}: {}", name, e)
 
         logger.info(
             "GDrive: uploaded {}/{} files to forecasts/{}/{}/{}/{}",
@@ -162,9 +152,7 @@ class GoogleDriveStorage:
         )
         return uploaded
 
-    def upload_backup(
-        self, file_path: Path, ts: datetime | None = None
-    ) -> str:
+    def upload_backup(self, file_path: Path, ts: datetime | None = None) -> str:
         """Upload a DB backup file to GDrive.
 
         Structure: ``backups/YYYY/MM/DD/HH-MM/``
@@ -185,9 +173,7 @@ class GoogleDriveStorage:
             ts.strftime("%H-%M"),
         ]
         target_folder_id = self._ensure_folder_path(path_parts)
-        file_id = self._upload_file(
-            file_path.name, file_path, target_folder_id
-        )
+        file_id = self._upload_file(file_path.name, file_path, target_folder_id)
         logger.info(
             "GDrive: backup uploaded to backups/{}/{}/{}/{}",
             *path_parts[1:],
@@ -230,9 +216,7 @@ class GoogleDriveStorage:
             if isinstance(e, HttpError):
                 status = e.resp.status if e.resp else 0
                 if status in (429, 500, 502, 503):
-                    return GDriveTransientError(
-                        f"GDrive API {status}: {e}"
-                    )
+                    return GDriveTransientError(f"GDrive API {status}: {e}")
         except ImportError:
             pass
         return e
@@ -269,11 +253,7 @@ class GoogleDriveStorage:
             f"trashed=false"
         )
         try:
-            results = (
-                service.files()
-                .list(q=query, fields="files(id)")
-                .execute()
-            )
+            results = service.files().list(q=query, fields="files(id)").execute()
         except Exception as e:
             raise self._wrap_api_error(e) from e
         existing = results.get("files", [])
@@ -296,11 +276,7 @@ class GoogleDriveStorage:
             "parents": [parent_id],
         }
         try:
-            folder = (
-                service.files()
-                .create(body=metadata, fields="id")
-                .execute()
-            )
+            folder = service.files().create(body=metadata, fields="id").execute()
         except Exception as e:
             raise self._wrap_api_error(e) from e
         folder_id: str = folder["id"]
@@ -312,9 +288,7 @@ class GoogleDriveStorage:
         retry=retry_if_exception_type(GDriveTransientError),
         reraise=True,
     )
-    def _upload_file(
-        self, name: str, path: Path, folder_id: str
-    ) -> str:
+    def _upload_file(self, name: str, path: Path, folder_id: str) -> str:
         """Upload a single file to a GDrive folder."""
         from googleapiclient.http import MediaFileUpload
 
@@ -322,11 +296,7 @@ class GoogleDriveStorage:
         metadata = {"name": name, "parents": [folder_id]}
         media = MediaFileUpload(str(path), resumable=True)
         try:
-            result = (
-                service.files()
-                .create(body=metadata, media_body=media, fields="id")
-                .execute()
-            )
+            result = service.files().create(body=metadata, media_body=media, fields="id").execute()
         except Exception as e:
             raise self._wrap_api_error(e) from e
         file_id: str = result["id"]

@@ -40,8 +40,11 @@ class EpiasFeatureEngineer(BaseFeatureEngineer):
         raw_vars: list[str] = self.config["variables"]
         # Known EPIAS market columns (drop any not in config to prevent leakage)
         all_market_cols = [
-            "FDPP", "Real_Time_Consumption", "DAM_Purchase",
-            "Bilateral_Agreement_Purchase", "Load_Forecast",
+            "FDPP",
+            "Real_Time_Consumption",
+            "DAM_Purchase",
+            "Bilateral_Agreement_Purchase",
+            "Load_Forecast",
         ]
         available_vars = [v for v in raw_vars if v in df.columns]
         if available_vars:
@@ -65,19 +68,20 @@ class EpiasFeatureEngineer(BaseFeatureEngineer):
                 gen_lag_cfg: dict[str, Any] = gen_cfg["lags"]
                 gen_min_lag: int = gen_lag_cfg["min_lag"]
                 df = self._add_lags(df, available_gen, gen_lag_cfg["values"])
-                df = self._add_rolling(
-                    df, available_gen, gen_min_lag, gen_cfg["rolling"]
-                )
-                df = self._add_expanding(
-                    df, available_gen, gen_min_lag, gen_cfg["expanding"]
-                )
+                df = self._add_rolling(df, available_gen, gen_min_lag, gen_cfg["rolling"])
+                df = self._add_expanding(df, available_gen, gen_min_lag, gen_cfg["expanding"])
                 # Composite ratios BEFORE dropping raw lag columns
                 df = self._add_generation_composites(df, gen_cfg)
                 if gen_cfg.get("drop_raw", True):
                     # Drop ALL gen_ prefixed raw columns (not just config ones)
-                    all_gen_raw = [c for c in df.columns if c.startswith("gen_")
-                                   and "_lag_" not in c and "_window_" not in c
-                                   and "_expanding_" not in c]
+                    all_gen_raw = [
+                        c
+                        for c in df.columns
+                        if c.startswith("gen_")
+                        and "_lag_" not in c
+                        and "_window_" not in c
+                        and "_expanding_" not in c
+                    ]
                     df = df.drop(columns=all_gen_raw, errors="ignore")
                 logger.info("Generation features added for {} variables", len(available_gen))
             else:
@@ -167,18 +171,14 @@ class EpiasFeatureEngineer(BaseFeatureEngineer):
         thermal_cols = [f"{v}_lag_{lag}" for v in thermal_vars]
         available_th = [c for c in thermal_cols if c in df.columns]
         if available_th:
-            df["thermal_ratio_lag_48"] = (
-                (df[available_th].sum(axis=1) / total).clip(0, 1)
-            )
+            df["thermal_ratio_lag_48"] = (df[available_th].sum(axis=1) / total).clip(0, 1)
 
         # Renewable ratio: explicit vars if available, else 1 - thermal_ratio
         renewable_vars: list[str] = comp_cfg.get("renewable_vars", [])
         renewable_cols = [f"{v}_lag_{lag}" for v in renewable_vars]
         available_ren = [c for c in renewable_cols if c in df.columns]
         if available_ren:
-            df["renewable_ratio_lag_48"] = (
-                (df[available_ren].sum(axis=1) / total).clip(0, 1)
-            )
+            df["renewable_ratio_lag_48"] = (df[available_ren].sum(axis=1) / total).clip(0, 1)
         elif "thermal_ratio_lag_48" in df.columns:
             df["renewable_ratio_lag_48"] = 1.0 - df["thermal_ratio_lag_48"]
 

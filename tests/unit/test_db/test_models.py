@@ -129,8 +129,6 @@ class TestPredictionModel:
         from sqlalchemy import select
 
         result = await db_session.execute(
-            select(PredictionModel).where(
-                PredictionModel.job_id == "cascade12345"
-            )
+            select(PredictionModel).where(PredictionModel.job_id == "cascade12345")
         )
         assert result.scalars().all() == []

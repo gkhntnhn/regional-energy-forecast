@@ -43,9 +43,7 @@ class _JSONBCompat(TypeDecorator[Any]):
             return dialect.type_descriptor(JSONB())
         return dialect.type_descriptor(Text())
 
-    def process_bind_param(
-        self, value: Any, dialect: Any
-    ) -> Any:
+    def process_bind_param(self, value: Any, dialect: Any) -> Any:
         if value is None:
             return None
         if dialect.name == "postgresql":
@@ -67,9 +65,7 @@ class JobModel(Base):
 
     id: Mapped[str] = mapped_column(String(12), primary_key=True)
     email: Mapped[str] = mapped_column(String(255), nullable=False)
-    status: Mapped[str] = mapped_column(
-        String(20), nullable=False, default="pending"
-    )
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
     progress: Mapped[str | None] = mapped_column(Text, nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     excel_path: Mapped[str] = mapped_column(Text, nullable=False)
@@ -78,9 +74,7 @@ class JobModel(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
-    completed_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Data Lineage L3
     metadata_: Mapped[dict | None] = mapped_column(  # type: ignore[type-arg]
@@ -103,24 +97,16 @@ class JobModel(Base):
     archive_path: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Email tracking
-    email_status: Mapped[str] = mapped_column(
-        String(20), nullable=False, default="pending"
-    )
-    email_sent_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    email_status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    email_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     email_error: Mapped[str | None] = mapped_column(Text, nullable=True)
-    email_attempts: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=0
-    )
+    email_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     # Relationships
     predictions: Mapped[list[PredictionModel]] = relationship(
         back_populates="job", cascade="all, delete-orphan"
     )
-    weather_snapshots: Mapped[list[WeatherSnapshotModel]] = relationship(
-        back_populates="job"
-    )
+    weather_snapshots: Mapped[list[WeatherSnapshotModel]] = relationship(back_populates="job")
 
     __table_args__ = (
         CheckConstraint(
@@ -145,14 +131,10 @@ class PredictionModel(Base):
     job_id: Mapped[str] = mapped_column(
         String(12), ForeignKey("jobs.id", ondelete="CASCADE"), nullable=False
     )
-    forecast_dt: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
+    forecast_dt: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     consumption_mwh: Mapped[float] = mapped_column(nullable=False)
     period: Mapped[str] = mapped_column(String(20), nullable=False)
-    model_source: Mapped[str | None] = mapped_column(
-        String(20), nullable=True
-    )
+    model_source: Mapped[str | None] = mapped_column(String(20), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -160,9 +142,7 @@ class PredictionModel(Base):
     # Phase 2 columns (NULL until populated)
     actual_mwh: Mapped[float | None] = mapped_column(nullable=True)
     error_pct: Mapped[float | None] = mapped_column(nullable=True)
-    matched_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    matched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Relationships
     job: Mapped[JobModel] = relationship(back_populates="predictions")
@@ -186,15 +166,9 @@ class WeatherSnapshotModel(Base):
     job_id: Mapped[str | None] = mapped_column(
         String(12), ForeignKey("jobs.id", ondelete="SET NULL"), nullable=True
     )
-    forecast_dt: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
-    fetched_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
-    is_actual: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=False
-    )
+    forecast_dt: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    is_actual: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     # Weather variables (weighted averages across 4 cities)
     temperature_2m: Mapped[float | None] = mapped_column(nullable=True)
@@ -207,22 +181,20 @@ class WeatherSnapshotModel(Base):
     wind_speed_10m: Mapped[float | None] = mapped_column(nullable=True)
     wind_direction_10m: Mapped[float | None] = mapped_column(nullable=True)
     shortwave_radiation: Mapped[float | None] = mapped_column(nullable=True)
-    weather_code: Mapped[int | None] = mapped_column(
-        SmallInteger, nullable=True
-    )
+    weather_code: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
 
     # Derived values
     wth_hdd: Mapped[float | None] = mapped_column(nullable=True)
     wth_cdd: Mapped[float | None] = mapped_column(nullable=True)
 
     # Relationships
-    job: Mapped[JobModel | None] = relationship(
-        back_populates="weather_snapshots"
-    )
+    job: Mapped[JobModel | None] = relationship(back_populates="weather_snapshots")
 
     __table_args__ = (
         UniqueConstraint(
-            "forecast_dt", "job_id", "is_actual",
+            "forecast_dt",
+            "job_id",
+            "is_actual",
             name="uq_weather_snap_job_dt",
         ),
         Index("idx_weather_snap_job", "job_id"),
@@ -240,12 +212,8 @@ class AuditLogModel(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     action: Mapped[str] = mapped_column(String(50), nullable=False)
-    user_email: Mapped[str | None] = mapped_column(
-        String(255), nullable=True
-    )
-    ip_address: Mapped[str | None] = mapped_column(
-        String(45), nullable=True
-    )
+    user_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    ip_address: Mapped[str | None] = mapped_column(String(45), nullable=True)
     details: Mapped[dict | None] = mapped_column(  # type: ignore[type-arg]
         _JSONBCompat(), nullable=True
     )
@@ -267,9 +235,7 @@ class ModelRunModel(Base):
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     model_type: Mapped[str] = mapped_column(String(20), nullable=False)
     run_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
-    status: Mapped[str] = mapped_column(
-        String(20), nullable=False, default="running"
-    )
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="running")
 
     # Metrics
     val_mape: Mapped[float | None] = mapped_column(Float, nullable=True)
@@ -287,20 +253,14 @@ class ModelRunModel(Base):
 
     # Model artifact
     model_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    is_promoted: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=False
-    )
-    promoted_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    is_promoted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    promoted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Timestamps
     started_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
-    completed_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     duration_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
 
@@ -324,9 +284,7 @@ class EpiasMarketModel(Base):
 
     __tablename__ = "epias_market"
 
-    dt: Mapped[datetime] = mapped_column(
-        "datetime", DateTime(timezone=True), primary_key=True
-    )
+    dt: Mapped[datetime] = mapped_column("datetime", DateTime(timezone=True), primary_key=True)
     fdpp: Mapped[float | None] = mapped_column(Float, nullable=True)
     rtc: Mapped[float | None] = mapped_column(Float, nullable=True)
     dam_purchase: Mapped[float | None] = mapped_column(Float, nullable=True)
@@ -344,9 +302,7 @@ class EpiasGenerationModel(Base):
 
     __tablename__ = "epias_generation"
 
-    dt: Mapped[datetime] = mapped_column(
-        "datetime", DateTime(timezone=True), primary_key=True
-    )
+    dt: Mapped[datetime] = mapped_column("datetime", DateTime(timezone=True), primary_key=True)
     gen_asphaltite_coal: Mapped[float | None] = mapped_column(Float, nullable=True)
     gen_biomass: Mapped[float | None] = mapped_column(Float, nullable=True)
     gen_black_coal: Mapped[float | None] = mapped_column(Float, nullable=True)
@@ -376,9 +332,7 @@ class WeatherCacheModel(Base):
 
     __tablename__ = "weather_cache"
 
-    dt: Mapped[datetime] = mapped_column(
-        "datetime", DateTime(timezone=True), primary_key=True
-    )
+    dt: Mapped[datetime] = mapped_column("datetime", DateTime(timezone=True), primary_key=True)
     city: Mapped[str] = mapped_column(String(50), primary_key=True)
     source: Mapped[str] = mapped_column(String(20), primary_key=True)
     temperature_2m: Mapped[float | None] = mapped_column(Float, nullable=True)
@@ -414,13 +368,9 @@ class TurkishHolidayModel(Base):
     # raw_holiday_name: original Turkish name from parquet (1:1 mapping)
     raw_holiday_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     # is_ramadan: 0 = regular day, 1 = Ramadan period
-    is_ramadan: Mapped[int] = mapped_column(
-        SmallInteger, nullable=False, server_default="0"
-    )
+    is_ramadan: Mapped[int] = mapped_column(SmallInteger, nullable=False, server_default="0")
     # bayram_gun_no: 0 = not a holiday, 1-4 = holiday day number
-    bayram_gun_no: Mapped[int] = mapped_column(
-        SmallInteger, nullable=False, server_default="0"
-    )
+    bayram_gun_no: Mapped[int] = mapped_column(SmallInteger, nullable=False, server_default="0")
     # bayrama_kalan_gun: days until next bayram, -1 = not applicable
     bayrama_kalan_gun: Mapped[int] = mapped_column(
         SmallInteger, nullable=False, server_default="-1"
@@ -432,9 +382,7 @@ class ProfileCoefficientModel(Base):
 
     __tablename__ = "profile_coefficients"
 
-    dt: Mapped[datetime] = mapped_column(
-        "datetime", DateTime(timezone=True), primary_key=True
-    )
+    dt: Mapped[datetime] = mapped_column("datetime", DateTime(timezone=True), primary_key=True)
     # Base profiles (10) — voltage-level specific
     profile_residential_lv: Mapped[float | None] = mapped_column(Float, nullable=True)
     profile_residential_mv: Mapped[float | None] = mapped_column(Float, nullable=True)
@@ -442,21 +390,15 @@ class ProfileCoefficientModel(Base):
     profile_industrial_mv: Mapped[float | None] = mapped_column(Float, nullable=True)
     profile_commercial_lv: Mapped[float | None] = mapped_column(Float, nullable=True)
     profile_commercial_mv: Mapped[float | None] = mapped_column(Float, nullable=True)
-    profile_agricultural_irrigation_lv: Mapped[float | None] = mapped_column(
-        Float, nullable=True
-    )
-    profile_agricultural_irrigation_mv: Mapped[float | None] = mapped_column(
-        Float, nullable=True
-    )
+    profile_agricultural_irrigation_lv: Mapped[float | None] = mapped_column(Float, nullable=True)
+    profile_agricultural_irrigation_mv: Mapped[float | None] = mapped_column(Float, nullable=True)
     profile_lighting: Mapped[float | None] = mapped_column(Float, nullable=True)
     profile_government: Mapped[float | None] = mapped_column(Float, nullable=True)
     # Aggregate profiles (4) — voltage-level totals
     profile_residential: Mapped[float | None] = mapped_column(Float, nullable=True)
     profile_industrial: Mapped[float | None] = mapped_column(Float, nullable=True)
     profile_commercial: Mapped[float | None] = mapped_column(Float, nullable=True)
-    profile_agricultural_irrigation: Mapped[float | None] = mapped_column(
-        Float, nullable=True
-    )
+    profile_agricultural_irrigation: Mapped[float | None] = mapped_column(Float, nullable=True)
     fetched_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

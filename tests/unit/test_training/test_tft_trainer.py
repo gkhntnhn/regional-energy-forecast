@@ -272,7 +272,13 @@ class TestTFTOptunaObjective:
 def _make_metrics(mape: float = 5.0) -> MetricsResult:
     """Create a MetricsResult with sensible defaults."""
     return MetricsResult(
-        mape=mape, mae=50.0, rmse=60.0, r2=0.9, smape=5.0, wmape=5.0, mbe=2.0,
+        mape=mape,
+        mae=50.0,
+        rmse=60.0,
+        r2=0.9,
+        smape=5.0,
+        wmape=5.0,
+        mbe=2.0,
     )
 
 
@@ -323,7 +329,8 @@ class TestOptunaStorage:
     """Tests for _optuna_storage method."""
 
     def test_optuna_storage_returns_none_when_few_trials(
-        self, mock_settings: MagicMock,
+        self,
+        mock_settings: MagicMock,
     ) -> None:
         """Test _optuna_storage returns None when n_trials <= 3."""
         from energy_forecast.training.tft_trainer import TFTTrainer
@@ -334,7 +341,9 @@ class TestOptunaStorage:
         assert result is None
 
     def test_optuna_storage_returns_sqlite_url_when_many_trials(
-        self, tft_config: TFTConfig, tmp_path: Path,
+        self,
+        tft_config: TFTConfig,
+        tmp_path: Path,
     ) -> None:
         """Test _optuna_storage returns SQLite URL when n_trials > 3."""
         from energy_forecast.training.tft_trainer import TFTTrainer
@@ -375,7 +384,9 @@ class TestTrainAllSplits:
     """Tests for _train_all_splits method."""
 
     def test_train_all_splits_aggregates_results(
-        self, mock_settings: MagicMock, sample_df: pd.DataFrame,
+        self,
+        mock_settings: MagicMock,
+        sample_df: pd.DataFrame,
     ) -> None:
         """Test _train_all_splits iterates splits and aggregates metrics."""
         from energy_forecast.training.tft_trainer import TFTTrainer
@@ -410,7 +421,9 @@ class TestTrainAllSplits:
         assert result.std_val_mape == pytest.approx(float(np.std([4.0, 6.0])))
 
     def test_train_all_splits_single_split(
-        self, mock_settings: MagicMock, sample_df: pd.DataFrame,
+        self,
+        mock_settings: MagicMock,
+        sample_df: pd.DataFrame,
     ) -> None:
         """Test _train_all_splits works with a single split."""
         from energy_forecast.training.tft_trainer import TFTTrainer
@@ -444,7 +457,9 @@ class TestCreateObjectiveEdgeCases:
     """Tests for _create_objective edge cases."""
 
     def test_create_objective_raises_when_no_splits(
-        self, mock_settings: MagicMock, sample_df: pd.DataFrame,
+        self,
+        mock_settings: MagicMock,
+        sample_df: pd.DataFrame,
     ) -> None:
         """Test _create_objective raises ValueError when no CV splits available."""
         from energy_forecast.training.tft_trainer import TFTTrainer
@@ -459,7 +474,9 @@ class TestCreateObjectiveEdgeCases:
             trainer._create_objective(sample_df)
 
     def test_create_objective_linspace_selection(
-        self, mock_settings: MagicMock, sample_df: pd.DataFrame,
+        self,
+        mock_settings: MagicMock,
+        sample_df: pd.DataFrame,
     ) -> None:
         """Test _create_objective uses np.linspace when optuna_splits < total splits."""
         from energy_forecast.training.tft_trainer import TFTTrainer
@@ -482,7 +499,9 @@ class TestCreateObjectiveEdgeCases:
         assert isinstance(trial_results, dict)
 
     def test_create_objective_all_splits_when_optuna_splits_exceeds_total(
-        self, mock_settings: MagicMock, sample_df: pd.DataFrame,
+        self,
+        mock_settings: MagicMock,
+        sample_df: pd.DataFrame,
     ) -> None:
         """Test _create_objective uses all splits when optuna_splits >= total splits."""
         from energy_forecast.training.tft_trainer import TFTTrainer
@@ -500,7 +519,9 @@ class TestCreateObjectiveEdgeCases:
         assert callable(objective)
 
     def test_objective_function_returns_inf_on_split_failure(
-        self, mock_settings: MagicMock, sample_df: pd.DataFrame,
+        self,
+        mock_settings: MagicMock,
+        sample_df: pd.DataFrame,
     ) -> None:
         """Test objective returns inf when a split raises an exception."""
         from energy_forecast.training.tft_trainer import TFTTrainer
@@ -534,7 +555,9 @@ class TestCreateObjectiveEdgeCases:
         assert result == float("inf")
 
     def test_objective_function_reraises_trial_pruned(
-        self, mock_settings: MagicMock, sample_df: pd.DataFrame,
+        self,
+        mock_settings: MagicMock,
+        sample_df: pd.DataFrame,
     ) -> None:
         """Test objective re-raises TrialPruned exceptions."""
         from optuna import TrialPruned
@@ -597,7 +620,9 @@ class TestOptimize:
         return study
 
     def test_optimize_cache_hit(
-        self, mock_settings: MagicMock, sample_df: pd.DataFrame,
+        self,
+        mock_settings: MagicMock,
+        sample_df: pd.DataFrame,
     ) -> None:
         """Test optimize uses cached splits when best trial is in trial_results."""
         trainer = self._make_trainer(mock_settings)
@@ -627,7 +652,9 @@ class TestOptimize:
         assert result.avg_test_mape == pytest.approx(4.0)
 
     def test_optimize_skip_validation(
-        self, mock_settings: MagicMock, sample_df: pd.DataFrame,
+        self,
+        mock_settings: MagicMock,
+        sample_df: pd.DataFrame,
     ) -> None:
         """Test optimize skips validation when _skip_validation is True."""
         trainer = self._make_trainer(mock_settings)
@@ -658,7 +685,9 @@ class TestOptimize:
         assert result.std_val_mape == pytest.approx(0.0)
 
     def test_optimize_cache_miss_retrains(
-        self, mock_settings: MagicMock, sample_df: pd.DataFrame,
+        self,
+        mock_settings: MagicMock,
+        sample_df: pd.DataFrame,
     ) -> None:
         """Test optimize retrains on all splits when cache miss and no skip."""
         trainer = self._make_trainer(mock_settings)
@@ -708,7 +737,9 @@ class TestTrainFinal:
     """Tests for train_final method."""
 
     def test_train_final_with_val_split(
-        self, mock_settings: MagicMock, sample_df: pd.DataFrame,
+        self,
+        mock_settings: MagicMock,
+        sample_df: pd.DataFrame,
     ) -> None:
         """Test train_final splits data when dataset is large enough."""
         from energy_forecast.training.tft_trainer import TFTTrainer
@@ -741,7 +772,8 @@ class TestTrainFinal:
         assert result is mock_model
 
     def test_train_final_without_val_split_small_data(
-        self, mock_settings: MagicMock,
+        self,
+        mock_settings: MagicMock,
     ) -> None:
         """Test train_final uses all data when dataset is too small for val split."""
         from energy_forecast.training.tft_trainer import TFTTrainer
@@ -787,7 +819,10 @@ class TestRun:
     """Tests for the full run pipeline."""
 
     def test_run_executes_full_pipeline(
-        self, mock_settings: MagicMock, sample_df: pd.DataFrame, tmp_path: Path,
+        self,
+        mock_settings: MagicMock,
+        sample_df: pd.DataFrame,
+        tmp_path: Path,
     ) -> None:
         """Test run calls optimize, train_final, save, and returns pipeline result."""
         from energy_forecast.training.tft_trainer import TFTPipelineResult, TFTTrainer
@@ -830,7 +865,10 @@ class TestRun:
         assert "tft" in str(save_path)
 
     def test_run_creates_model_directory(
-        self, mock_settings: MagicMock, sample_df: pd.DataFrame, tmp_path: Path,
+        self,
+        mock_settings: MagicMock,
+        sample_df: pd.DataFrame,
+        tmp_path: Path,
     ) -> None:
         """Test run creates timestamped model directory."""
         from energy_forecast.training.tft_trainer import TFTTrainer
@@ -845,7 +883,10 @@ class TestRun:
         mock_study.best_trial.user_attrs = {}
 
         best_result = TFTTrainingResult(
-            split_results=[], avg_val_mape=3.0, avg_test_mape=3.5, std_val_mape=0.0,
+            split_results=[],
+            avg_val_mape=3.0,
+            avg_test_mape=3.5,
+            std_val_mape=0.0,
         )
         mock_model = MagicMock()
 
@@ -864,7 +905,10 @@ class TestRun:
         assert subdirs[0].name.startswith("tft_")
 
     def test_run_logs_to_tracker(
-        self, mock_settings: MagicMock, sample_df: pd.DataFrame, tmp_path: Path,
+        self,
+        mock_settings: MagicMock,
+        sample_df: pd.DataFrame,
+        tmp_path: Path,
     ) -> None:
         """Test run logs params and metrics to the experiment tracker."""
         from energy_forecast.training.tft_trainer import TFTTrainer

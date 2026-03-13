@@ -36,9 +36,7 @@ def setup_logger(level: str = "INFO", log_file: str | None = None) -> None:
             log_file,
             level=level,
             format=(
-                "{time:YYYY-MM-DD HH:mm:ss.SSS} | "
-                "{level:<8} | "
-                "{name}:{function}:{line} - {message}"
+                "{time:YYYY-MM-DD HH:mm:ss.SSS} | {level:<8} | {name}:{function}:{line} - {message}"
             ),
             rotation="50 MB",
             retention=5,

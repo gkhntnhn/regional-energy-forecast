@@ -44,15 +44,15 @@ class JobRepository:
         """Count jobs in pending/queued/running status."""
         from sqlalchemy import func
 
-        stmt = select(func.count()).select_from(JobModel).where(
-            JobModel.status.in_(["pending", "running", "queued"])
+        stmt = (
+            select(func.count())
+            .select_from(JobModel)
+            .where(JobModel.status.in_(["pending", "running", "queued"]))
         )
         result = await self._session.execute(stmt)
         return result.scalar_one()
 
-    async def update_status(
-        self, job_id: str, status: str, **kwargs: Any
-    ) -> None:
+    async def update_status(self, job_id: str, status: str, **kwargs: Any) -> None:
         """Update job status and optional fields."""
         job = await self.get_by_id(job_id)
         if job is None:
@@ -73,9 +73,7 @@ class JobRepository:
         job.progress = progress
         await self._session.flush()
 
-    async def update_metadata(
-        self, job_id: str, metadata: dict[str, Any]
-    ) -> None:
+    async def update_metadata(self, job_id: str, metadata: dict[str, Any]) -> None:
         """Update job lineage metadata (JSONB fields)."""
         job = await self.get_by_id(job_id)
         if job is None:
@@ -84,9 +82,7 @@ class JobRepository:
             job.metadata_ = metadata["metadata"]
         if "feature_importance_top15" in metadata:
             existing = job.metadata_ or {}
-            existing["feature_importance_top15"] = metadata[
-                "feature_importance_top15"
-            ]
+            existing["feature_importance_top15"] = metadata["feature_importance_top15"]
             job.metadata_ = existing
         if "config_snapshot" in metadata:
             job.config_snapshot = metadata["config_snapshot"]
@@ -132,9 +128,6 @@ class JobRepository:
 
     async def get_stats(self) -> dict[str, int]:
         """Return job count by status (SQL aggregation)."""
-        stmt = (
-            select(JobModel.status, func.count())
-            .group_by(JobModel.status)
-        )
+        stmt = select(JobModel.status, func.count()).group_by(JobModel.status)
         result = await self._session.execute(stmt)
-        return dict(result.all())
+        return {status: count for status, count in result.all()}

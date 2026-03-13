@@ -156,21 +156,15 @@ def _build_settings_dict(config_dir: Path) -> dict[str, Any]:
         "hyperparameters": {
             "catboost": {
                 "n_trials": hyperparams_data.get("catboost", {}).get("n_trials", 50),
-                "search_space": hyperparams_data.get("catboost", {}).get(
-                    "search_space", {}
-                ),
+                "search_space": hyperparams_data.get("catboost", {}).get("search_space", {}),
             },
             "prophet": {
                 "n_trials": hyperparams_data.get("prophet", {}).get("n_trials", 30),
-                "search_space": hyperparams_data.get("prophet", {}).get(
-                    "search_space", {}
-                ),
+                "search_space": hyperparams_data.get("prophet", {}).get("search_space", {}),
             },
             "tft": {
                 "n_trials": hyperparams_data.get("tft", {}).get("n_trials", 20),
-                "search_space": hyperparams_data.get("tft", {}).get(
-                    "search_space", {}
-                ),
+                "search_space": hyperparams_data.get("tft", {}).get("search_space", {}),
             },
             "cross_validation": hyperparams_data.get("cross_validation", {}),
             "target_col": hyperparams_data.get("target_col", "consumption"),

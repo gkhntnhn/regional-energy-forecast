@@ -25,7 +25,7 @@ for _stream_name in ("stdout", "stderr"):
 
 os.environ.setdefault("PYTHONIOENCODING", "utf-8")
 
-from energy_forecast.training.metrics import MetricsResult
+from energy_forecast.training.metrics import MetricsResult  # noqa: E402
 
 
 class ExperimentTracker:
@@ -206,7 +206,9 @@ class ExperimentTracker:
             self._mlflow.log_metrics(metrics)
 
     def log_config_snapshot(
-        self, config_dict: dict[str, Any], filename: str = "config.yaml",
+        self,
+        config_dict: dict[str, Any],
+        filename: str = "config.yaml",
     ) -> None:
         """Log full config as a YAML artifact for reproducibility.
 
@@ -267,4 +269,3 @@ class ExperimentTracker:
         if not self._enabled:
             return
         self._mlflow.log_artifact(local_path, artifact_path)
-

@@ -22,13 +22,13 @@ from loguru import logger
 from energy_forecast.utils import TZ_ISTANBUL
 
 if TYPE_CHECKING:
-    from sqlalchemy.ext.asyncio import async_sessionmaker
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
     from energy_forecast.config import Settings
 
 
 async def fetch_and_store_actuals(
-    session_factory: async_sessionmaker | object,
+    session_factory: async_sessionmaker[AsyncSession] | object,
     settings: Settings | object,
 ) -> int:
     """Fetch actual weather for T-2 and store in DB.
@@ -61,7 +61,9 @@ async def fetch_and_store_actuals(
 
     target_date = datetime.now(tz=TZ_ISTANBUL).date() - timedelta(days=2)
     target_dt = datetime(
-        target_date.year, target_date.month, target_date.day,
+        target_date.year,
+        target_date.month,
+        target_date.day,
         tzinfo=TZ_ISTANBUL,
     )
 
@@ -102,14 +104,12 @@ async def fetch_and_store_actuals(
         )
         await session.commit()
 
-    logger.info(
-        "Stored {} weather actual rows for {}", count, target_date
-    )
+    logger.info("Stored {} weather actual rows for {}", count, target_date)
     return count
 
 
 async def run_scheduler(
-    session_factory: async_sessionmaker | object,
+    session_factory: async_sessionmaker[AsyncSession] | object,
     settings: Settings | object,
     run_hour: int = 4,
 ) -> None:
@@ -128,16 +128,12 @@ async def run_scheduler(
     while True:
         now = datetime.now(tz=TZ_ISTANBUL)
 
-        if now.hour == run_hour and (
-            last_run_date is None or last_run_date.date() != now.date()
-        ):
+        if now.hour == run_hour and (last_run_date is None or last_run_date.date() != now.date()):
             try:
                 count = await fetch_and_store_actuals(session_factory, settings)
                 last_run_date = now
                 if count > 0:
-                    logger.info(
-                        "Scheduler: stored {} weather actuals", count
-                    )
+                    logger.info("Scheduler: stored {} weather actuals", count)
             except Exception as e:
                 logger.error("Scheduler: weather actuals fetch failed: {}", e)
 

@@ -91,8 +91,7 @@ class FileService:
 
             if size_mb > self._config.max_file_size_mb:
                 raise FileTooLargeError(
-                    f"File size {size_mb:.1f}MB exceeds limit of "
-                    f"{self._config.max_file_size_mb}MB"
+                    f"File size {size_mb:.1f}MB exceeds limit of {self._config.max_file_size_mb}MB"
                 )
 
             # Write to disk
@@ -134,10 +133,12 @@ class FileService:
         export_df = predictions.reset_index()
         if "datetime" not in export_df.columns and "index" in export_df.columns:
             export_df = export_df.rename(columns={"index": "datetime"})
-        export_df = export_df.rename(columns={
-            "datetime": "Tarih",
-            "consumption_mwh": "Tahmin (MWh)",
-        })
+        export_df = export_df.rename(
+            columns={
+                "datetime": "Tarih",
+                "consumption_mwh": "Tahmin (MWh)",
+            }
+        )
 
         # Write to Excel
         export_df.to_excel(output_path, index=False, engine="openpyxl")

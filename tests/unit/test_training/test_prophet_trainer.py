@@ -189,9 +189,7 @@ class TestToProphetFormat:
 class TestCreateProphet:
     """Tests for _create_prophet method."""
 
-    def test_default_params(
-        self, trainer: ProphetTrainer, sample_df: pd.DataFrame
-    ) -> None:
+    def test_default_params(self, trainer: ProphetTrainer, sample_df: pd.DataFrame) -> None:
         """Test Prophet creation with default parameters."""
         # _to_prophet_format must run first to populate _regressor_names
         trainer._to_prophet_format(sample_df, include_target=True)

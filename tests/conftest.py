@@ -12,6 +12,7 @@ import pytest
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+import energy_forecast.db.models  # noqa: F401  — register all ORM models with Base.metadata
 from energy_forecast.config import (
     DataLoaderConfig,
     OpenMeteoConfig,
@@ -21,7 +22,6 @@ from energy_forecast.config import (
     load_config,
 )
 from energy_forecast.db.base import Base
-import energy_forecast.db.models  # noqa: F401  — register all ORM models with Base.metadata
 
 # ---------------------------------------------------------------------------
 # Project paths
@@ -241,9 +241,7 @@ async def db_engine():  # type: ignore[no-untyped-def]
 @pytest_asyncio.fixture
 async def db_session(db_engine: Any) -> AsyncGenerator[AsyncSession, None]:
     """Yield an async session for testing."""
-    factory = async_sessionmaker(
-        db_engine, class_=AsyncSession, expire_on_commit=False
-    )
+    factory = async_sessionmaker(db_engine, class_=AsyncSession, expire_on_commit=False)
     async with factory() as session:
         yield session
 
@@ -251,6 +249,4 @@ async def db_session(db_engine: Any) -> AsyncGenerator[AsyncSession, None]:
 @pytest_asyncio.fixture
 async def db_session_factory(db_engine: Any) -> async_sessionmaker[AsyncSession]:
     """Return a session factory for testing process_job_db."""
-    return async_sessionmaker(
-        db_engine, class_=AsyncSession, expire_on_commit=False
-    )
+    return async_sessionmaker(db_engine, class_=AsyncSession, expire_on_commit=False)

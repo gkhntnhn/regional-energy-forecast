@@ -8,6 +8,7 @@ Supports two modes:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import os
 import uuid
 from datetime import datetime
@@ -51,10 +52,30 @@ class _QueueItem:
     """Internal queue item for job processing."""
 
     __slots__ = (
-        "job_id", "excel_path", "email", "file_stem", "created_at",
-        "session_factory", "prediction_service", "file_service", "email_service",
-        "is_db_mode", "job_ref",
+        "created_at",
+        "email",
+        "email_service",
+        "excel_path",
+        "file_service",
+        "file_stem",
+        "is_db_mode",
+        "job_id",
+        "job_ref",
+        "prediction_service",
+        "session_factory",
     )
+
+    created_at: Any
+    email: Any
+    email_service: Any
+    excel_path: Any
+    file_service: Any
+    file_stem: Any
+    is_db_mode: bool
+    job_id: str
+    job_ref: Any
+    prediction_service: Any
+    session_factory: Any
 
     def __init__(self, **kwargs: Any) -> None:
         for k, v in kwargs.items():
@@ -71,9 +92,7 @@ class JobManager:
     def __init__(self, max_queue_size: int = 5) -> None:
         self._jobs: dict[str, Job] = {}
         self._active_job_id: str | None = None
-        self._queue: asyncio.Queue[_QueueItem] = asyncio.Queue(
-            maxsize=max_queue_size
-        )
+        self._queue: asyncio.Queue[_QueueItem] = asyncio.Queue(maxsize=max_queue_size)
         self._max_queue_size = max_queue_size
         self._enqueue_lock = asyncio.Lock()
         self._worker_task: asyncio.Task[None] | None = None
@@ -97,10 +116,8 @@ class JobManager:
         if self._worker_task is None:
             return
         self._worker_task.cancel()
-        try:
+        with contextlib.suppress(asyncio.CancelledError):
             await self._worker_task
-        except asyncio.CancelledError:
-            pass
         self._worker_task = None
         logger.info("Job queue worker stopped")
 
@@ -129,9 +146,7 @@ class JobManager:
                         email_service=item.email_service,
                     )
             except Exception:
-                logger.opt(exception=True).error(
-                    "Worker loop error for job {}", item.job_id
-                )
+                logger.opt(exception=True).error("Worker loop error for job {}", item.job_id)
             finally:
                 self._queue.task_done()
 
@@ -147,11 +162,10 @@ class JobManager:
         try:
             item = _QueueItem(**kwargs)
             self._queue.put_nowait(item)
-        except asyncio.QueueFull:
+        except asyncio.QueueFull as err:
             raise JobQueueFullError(
-                f"Queue is full (max {self._max_queue_size} jobs). "
-                "Please try again later."
-            )
+                f"Queue is full (max {self._max_queue_size} jobs). Please try again later."
+            ) from err
         position = self._queue.qsize()
         logger.info(
             "Job {} enqueued at position {}",
@@ -184,9 +198,7 @@ class JobManager:
             return self._jobs.get(self._active_job_id)
         return None
 
-    def create_job_in_memory(
-        self, email: str, excel_path: Path, file_stem: str
-    ) -> Job:
+    def create_job_in_memory(self, email: str, excel_path: Path, file_stem: str) -> Job:
         """Create a new job in memory (queued if worker is active)."""
         job = Job(email=email, excel_path=excel_path, file_stem=file_stem)
         if self.has_active_job_in_memory():
@@ -232,9 +244,7 @@ class JobManager:
         active = await repo.get_active_job()
         return active is not None
 
-    async def get_active_job_db(
-        self, session: AsyncSession
-    ) -> Any:
+    async def get_active_job_db(self, session: AsyncSession) -> Any:
         """Get the currently active job from DB."""
         from energy_forecast.db.repositories.job_repo import JobRepository
 
@@ -272,9 +282,7 @@ class JobManager:
         logger.info("Created job: {} for {} (status={})", job_id, email, status)
         return job
 
-    async def get_job_db(
-        self, session: AsyncSession, job_id: str
-    ) -> Any:
+    async def get_job_db(self, session: AsyncSession, job_id: str) -> Any:
         """Get job by ID from DB."""
         from energy_forecast.db.repositories.job_repo import JobRepository
 
@@ -303,20 +311,11 @@ class JobManager:
 
         try:
             if prediction_service._data_loader is not None:
-                consumption_df = (
-                    prediction_service._data_loader.load_excel(
-                        Path(excel_path)
-                    )
-                )
+                consumption_df = prediction_service._data_loader.load_excel(Path(excel_path))
                 if not consumption_df.empty:
                     async with session_factory() as session:
                         pred_repo = PredictionRepository(session)
-                        matched = (
-                            await pred_repo
-                            .match_predictions_with_actuals(
-                                consumption_df
-                            )
-                        )
+                        matched = await pred_repo.match_predictions_with_actuals(consumption_df)
                         await session.commit()
                     if matched > 0:
                         logger.info(
@@ -328,9 +327,7 @@ class JobManager:
                             email_service,
                         )
         except Exception as e:
-            logger.warning(
-                "Prediction matching failed (non-fatal): {}", e
-            )
+            logger.warning("Prediction matching failed (non-fatal): {}", e)
 
     async def _run_prediction_step(
         self,
@@ -361,9 +358,7 @@ class JobManager:
                 pred_repo = PredictionRepository(session)
                 pred_rows: list[dict[str, Any]] = []
                 for _, row in predictions.iterrows():
-                    raw_dt = row.name if hasattr(row, "name") else row.get(
-                        "datetime"
-                    )
+                    raw_dt = row.name if hasattr(row, "name") else row.get("datetime")
                     dt = pd.Timestamp(raw_dt)  # type: ignore[arg-type]
                     if dt.tzinfo is None:
                         dt = dt.tz_localize(TZ_ISTANBUL)
@@ -381,10 +376,7 @@ class JobManager:
 
                 # Per-model predictions for analytics (D1)
                 if raw_preds is not None:
-                    ensemble_dts = {
-                        pd.Timestamp(r["forecast_dt"])
-                        for r in pred_rows
-                    }
+                    ensemble_dts = {pd.Timestamp(r["forecast_dt"]) for r in pred_rows}
                     model_col_map = {
                         "catboost": "catboost_prediction",
                         "prophet": "prophet_prediction",
@@ -413,9 +405,7 @@ class JobManager:
 
                 await pred_repo.bulk_create(pred_rows)
                 job_repo = JobRepository(session)
-                await job_repo.update_progress(
-                    job_id, "Tahmin sonuclari kaydedildi"
-                )
+                await job_repo.update_progress(job_id, "Tahmin sonuclari kaydedildi")
                 await session.commit()
         except Exception as e:
             logger.warning("DB snapshot failed (non-fatal): {}", e)
@@ -444,12 +434,11 @@ class JobManager:
                     await session.commit()
                 logger.info(
                     "Stored {} weather snapshots for job {}",
-                    count, job_id,
+                    count,
+                    job_id,
                 )
         except Exception as e:
-            logger.warning(
-                "Weather snapshot failed (non-fatal): {}", e
-            )
+            logger.warning("Weather snapshot failed (non-fatal): {}", e)
 
     async def _store_metadata_step(
         self,
@@ -473,13 +462,12 @@ class JobManager:
                 async with session_factory() as session:
                     job_repo = JobRepository(session)
                     await job_repo.update_metadata(
-                        job_id, meta_update,
+                        job_id,
+                        meta_update,
                     )
                     await session.commit()
         except Exception as e:
-            logger.warning(
-                "Metadata snapshot failed (non-fatal): {}", e
-            )
+            logger.warning("Metadata snapshot failed (non-fatal): {}", e)
 
     async def _create_output_step(
         self,
@@ -518,23 +506,18 @@ class JobManager:
             async with session_factory() as session:
                 repo = JobRepository(session)
                 if success:
-                    await repo.update_email_status(
-                        job_id, "sent", attempts=attempts
-                    )
+                    await repo.update_email_status(job_id, "sent", attempts=attempts)
                     await repo.update_progress(job_id, "Sonuclar gonderildi")
                 else:
-                    await repo.update_email_status(
-                        job_id, "failed", attempts=attempts
-                    )
-                    await repo.update_progress(
-                        job_id, f"E-posta gonderilemedi: {error_msg}"
-                    )
+                    await repo.update_email_status(job_id, "failed", attempts=attempts)
+                    await repo.update_progress(job_id, f"E-posta gonderilemedi: {error_msg}")
                 await session.commit()
 
             if not success:
                 logger.warning(
                     "Email delivery failed for job {} (non-fatal): {}",
-                    job_id, error_msg,
+                    job_id,
+                    error_msg,
                 )
             return success
 
@@ -570,32 +553,22 @@ class JobManager:
             if features_df is None or forecast_mask is None:
                 return
 
-            hist_path, fc_path = (
-                prediction_service.archive_features(
-                    job_id, features_df, forecast_mask,
-                )
+            hist_path, fc_path = prediction_service.archive_features(
+                job_id,
+                features_df,
+                forecast_mask,
             )
-            meta_path = (
-                prediction_service.write_metadata_json(
-                    job_id,
-                    {
-                        "model_versions": (
-                            prediction_service.get_model_info()
-                        ),
-                        "config_snapshot": (
-                            predictions.attrs.get(
-                                "epias_snapshot", {}
-                            )
-                        ),
-                    },
-                )
+            meta_path = prediction_service.write_metadata_json(
+                job_id,
+                {
+                    "model_versions": (prediction_service.get_model_info()),
+                    "config_snapshot": (predictions.attrs.get("epias_snapshot", {})),
+                },
             )
 
             # Upload to GDrive if configured
             creds = os.environ.get("GDRIVE_CREDENTIALS_PATH")
-            folder_id = os.environ.get(
-                "GDRIVE_BACKUP_FOLDER_ID"
-            )
+            folder_id = os.environ.get("GDRIVE_BACKUP_FOLDER_ID")
             if creds and folder_id:
                 from energy_forecast.storage.gdrive import (
                     GoogleDriveStorage,
@@ -603,9 +576,7 @@ class JobManager:
 
                 files: dict[str, Path] = {}
                 if hist_path:
-                    files["features_historical.parquet"] = (
-                        hist_path
-                    )
+                    files["features_historical.parquet"] = hist_path
                 if fc_path:
                     files["features_forecast.parquet"] = fc_path
                 if meta_path:
@@ -629,20 +600,12 @@ class JobManager:
                     job_repo = JobRepository(session)
                     path_meta: dict[str, str] = {}
                     if hist_path:
-                        path_meta["historical_path"] = str(
-                            hist_path
-                        )
+                        path_meta["historical_path"] = str(hist_path)
                     if fc_path:
-                        path_meta["forecast_path"] = str(
-                            fc_path
-                        )
+                        path_meta["forecast_path"] = str(fc_path)
                     if uploaded:
-                        path_meta["archive_path"] = str(
-                            uploaded
-                        )
-                    await job_repo.update_metadata(
-                        job_id, path_meta
-                    )
+                        path_meta["archive_path"] = str(uploaded)
+                    await job_repo.update_metadata(job_id, path_meta)
                     await session.commit()
 
                 logger.info(
@@ -651,13 +614,9 @@ class JobManager:
                     job_id,
                 )
             else:
-                logger.debug(
-                    "GDrive not configured — skipping artifact upload"
-                )
+                logger.debug("GDrive not configured — skipping artifact upload")
         except Exception as e:
-            logger.warning(
-                "Artifact archival failed (non-fatal): {}", e
-            )
+            logger.warning("Artifact archival failed (non-fatal): {}", e)
 
     # ------------------------------------------------------------------
     # Process job (DB mode) — orchestrator
@@ -692,40 +651,48 @@ class JobManager:
             # Progress: data analysis
             async with session_factory() as session:
                 repo = JobRepository(session)
-                await repo.update_progress(
-                    job_id, "Veri analizi yapiliyor..."
-                )
+                await repo.update_progress(job_id, "Veri analizi yapiliyor...")
                 await session.commit()
 
             # Step 1: Match previous predictions with actuals
             logger.info("[Job {}] Step 1/8: Matching previous predictions", job_id)
             await self._match_previous_predictions_step(
-                job_id, excel_path, session_factory,
-                prediction_service, email_service,
+                job_id,
+                excel_path,
+                session_factory,
+                prediction_service,
+                email_service,
             )
 
             # Step 2: Run prediction pipeline
             logger.info("[Job {}] Step 2/8: Running prediction pipeline", job_id)
             predictions = await self._run_prediction_step(
-                excel_path, prediction_service,
+                excel_path,
+                prediction_service,
             )
 
             # Step 3: Store predictions in DB
             logger.info("[Job {}] Step 3/8: Storing predictions in DB", job_id)
             await self._store_predictions_step(
-                job_id, predictions, session_factory,
+                job_id,
+                predictions,
+                session_factory,
             )
 
             # Step 4: Store weather snapshot
             logger.info("[Job {}] Step 4/8: Storing weather snapshot", job_id)
             await self._store_weather_step(
-                job_id, predictions, session_factory,
+                job_id,
+                predictions,
+                session_factory,
             )
 
             # Step 5: Store EPIAS + feature importance metadata
             logger.info("[Job {}] Step 5/8: Storing metadata", job_id)
             await self._store_metadata_step(
-                job_id, predictions, prediction_service,
+                job_id,
+                predictions,
+                prediction_service,
                 session_factory,
             )
 
@@ -733,42 +700,47 @@ class JobManager:
             logger.info("[Job {}] Step 6/8: Creating output file", job_id)
             async with session_factory() as session:
                 repo = JobRepository(session)
-                await repo.update_progress(
-                    job_id, "Rapor dosyasi olusturuluyor..."
-                )
+                await repo.update_progress(job_id, "Rapor dosyasi olusturuluyor...")
                 await session.commit()
 
             output_path = await self._create_output_step(
-                predictions, file_stem, file_service,
+                predictions,
+                file_stem,
+                file_service,
             )
 
             # Step 7: Send email (NON-FATAL — prediction succeeded)
             logger.info("[Job {}] Step 7/8: Sending email", job_id)
             async with session_factory() as session:
                 repo = JobRepository(session)
-                await repo.update_progress(
-                    job_id, "E-posta gonderiliyor..."
-                )
+                await repo.update_progress(job_id, "E-posta gonderiliyor...")
                 await session.commit()
 
             await self._send_email_step(
-                job_id, email, output_path, created_at,
-                session_factory, email_service,
+                job_id,
+                email,
+                output_path,
+                created_at,
+                session_factory,
+                email_service,
             )
 
             # Step 8: Archive features + GDrive upload
             logger.info("[Job {}] Step 8/8: Archiving artifacts", job_id)
             await self._archive_step(
-                job_id, file_stem, output_path, created_at,
-                predictions, prediction_service, session_factory,
+                job_id,
+                file_stem,
+                output_path,
+                created_at,
+                predictions,
+                prediction_service,
+                session_factory,
             )
 
             # Mark complete
             async with session_factory() as session:
                 repo = JobRepository(session)
-                await repo.update_status(
-                    job_id, "completed", result_path=str(output_path)
-                )
+                await repo.update_status(job_id, "completed", result_path=str(output_path))
                 await session.commit()
 
             logger.info("[Job {}] Completed successfully", job_id)
@@ -795,9 +767,7 @@ class JobManager:
             logger.opt(exception=True).error("Job {} failed: {}", job_id, error_msg)
             async with session_factory() as session:
                 repo = JobRepository(session)
-                await repo.update_status(
-                    job_id, "failed", error=error_msg
-                )
+                await repo.update_status(job_id, "failed", error=error_msg)
                 await session.commit()
 
             # Audit: job_failed (non-fatal)
@@ -827,9 +797,7 @@ class JobManager:
                     error_message=error_msg,
                 )
             except Exception as email_err:
-                logger.error(
-                    "Failed to send error notification: {}", email_err
-                )
+                logger.error("Failed to send error notification: {}", email_err)
 
     # ------------------------------------------------------------------
     # Process job (in-memory mode)
@@ -851,15 +819,11 @@ class JobManager:
             self._jobs[job.id].progress = "Veri analizi yapiliyor..."
             predictions = prediction_service.run_prediction(
                 excel_path=job.excel_path,
-                progress_callback=lambda msg: setattr(
-                    self._jobs.get(job.id, job), "progress", msg
-                ),
+                progress_callback=lambda msg: setattr(self._jobs.get(job.id, job), "progress", msg),
             )
 
             self._jobs[job.id].progress = "Rapor dosyasi olusturuluyor..."
-            output_path = file_service.create_output_xlsx(
-                predictions, job.file_stem
-            )
+            output_path = file_service.create_output_xlsx(predictions, job.file_stem)
 
             self._jobs[job.id].progress = "E-posta gonderiliyor..."
             try:
@@ -872,7 +836,8 @@ class JobManager:
             except Exception as email_err:
                 logger.opt(exception=True).warning(
                     "Email failed for job {} (non-fatal): {}",
-                    job.id, email_err,
+                    job.id,
+                    email_err,
                 )
 
             job.status = JobStatus.COMPLETED
@@ -896,17 +861,13 @@ class JobManager:
                     error_message=error_msg,
                 )
             except Exception as email_err:
-                logger.error(
-                    "Failed to send error notification: {}", email_err
-                )
+                logger.error("Failed to send error notification: {}", email_err)
 
     def cleanup_old_jobs(self, max_age_hours: int = 24) -> int:
         """Remove old completed/failed jobs from memory."""
         from datetime import timedelta
 
-        threshold = datetime.now(tz=TZ_ISTANBUL) - timedelta(
-            hours=max_age_hours
-        )
+        threshold = datetime.now(tz=TZ_ISTANBUL) - timedelta(hours=max_age_hours)
         to_remove = []
 
         for job_id, job in self._jobs.items():
@@ -914,9 +875,7 @@ class JobManager:
                 JobStatus.COMPLETED,
                 JobStatus.FAILED,
             )
-            is_old = (
-                job.completed_at is not None and job.completed_at < threshold
-            )
+            is_old = job.completed_at is not None and job.completed_at < threshold
             if is_finished and is_old:
                 to_remove.append(job_id)
 
@@ -973,9 +932,7 @@ async def _run_drift_check(
                 logger.warning("Drift alert: {}", alert.message)
 
                 # Determine if email should be sent
-                should_email = (
-                    alert.severity == "critical" or cfg.email_on_warning
-                )
+                should_email = alert.severity == "critical" or cfg.email_on_warning
                 if not should_email or email_service is None:
                     continue
 
@@ -994,9 +951,7 @@ async def _run_drift_check(
                         continue
 
                 # Send email in thread (sync SMTP)
-                admin_email = cfg.admin_email or os.environ.get(
-                    "SMTP_USERNAME", ""
-                )
+                admin_email = cfg.admin_email or os.environ.get("SMTP_USERNAME", "")
                 if admin_email:
                     sent = await asyncio.to_thread(
                         email_service.send_drift_alert,

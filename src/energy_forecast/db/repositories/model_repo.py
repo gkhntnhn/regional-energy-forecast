@@ -70,9 +70,7 @@ class ModelRunRepository:
         if mlflow_run_id is not None:
             values["run_id"] = mlflow_run_id
         self._session.execute(
-            update(ModelRunModel)
-            .where(ModelRunModel.id == run_id)
-            .values(**values)
+            update(ModelRunModel).where(ModelRunModel.id == run_id).values(**values)
         )
         self._session.flush()
 
@@ -91,9 +89,7 @@ class ModelRunRepository:
 
     def get_by_id(self, run_id: int) -> ModelRunModel | None:
         """Get a specific run by ID."""
-        result = self._session.execute(
-            select(ModelRunModel).where(ModelRunModel.id == run_id)
-        )
+        result = self._session.execute(select(ModelRunModel).where(ModelRunModel.id == run_id))
         return result.scalar_one_or_none()
 
     def get_latest_by_type(self, model_type: str) -> ModelRunModel | None:

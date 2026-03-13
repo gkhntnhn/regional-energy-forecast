@@ -134,9 +134,7 @@ class CalendarFeatureEngineer(BaseFeatureEngineer):
             if "date" not in holidays_df.columns and holidays_df.index.name == "date":
                 holidays_df = holidays_df.reset_index()
             holiday_dates = set(pd.to_datetime(holidays_df["date"]).dt.date)
-            date_series = pd.Series(
-                cast(pd.DatetimeIndex, df.index).date, index=df.index
-            )
+            date_series = pd.Series(cast(pd.DatetimeIndex, df.index).date, index=df.index)
             df["is_holiday"] = date_series.isin(holiday_dates).astype(int)
 
             # Ramadan
@@ -221,10 +219,15 @@ class CalendarFeatureEngineer(BaseFeatureEngineer):
             return None
 
     # Religious holiday keywords for tatil_tipi classification
-    _DINI_KEYWORDS = frozenset({
-        "ramazan", "eid al-fitr", "eid al-adha",
-        "kurban bayrami", "ramazan bayrami",
-    })
+    _DINI_KEYWORDS = frozenset(
+        {
+            "ramazan",
+            "eid al-fitr",
+            "eid al-adha",
+            "kurban bayrami",
+            "ramazan bayrami",
+        }
+    )
 
     @staticmethod
     def _add_holiday_type(
@@ -338,9 +341,7 @@ class CalendarFeatureEngineer(BaseFeatureEngineer):
             countdown_map[d] = (future[0] - d).days if future else -1
 
         date_arr = cast(pd.DatetimeIndex, df.index).date
-        df["bayrama_kalan_gun"] = np.array(
-            [countdown_map.get(d, -1) for d in date_arr]
-        )
+        df["bayrama_kalan_gun"] = np.array([countdown_map.get(d, -1) for d in date_arr])
         return df
 
     # ------------------------------------------------------------------

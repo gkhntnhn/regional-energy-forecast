@@ -53,9 +53,7 @@ class AnalyticsRepository:
             stmt = (
                 select(
                     day_label,
-                    func.round(cast(func.avg(PredictionModel.error_pct), Numeric), 2).label(
-                        "mape"
-                    ),
+                    func.round(cast(func.avg(PredictionModel.error_pct), Numeric), 2).label("mape"),
                     func.round(cast(func.min(PredictionModel.error_pct), Numeric), 2).label(
                         "min_error"
                     ),
@@ -121,12 +119,8 @@ class AnalyticsRepository:
 
         if self._is_pg:
             # PostgreSQL: use date_trunc('week') + EXTRACT for ISO week key
-            iso_year = func.extract(
-                "isoyear", PredictionModel.forecast_dt
-            )
-            iso_week = func.extract(
-                "week", PredictionModel.forecast_dt
-            )
+            iso_year = func.extract("isoyear", PredictionModel.forecast_dt)
+            iso_week = func.extract("week", PredictionModel.forecast_dt)
             week_label = func.concat(
                 cast(iso_year, String),
                 "-W",
@@ -140,27 +134,33 @@ class AnalyticsRepository:
                     ),
                     func.count().label("n_hours"),
                     func.round(
-                        cast(func.avg(
-                            case(
-                                (
-                                    PredictionModel.period == "intraday",
-                                    PredictionModel.error_pct,
-                                ),
-                                else_=None,
-                            )
-                        ), Numeric),
+                        cast(
+                            func.avg(
+                                case(
+                                    (
+                                        PredictionModel.period == "intraday",
+                                        PredictionModel.error_pct,
+                                    ),
+                                    else_=None,
+                                )
+                            ),
+                            Numeric,
+                        ),
                         2,
                     ).label("t_mape"),
                     func.round(
-                        cast(func.avg(
-                            case(
-                                (
-                                    PredictionModel.period == "day_ahead",
-                                    PredictionModel.error_pct,
-                                ),
-                                else_=None,
-                            )
-                        ), Numeric),
+                        cast(
+                            func.avg(
+                                case(
+                                    (
+                                        PredictionModel.period == "day_ahead",
+                                        PredictionModel.error_pct,
+                                    ),
+                                    else_=None,
+                                )
+                            ),
+                            Numeric,
+                        ),
                         2,
                     ).label("t1_mape"),
                 )
@@ -259,12 +259,9 @@ class AnalyticsRepository:
             ]
 
         # SQLite fallback
-        stmt = (
-            select(PredictionModel)
-            .where(
-                PredictionModel.actual_mwh.is_not(None),
-                PredictionModel.model_source == "ensemble",
-            )
+        stmt = select(PredictionModel).where(
+            PredictionModel.actual_mwh.is_not(None),
+            PredictionModel.model_source == "ensemble",
         )
         result = await self._session.execute(stmt)
         rows = result.scalars().all()
@@ -296,9 +293,7 @@ class AnalyticsRepository:
             stmt = (
                 select(
                     PredictionModel.model_source,
-                    func.round(cast(func.avg(PredictionModel.error_pct), Numeric), 2).label(
-                        "mape"
-                    ),
+                    func.round(cast(func.avg(PredictionModel.error_pct), Numeric), 2).label("mape"),
                     func.count().label("n_hours"),
                 )
                 .where(
@@ -321,12 +316,9 @@ class AnalyticsRepository:
             ]
 
         # SQLite fallback
-        stmt = (
-            select(PredictionModel)
-            .where(
-                PredictionModel.actual_mwh.is_not(None),
-                PredictionModel.forecast_dt >= cutoff,
-            )
+        stmt = select(PredictionModel).where(
+            PredictionModel.actual_mwh.is_not(None),
+            PredictionModel.forecast_dt >= cutoff,
         )
         result = await self._session.execute(stmt)
         rows = result.scalars().all()
@@ -359,9 +351,7 @@ class AnalyticsRepository:
                 select(
                     hour_col.label("hour"),
                     PredictionModel.model_source,
-                    func.round(cast(func.avg(PredictionModel.error_pct), Numeric), 2).label(
-                        "mape"
-                    ),
+                    func.round(cast(func.avg(PredictionModel.error_pct), Numeric), 2).label("mape"),
                 )
                 .where(
                     PredictionModel.actual_mwh.is_not(None),
@@ -382,19 +372,14 @@ class AnalyticsRepository:
             ]
 
         # SQLite fallback
-        stmt = (
-            select(PredictionModel)
-            .where(PredictionModel.actual_mwh.is_not(None))
-        )
+        stmt = select(PredictionModel).where(PredictionModel.actual_mwh.is_not(None))
         result = await self._session.execute(stmt)
         rows = result.scalars().all()
 
         matrix: dict[tuple[int, str], list[float]] = defaultdict(list)
         for r in rows:
             if r.model_source and r.error_pct is not None:
-                matrix[(r.forecast_dt.hour, r.model_source)].append(
-                    r.error_pct
-                )
+                matrix[(r.forecast_dt.hour, r.model_source)].append(r.error_pct)
 
         return [
             {
@@ -405,9 +390,7 @@ class AnalyticsRepository:
             for (hour, model), errs in sorted(matrix.items())
         ]
 
-    async def get_model_comparison_stats(
-        self, days: int = 30
-    ) -> list[dict[str, Any]]:
+    async def get_model_comparison_stats(self, days: int = 30) -> list[dict[str, Any]]:
         """Ensemble vs individual model stats (avg, median, p95).
 
         Note: median and p95 require Python-side computation for dual-mode
@@ -415,15 +398,12 @@ class AnalyticsRepository:
         Only fetches model_source and error_pct columns instead of full ORM load.
         """
         cutoff = datetime.now(tz=TZ_ISTANBUL) - timedelta(days=days)
-        stmt = (
-            select(
-                PredictionModel.model_source,
-                PredictionModel.error_pct,
-            )
-            .where(
-                PredictionModel.actual_mwh.is_not(None),
-                PredictionModel.forecast_dt >= cutoff,
-            )
+        stmt = select(
+            PredictionModel.model_source,
+            PredictionModel.error_pct,
+        ).where(
+            PredictionModel.actual_mwh.is_not(None),
+            PredictionModel.forecast_dt >= cutoff,
         )
         result = await self._session.execute(stmt)
         rows = result.all()
@@ -454,9 +434,7 @@ class AnalyticsRepository:
     # 4.3 — Weather Forecast Horizon Accuracy
     # ------------------------------------------------------------------
 
-    async def get_weather_horizon_accuracy(
-        self, weeks: int = 8
-    ) -> list[dict[str, Any]]:
+    async def get_weather_horizon_accuracy(self, weeks: int = 8) -> list[dict[str, Any]]:
         """T (0-24h) vs T+1 (24-48h) weather forecast accuracy.
 
         Uses a self-join to pair forecasts with actuals in a single query,
@@ -465,8 +443,11 @@ class AnalyticsRepository:
         cutoff = datetime.now(tz=TZ_ISTANBUL) - timedelta(weeks=weeks)
 
         compare_cols = [
-            "temperature_2m", "apparent_temperature",
-            "wind_speed_10m", "shortwave_radiation", "precipitation",
+            "temperature_2m",
+            "apparent_temperature",
+            "wind_speed_10m",
+            "shortwave_radiation",
+            "precipitation",
         ]
 
         # Aliased tables for self-join: fc (forecast) LEFT JOIN act (actual)
@@ -487,8 +468,7 @@ class AnalyticsRepository:
             .select_from(
                 fc.join(
                     act,
-                    (fc.c.forecast_dt == act.c.forecast_dt)
-                    & (act.c.is_actual.is_(True)),
+                    (fc.c.forecast_dt == act.c.forecast_dt) & (act.c.is_actual.is_(True)),
                 )
             )
             .where(
@@ -522,19 +502,14 @@ class AnalyticsRepository:
         return [
             {
                 "horizon": h,
-                **{
-                    f"{col}_mae": _safe_mean(vals)
-                    for col, vals in cols.items()
-                },
+                **{f"{col}_mae": _safe_mean(vals) for col, vals in cols.items()},
                 "n_hours": max(len(v) for v in cols.values()) if cols else 0,
             }
             for h, cols in buckets.items()
             if cols
         ]
 
-    async def get_weather_variable_accuracy(
-        self, days: int = 90
-    ) -> list[dict[str, Any]]:
+    async def get_weather_variable_accuracy(self, days: int = 90) -> list[dict[str, Any]]:
         """Per-variable weather forecast MAE.
 
         Args:
@@ -545,8 +520,11 @@ class AnalyticsRepository:
         cutoff = datetime.now(tz=TZ_ISTANBUL) - timedelta(days=days)
 
         compare_cols = [
-            "temperature_2m", "apparent_temperature",
-            "wind_speed_10m", "shortwave_radiation", "precipitation",
+            "temperature_2m",
+            "apparent_temperature",
+            "wind_speed_10m",
+            "shortwave_radiation",
+            "precipitation",
         ]
 
         fc = WeatherSnapshotModel.__table__.alias("fc")
@@ -562,8 +540,7 @@ class AnalyticsRepository:
             .select_from(
                 fc.join(
                     act,
-                    (fc.c.forecast_dt == act.c.forecast_dt)
-                    & (act.c.is_actual.is_(True)),
+                    (fc.c.forecast_dt == act.c.forecast_dt) & (act.c.is_actual.is_(True)),
                 )
             )
             .where(
@@ -631,7 +608,9 @@ class AnalyticsRepository:
 
         # If caller wants only top-N features, filter
         top_features = sorted(
-            all_features, key=all_features.get, reverse=True  # type: ignore[arg-type]
+            all_features,
+            key=lambda f: all_features[f],
+            reverse=True,
         )[:top_n]
         return [r for r in out if r["feature"] in top_features]
 
@@ -639,9 +618,7 @@ class AnalyticsRepository:
     # 4.7 — EPIAS Forecast vs Actual
     # ------------------------------------------------------------------
 
-    async def get_epias_forecast_accuracy(
-        self, days: int = 30
-    ) -> list[dict[str, Any]]:
+    async def get_epias_forecast_accuracy(self, days: int = 30) -> list[dict[str, Any]]:
         """EPIAS Load_Forecast vs Real_Time_Consumption from job snapshots."""
         cutoff = datetime.now(tz=TZ_ISTANBUL) - timedelta(days=days)
         stmt = (
@@ -670,9 +647,7 @@ class AnalyticsRepository:
                     "day": job.created_at.strftime("%Y-%m-%d"),
                     "load_forecast": float(lf),
                     "rtc": float(rtc),
-                    "epias_error_pct": round(
-                        abs(float(lf) - float(rtc)) / float(rtc) * 100, 2
-                    ),
+                    "epias_error_pct": round(abs(float(lf) - float(rtc)) / float(rtc) * 100, 2),
                 }
             )
         return out
@@ -681,13 +656,9 @@ class AnalyticsRepository:
     # Job History (paginated)
     # ------------------------------------------------------------------
 
-    async def get_job_history(
-        self, page: int = 1, size: int = 20
-    ) -> dict[str, Any]:
+    async def get_job_history(self, page: int = 1, size: int = 20) -> dict[str, Any]:
         """Paginated job history for admin dashboard."""
-        count_stmt = (
-            select(func.count()).select_from(JobModel)
-        )
+        count_stmt = select(func.count()).select_from(JobModel)
         count_result = await self._session.execute(count_stmt)
         total = count_result.scalar() or 0
 
@@ -713,9 +684,7 @@ class AnalyticsRepository:
                     "status": j.status,
                     "progress": j.progress,
                     "created_at": j.created_at.isoformat(),
-                    "completed_at": (
-                        j.completed_at.isoformat() if j.completed_at else None
-                    ),
+                    "completed_at": (j.completed_at.isoformat() if j.completed_at else None),
                 }
                 for j in jobs
             ],
@@ -749,9 +718,7 @@ class AnalyticsRepository:
                 "feature_count": r.feature_count,
                 "is_promoted": r.is_promoted,
                 "started_at": r.started_at.isoformat() if r.started_at else None,
-                "completed_at": (
-                    r.completed_at.isoformat() if r.completed_at else None
-                ),
+                "completed_at": (r.completed_at.isoformat() if r.completed_at else None),
                 "duration_seconds": r.duration_seconds,
             }
             for r in runs
@@ -772,9 +739,7 @@ class AnalyticsRepository:
                 "val_mape": r.val_mape,
                 "test_mape": r.test_mape,
                 "model_path": r.model_path,
-                "promoted_at": (
-                    r.promoted_at.isoformat() if r.promoted_at else None
-                ),
+                "promoted_at": (r.promoted_at.isoformat() if r.promoted_at else None),
             }
             for r in runs
         ]

@@ -96,7 +96,9 @@ class ProphetTrainer:
     def _optuna_storage(self, model_name: str) -> optuna.storages.RDBStorage | str | None:
         """Return Optuna storage (delegates to shared ``optuna_storage``)."""
         return optuna_storage(
-            self._search_config.n_trials, model_name, self._settings.paths.models_dir,
+            self._search_config.n_trials,
+            model_name,
+            self._settings.paths.models_dir,
         )
 
     # -- Prophet format conversion --
@@ -128,9 +130,7 @@ class ProphetTrainer:
                 if reg.name not in self._regressor_names:
                     self._regressor_names.append(reg.name)
             else:
-                logger.warning(
-                    "Regressor '{}' configured but not in DataFrame columns", reg.name
-                )
+                logger.warning("Regressor '{}' configured but not in DataFrame columns", reg.name)
 
         # Drop rows with NaN in regressor columns (e.g. consumption_lag_168
         # has 168 NaN rows at the dataset start where the lag window exceeds
@@ -141,7 +141,9 @@ class ProphetTrainer:
         if n_dropped > 0:
             logger.info(
                 "Dropped {} rows with NaN regressors ({:.1f}% of {})",
-                n_dropped, n_dropped / n_before * 100, n_before,
+                n_dropped,
+                n_dropped / n_before * 100,
+                n_before,
             )
 
         return prophet_df
@@ -436,9 +438,7 @@ class ProphetTrainer:
             best_result = ProphetTrainingResult(
                 split_results=[],
                 avg_val_mape=study.best_value,
-                avg_test_mape=float(
-                    study.best_trial.user_attrs.get("avg_test_mape", float("nan"))
-                ),
+                avg_test_mape=float(study.best_trial.user_attrs.get("avg_test_mape", float("nan"))),
                 std_val_mape=0.0,
                 regressor_names=list(self._regressor_names),
             )
@@ -516,7 +516,8 @@ class ProphetTrainer:
                 }
             )
             self._tracker.log_config_snapshot(
-                self._prophet_config.model_dump(), "prophet_config.yaml",
+                self._prophet_config.model_dump(),
+                "prophet_config.yaml",
             )
             self._tracker.log_params(
                 {"regressor_names": ",".join(self._regressor_names)},

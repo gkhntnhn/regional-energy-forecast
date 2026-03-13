@@ -184,9 +184,7 @@ class TestGoogleDriveStorage:
             "forecast.parquet": "uploaded_file_id",
         }
         assert mock_upload.call_count == 2
-        mock_ensure.assert_called_once_with(
-            ["forecasts", "2026", "03", "07", "14-34_job_123"]
-        )
+        mock_ensure.assert_called_once_with(["forecasts", "2026", "03", "07", "14-34_job_123"])
 
     @patch("energy_forecast.storage.gdrive.GoogleDriveStorage._upload_file")
     @patch("energy_forecast.storage.gdrive.GoogleDriveStorage._ensure_folder_path")
@@ -202,9 +200,7 @@ class TestGoogleDriveStorage:
 
         missing = tmp_path / "nonexistent.parquet"
 
-        result = gdrive.upload_job_artifacts(
-            "job_123", {"nonexistent.parquet": missing}
-        )
+        result = gdrive.upload_job_artifacts("job_123", {"nonexistent.parquet": missing})
 
         assert result == {}
         mock_upload.assert_not_called()
@@ -225,9 +221,7 @@ class TestGoogleDriveStorage:
         f1 = tmp_path / "test.parquet"
         f1.write_text("data")
 
-        result = gdrive.upload_job_artifacts(
-            "job_123", {"test.parquet": f1}
-        )
+        result = gdrive.upload_job_artifacts("job_123", {"test.parquet": f1})
 
         assert result == {}
 
@@ -251,9 +245,5 @@ class TestGoogleDriveStorage:
         result = gdrive.upload_backup(backup, ts=ts)
 
         assert result == "backup_file_id"
-        mock_ensure.assert_called_once_with(
-            ["backups", "2026", "03", "07", "14-30"]
-        )
-        mock_upload.assert_called_once_with(
-            backup.name, backup, "backup_folder_id"
-        )
+        mock_ensure.assert_called_once_with(["backups", "2026", "03", "07", "14-30"])
+        mock_upload.assert_called_once_with(backup.name, backup, "backup_folder_id")

@@ -121,9 +121,7 @@ class TestEnsembleConfig:
 
     def test_weight_normalization_all_models(self) -> None:
         settings = get_default_config()
-        normalized = settings.ensemble.weights.get_normalized(
-            ["catboost", "prophet", "tft"]
-        )
+        normalized = settings.ensemble.weights.get_normalized(["catboost", "prophet", "tft"])
         assert abs(sum(normalized.values()) - 1.0) < 1e-6
         assert normalized["catboost"] == pytest.approx(0.45)
         assert normalized["prophet"] == pytest.approx(0.30)
@@ -163,9 +161,7 @@ class TestEnsembleTrainerInit:
     def test_trainer_active_models_override(self) -> None:
         settings = _get_test_settings()
         tracker = ExperimentTracker(enabled=False)
-        trainer = EnsembleTrainer(
-            settings, tracker, active_models_override=["catboost", "prophet"]
-        )
+        trainer = EnsembleTrainer(settings, tracker, active_models_override=["catboost", "prophet"])
         assert trainer._active_models == ["catboost", "prophet"]
         assert "catboost" in trainer._trainers
         assert "prophet" in trainer._trainers
@@ -174,9 +170,7 @@ class TestEnsembleTrainerInit:
     def test_trainer_single_model_override(self) -> None:
         settings = _get_test_settings()
         tracker = ExperimentTracker(enabled=False)
-        trainer = EnsembleTrainer(
-            settings, tracker, active_models_override=["catboost"]
-        )
+        trainer = EnsembleTrainer(settings, tracker, active_models_override=["catboost"])
         assert trainer._active_models == ["catboost"]
         assert len(trainer._trainers) == 1
 
@@ -184,9 +178,7 @@ class TestEnsembleTrainerInit:
         settings = _get_test_settings()
         tracker = ExperimentTracker(enabled=False)
         with pytest.raises(ValueError, match="Unknown model"):
-            EnsembleTrainer(
-                settings, tracker, active_models_override=["catboost", "invalid"]
-            )
+            EnsembleTrainer(settings, tracker, active_models_override=["catboost", "invalid"])
 
 
 # ---------------------------------------------------------------------------
@@ -501,9 +493,7 @@ class TestResultDataclasses:
 # ---------------------------------------------------------------------------
 
 
-def _make_mock_split_result(
-    split_idx: int, mape: float = 5.0
-) -> MagicMock:
+def _make_mock_split_result(split_idx: int, mape: float = 5.0) -> MagicMock:
     """Create a mock SplitResult with val/test predictions."""
     rng = np.random.default_rng(42 + split_idx)
     y_true = 800.0 + rng.random(100) * 400
@@ -522,9 +512,7 @@ def _make_mock_split_result(
     return sr
 
 
-def _make_mock_pipeline_result(
-    n_splits: int = 3, base_mape: float = 5.0
-) -> MagicMock:
+def _make_mock_pipeline_result(n_splits: int = 3, base_mape: float = 5.0) -> MagicMock:
     """Create a mock pipeline result with multiple splits."""
     result = MagicMock()
     result.training_result.split_results = [
@@ -947,9 +935,7 @@ class TestBuildOofDataframe:
             model_results[model_name] = mock_result
 
         # Mock TimeSeriesSplitter to return 3 splits with matching val slices
-        with patch(
-            "energy_forecast.training.ensemble_stacking.TimeSeriesSplitter"
-        ) as _mock_tss:
+        with patch("energy_forecast.training.ensemble_stacking.TimeSeriesSplitter") as _mock_tss:
             mock_splitter = MagicMock()
             splits = []
             for i in range(3):
@@ -957,9 +943,9 @@ class TestBuildOofDataframe:
                 mock_split_info.split_idx = i
                 start = i * n_val
                 end = start + n_val
-                train_df = df.iloc[:start + 50]
+                train_df = df.iloc[: start + 50]
                 val_slice = df.iloc[start:end]
-                test_df = df.iloc[end:end + 50] if end + 50 <= n_rows else df.iloc[-50:]
+                test_df = df.iloc[end : end + 50] if end + 50 <= n_rows else df.iloc[-50:]
                 splits.append((mock_split_info, train_df, val_slice, test_df))
             mock_splitter.iter_splits.return_value = splits
             _mock_tss.from_config.return_value = mock_splitter
@@ -1009,9 +995,7 @@ class TestBuildOofDataframe:
             mock_result.training_result.split_results = split_results_list
             model_results[model_name] = mock_result
 
-        with patch(
-            "energy_forecast.training.ensemble_stacking.TimeSeriesSplitter"
-        ) as _mock_tss:
+        with patch("energy_forecast.training.ensemble_stacking.TimeSeriesSplitter") as _mock_tss:
             mock_splitter = MagicMock()
             splits = []
             for i in range(2):
@@ -1063,9 +1047,7 @@ class TestTrainMetaLearner:
             }
         )
 
-        with patch(
-            "energy_forecast.training.ensemble_stacking.CatBoostRegressor"
-        ) as _mock_cbr:
+        with patch("energy_forecast.training.ensemble_stacking.CatBoostRegressor") as _mock_cbr:
             mock_meta = MagicMock()
             mock_meta.predict.return_value = rng.random(40) * 400 + 800
             mock_meta.get_feature_importance.return_value = np.array(
@@ -1104,9 +1086,7 @@ class TestTrainMetaLearner:
             }
         )
 
-        with patch(
-            "energy_forecast.training.ensemble_stacking.CatBoostRegressor"
-        ) as _mock_cbr:
+        with patch("energy_forecast.training.ensemble_stacking.CatBoostRegressor") as _mock_cbr:
             mock_meta = MagicMock()
             mock_meta.predict.return_value = np.ones(20) * 1000
             mock_meta.get_feature_importance.return_value = np.array(
@@ -1183,9 +1163,7 @@ class TestComputeStackingTestMape:
             mock_result.training_result.split_results = split_results_list
             model_results[model_name] = mock_result
 
-        with patch(
-            "energy_forecast.training.ensemble_stacking.TimeSeriesSplitter"
-        ) as _mock_tss:
+        with patch("energy_forecast.training.ensemble_stacking.TimeSeriesSplitter") as _mock_tss:
             mock_splitter = MagicMock()
             splits = []
             for i in range(2):
@@ -1193,9 +1171,7 @@ class TestComputeStackingTestMape:
                 mock_split_info.split_idx = i
                 start = i * n_test + 100
                 test_slice = df.iloc[start : start + n_test]
-                splits.append(
-                    (mock_split_info, df.iloc[:start], df.iloc[:50], test_slice)
-                )
+                splits.append((mock_split_info, df.iloc[:start], df.iloc[:50], test_slice))
             mock_splitter.iter_splits.return_value = splits
             _mock_tss.from_config.return_value = mock_splitter
 
@@ -1256,9 +1232,7 @@ class TestComputeStackingEnsemble:
         )
 
         with (
-            patch.object(
-                trainer, "_build_oof_dataframe", return_value=mock_oof_df
-            ) as mock_build,
+            patch.object(trainer, "_build_oof_dataframe", return_value=mock_oof_df) as mock_build,
             patch.object(
                 trainer,
                 "_train_meta_learner",
@@ -1270,9 +1244,7 @@ class TestComputeStackingEnsemble:
                 return_value=[3.2, 3.8],
             ) as mock_test,
         ):
-            result = trainer._compute_stacking_ensemble(
-                {}, split_results, default_weights, df
-            )
+            result = trainer._compute_stacking_ensemble({}, split_results, default_weights, df)
 
         assert result.mode == "stacking"
         assert result.avg_val_mape == 3.5

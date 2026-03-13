@@ -96,9 +96,7 @@ async def check_model_drift(
     alerts: list[DriftAlert] = []
 
     # 1. Absolute MAPE threshold
-    recent_mape, sample_count = await _get_recent_mape(
-        session, days=cfg.lookback_days
-    )
+    recent_mape, sample_count = await _get_recent_mape(session, days=cfg.lookback_days)
     if (
         recent_mape is not None
         and sample_count >= cfg.min_samples
@@ -107,11 +105,7 @@ async def check_model_drift(
         alerts.append(
             DriftAlert(
                 alert_type="mape_threshold",
-                severity=(
-                    "critical"
-                    if recent_mape > cfg.mape_threshold_critical
-                    else "warning"
-                ),
+                severity=("critical" if recent_mape > cfg.mape_threshold_critical else "warning"),
                 current_value=recent_mape,
                 threshold=cfg.mape_threshold_warning,
                 message=(
@@ -142,9 +136,7 @@ async def check_model_drift(
             )
 
     # 3. Bias shift (signed MBE)
-    recent_bias, bias_count = await _get_recent_bias(
-        session, days=cfg.lookback_days
-    )
+    recent_bias, bias_count = await _get_recent_bias(session, days=cfg.lookback_days)
     if (
         recent_bias is not None
         and bias_count >= cfg.min_samples
@@ -157,10 +149,7 @@ async def check_model_drift(
                 severity="warning",
                 current_value=recent_bias,
                 threshold=cfg.bias_threshold,
-                message=(
-                    f"Sistematik {direction} tahmin: "
-                    f"ortalama %{abs(recent_bias):.1f} sapma"
-                ),
+                message=(f"Sistematik {direction} tahmin: ortalama %{abs(recent_bias):.1f} sapma"),
                 window_days=cfg.lookback_days,
             )
         )
@@ -173,9 +162,7 @@ async def check_model_drift(
 # ---------------------------------------------------------------------------
 
 
-async def _get_recent_mape(
-    session: AsyncSession, days: int
-) -> tuple[float | None, int]:
+async def _get_recent_mape(session: AsyncSession, days: int) -> tuple[float | None, int]:
     """Average absolute error_pct and sample count for last N days.
 
     Returns:
@@ -197,9 +184,7 @@ async def _get_recent_mape(
     return (float(avg_val) if avg_val is not None else None, count_val)
 
 
-async def _get_weekly_mapes(
-    session: AsyncSession, weeks: int
-) -> list[float]:
+async def _get_weekly_mapes(session: AsyncSession, weeks: int) -> list[float]:
     """Weekly MAPE values for last N weeks.
 
     Uses Python-side grouping instead of SQL date_trunc for SQLite compatibility.
@@ -231,16 +216,10 @@ async def _get_weekly_mapes(
 
     # Average per week, sorted chronologically
     sorted_weeks = sorted(weekly.keys())
-    return [
-        sum(weekly[k]) / len(weekly[k])
-        for k in sorted_weeks
-        if weekly[k]
-    ]
+    return [sum(weekly[k]) / len(weekly[k]) for k in sorted_weeks if weekly[k]]
 
 
-async def _get_recent_bias(
-    session: AsyncSession, days: int
-) -> tuple[float | None, int]:
+async def _get_recent_bias(session: AsyncSession, days: int) -> tuple[float | None, int]:
     """Mean Bias Error (%) for last N days.
 
     Positive = over-prediction, negative = under-prediction.
@@ -274,9 +253,7 @@ def _compute_trend(values: list[float]) -> float:
     x = list(range(n))
     x_mean = sum(x) / n
     y_mean = sum(values) / n
-    numerator = sum(
-        (xi - x_mean) * (yi - y_mean) for xi, yi in zip(x, values, strict=True)
-    )
+    numerator = sum((xi - x_mean) * (yi - y_mean) for xi, yi in zip(x, values, strict=True))
     denominator = sum((xi - x_mean) ** 2 for xi in x)
     if denominator == 0:
         return 0.0

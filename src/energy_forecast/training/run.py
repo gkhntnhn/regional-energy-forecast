@@ -128,9 +128,7 @@ def apply_config_overrides(settings: Settings, config_path: Path) -> None:
         if "n_trials" in cb_override:
             object.__setattr__(cb_config, "n_trials", cb_override["n_trials"])
         if "search_space" in cb_override:
-            new_space = {
-                k: SearchParamConfig(**v) for k, v in cb_override["search_space"].items()
-            }
+            new_space = {k: SearchParamConfig(**v) for k, v in cb_override["search_space"].items()}
             object.__setattr__(cb_config, "search_space", new_space)
         logger.debug("CatBoost overrides applied")
 
@@ -141,9 +139,7 @@ def apply_config_overrides(settings: Settings, config_path: Path) -> None:
         if "n_trials" in p_override:
             object.__setattr__(p_config, "n_trials", p_override["n_trials"])
         if "search_space" in p_override:
-            new_space = {
-                k: SearchParamConfig(**v) for k, v in p_override["search_space"].items()
-            }
+            new_space = {k: SearchParamConfig(**v) for k, v in p_override["search_space"].items()}
             object.__setattr__(p_config, "search_space", new_space)
         logger.debug("Prophet overrides applied")
 
@@ -154,9 +150,7 @@ def apply_config_overrides(settings: Settings, config_path: Path) -> None:
         if "n_trials" in tft_override:
             object.__setattr__(tft_config, "n_trials", tft_override["n_trials"])
         if "search_space" in tft_override:
-            new_space = {
-                k: SearchParamConfig(**v) for k, v in tft_override["search_space"].items()
-            }
+            new_space = {k: SearchParamConfig(**v) for k, v in tft_override["search_space"].items()}
             object.__setattr__(tft_config, "search_space", new_space)
         # Override TFT training params
         if "training" in tft_override:
@@ -230,9 +224,7 @@ def run_catboost(
             "val_mape": result.training_result.avg_val_mape,
             "test_mape": result.training_result.avg_test_mape,
         },
-        "model_path": str(
-            Path(settings.paths.models_dir) / "catboost" / f"catboost_{run_ts}"
-        ),
+        "model_path": str(Path(settings.paths.models_dir) / "catboost" / f"catboost_{run_ts}"),
         "best_params": result.best_params,
     }
 
@@ -278,9 +270,7 @@ def run_prophet(
             "val_mape": result.training_result.avg_val_mape,
             "test_mape": result.training_result.avg_test_mape,
         },
-        "model_path": str(
-            Path(settings.paths.models_dir) / "prophet" / f"prophet_{run_ts}"
-        ),
+        "model_path": str(Path(settings.paths.models_dir) / "prophet" / f"prophet_{run_ts}"),
         "best_params": result.best_params,
     }
 
@@ -326,9 +316,7 @@ def run_tft(
             "val_mape": result.training_result.avg_val_mape,
             "test_mape": result.training_result.avg_test_mape,
         },
-        "model_path": str(
-            Path(settings.paths.models_dir) / "tft" / f"tft_{run_ts}"
-        ),
+        "model_path": str(Path(settings.paths.models_dir) / "tft" / f"tft_{run_ts}"),
         "best_params": result.best_params,
     }
 
@@ -361,9 +349,7 @@ def run_ensemble(
         tracking_uri=settings.env.mlflow_tracking_uri,
         enabled=not no_mlflow,
     )
-    trainer = EnsembleTrainer(
-        settings, tracker, active_models_override=active_models_override
-    )
+    trainer = EnsembleTrainer(settings, tracker, active_models_override=active_models_override)
     result = trainer.run(data)
 
     # Save ensemble artifacts to fixed directory (overwrite previous)
@@ -484,7 +470,6 @@ def main(argv: list[str] | None = None) -> None:
         duration = int(time.monotonic() - t0)
         _fail_model_run(model_run, duration=duration)
         raise
-
 
 
 def _get_n_trials(settings: Settings, model: str) -> int:

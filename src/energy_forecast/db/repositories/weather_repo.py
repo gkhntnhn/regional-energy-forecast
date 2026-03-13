@@ -58,7 +58,10 @@ class WeatherSnapshotRepository:
             Number of rows inserted.
         """
         rows = self._build_snapshot_rows(
-            weather_df, fetched_at, is_actual=False, job_id=job_id,
+            weather_df,
+            fetched_at,
+            is_actual=False,
+            job_id=job_id,
         )
         self._session.add_all(rows)
         await self._session.flush()
@@ -79,7 +82,10 @@ class WeatherSnapshotRepository:
             Number of rows inserted.
         """
         rows = self._build_snapshot_rows(
-            weather_df, fetched_at, is_actual=True, job_id=None,
+            weather_df,
+            fetched_at,
+            is_actual=True,
+            job_id=None,
         )
 
         self._session.add_all(rows)
@@ -114,7 +120,8 @@ class WeatherSnapshotRepository:
                     val = row[col]
                     if pd.notna(val):
                         setattr(
-                            snapshot, col,
+                            snapshot,
+                            col,
                             int(val) if col == "weather_code" else float(val),
                         )
 
@@ -131,7 +138,9 @@ class WeatherSnapshotRepository:
         from datetime import timedelta
 
         start = datetime(
-            target_date.year, target_date.month, target_date.day,
+            target_date.year,
+            target_date.month,
+            target_date.day,
             tzinfo=target_date.tzinfo,
         )
         end = start + timedelta(days=1)
@@ -152,9 +161,7 @@ class WeatherSnapshotRepository:
     # Read / query operations
     # ------------------------------------------------------------------
 
-    async def get_forecast_vs_actual(
-        self, job_id: str
-    ) -> list[dict[str, Any]]:
+    async def get_forecast_vs_actual(self, job_id: str) -> list[dict[str, Any]]:
         """Get forecast and actual weather side by side for a job.
 
         Returns list of dicts with forecast_dt, forecast_*, actual_* columns.
@@ -177,13 +184,10 @@ class WeatherSnapshotRepository:
         # Get actuals for the same datetime range
         dt_min = min(forecasts.keys())
         dt_max = max(forecasts.keys())
-        actual_stmt = (
-            select(WeatherSnapshotModel)
-            .where(
-                WeatherSnapshotModel.is_actual.is_(True),
-                WeatherSnapshotModel.forecast_dt >= dt_min,
-                WeatherSnapshotModel.forecast_dt <= dt_max,
-            )
+        actual_stmt = select(WeatherSnapshotModel).where(
+            WeatherSnapshotModel.is_actual.is_(True),
+            WeatherSnapshotModel.forecast_dt >= dt_min,
+            WeatherSnapshotModel.forecast_dt <= dt_max,
         )
         actual_result = await self._session.execute(actual_stmt)
         actuals = {s.forecast_dt: s for s in actual_result.scalars().all()}
@@ -204,9 +208,7 @@ class WeatherSnapshotRepository:
 
         return comparison
 
-    async def get_weekly_accuracy(
-        self, weeks: int = 4
-    ) -> list[dict[str, Any]]:
+    async def get_weekly_accuracy(self, weeks: int = 4) -> list[dict[str, Any]]:
         """Get weekly aggregate MAE for key weather variables.
 
         Returns list of dicts with week_start, mae_temperature, mae_wind, etc.
@@ -234,12 +236,9 @@ class WeatherSnapshotRepository:
             return []
 
         # Get all forecasts that have matching actuals
-        forecast_stmt = (
-            select(WeatherSnapshotModel)
-            .where(
-                WeatherSnapshotModel.is_actual.is_(False),
-                WeatherSnapshotModel.forecast_dt.in_(list(actuals.keys())),
-            )
+        forecast_stmt = select(WeatherSnapshotModel).where(
+            WeatherSnapshotModel.is_actual.is_(False),
+            WeatherSnapshotModel.forecast_dt.in_(list(actuals.keys())),
         )
         forecast_result = await self._session.execute(forecast_stmt)
 
@@ -285,8 +284,6 @@ class WeatherSnapshotRepository:
             .order_by(WeatherSnapshotModel.forecast_dt)
         )
         if is_actual is not None:
-            stmt = stmt.where(
-                WeatherSnapshotModel.is_actual == is_actual
-            )
+            stmt = stmt.where(WeatherSnapshotModel.is_actual == is_actual)
         result = await self._session.execute(stmt)
         return list(result.scalars().all())

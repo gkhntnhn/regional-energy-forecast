@@ -476,7 +476,9 @@ class OpenMeteoClient:
         # --- Categorical variables: dominant city (highest weight, NaN fallback) ---
         for var in categorical_vars:
             result[var] = self._dominant_city_value(
-                city_dfs, cast(pd.DatetimeIndex, base_index), var,
+                city_dfs,
+                cast(pd.DatetimeIndex, base_index),
+                var,
             )
 
         return result

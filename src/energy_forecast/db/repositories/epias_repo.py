@@ -80,9 +80,7 @@ class EpiasRepository:
         await self._session.execute(stmt)
         return len(rows)
 
-    async def get_market_range(
-        self, start: datetime, end: datetime
-    ) -> pd.DataFrame:
+    async def get_market_range(self, start: datetime, end: datetime) -> pd.DataFrame:
         """Get market data between start and end (inclusive) as DataFrame.
 
         Args:
@@ -106,9 +104,7 @@ class EpiasRepository:
         df = df.set_index("datetime")
         return df
 
-    async def get_generation_range(
-        self, start: datetime, end: datetime
-    ) -> pd.DataFrame:
+    async def get_generation_range(self, start: datetime, end: datetime) -> pd.DataFrame:
         """Get generation data between start and end (inclusive) as DataFrame.
 
         Args:
@@ -138,9 +134,7 @@ class EpiasRepository:
         Returns:
             Latest datetime or None if table is empty.
         """
-        stmt = select(EpiasMarketModel.dt).order_by(
-            EpiasMarketModel.dt.desc()
-        ).limit(1)
+        stmt = select(EpiasMarketModel.dt).order_by(EpiasMarketModel.dt.desc()).limit(1)
         result = await self._session.execute(stmt)
         row = result.scalar_one_or_none()
         return row

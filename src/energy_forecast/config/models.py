@@ -385,9 +385,7 @@ class EnsembleOptimizationConfig(BaseModel, frozen=True):
 
     enabled: bool = True
     metric: str = "mape"
-    bounds: EnsembleWeightBoundsConfig = Field(
-        default_factory=EnsembleWeightBoundsConfig
-    )
+    bounds: EnsembleWeightBoundsConfig = Field(default_factory=EnsembleWeightBoundsConfig)
 
 
 class EnsembleFallbackConfig(BaseModel, frozen=True):
@@ -412,12 +410,14 @@ class StackingMetaLearnerConfig(BaseModel, frozen=True):
 class StackingConfig(BaseModel, frozen=True):
     """Stacking ensemble configuration."""
 
-    meta_learner: StackingMetaLearnerConfig = Field(
-        default_factory=StackingMetaLearnerConfig
-    )
+    meta_learner: StackingMetaLearnerConfig = Field(default_factory=StackingMetaLearnerConfig)
     context_features: list[str] = Field(
         default_factory=lambda: [
-            "hour", "day_of_week", "is_weekend", "is_holiday", "month",
+            "hour",
+            "day_of_week",
+            "is_weekend",
+            "is_holiday",
+            "month",
         ]
     )
 
@@ -426,9 +426,7 @@ class EnsembleConfig(BaseModel, frozen=True):
     """Ensemble model configuration."""
 
     mode: str = "stacking"
-    active_models: list[str] = Field(
-        default_factory=lambda: ["catboost", "prophet", "tft"]
-    )
+    active_models: list[str] = Field(default_factory=lambda: ["catboost", "prophet", "tft"])
     weights: EnsembleWeightsConfig = Field(default_factory=EnsembleWeightsConfig)
     optimization: EnsembleOptimizationConfig = Field(
         default_factory=EnsembleOptimizationConfig,

@@ -10,7 +10,6 @@ import pytest
 
 from energy_forecast.features.calendar import CalendarFeatureEngineer
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -54,14 +53,16 @@ def sample_df() -> pd.DataFrame:
 @pytest.fixture()
 def holidays_df() -> pd.DataFrame:
     """Pre-loaded holidays DataFrame mimicking DB output."""
-    return pd.DataFrame({
-        "date": pd.to_datetime(["2024-01-01", "2024-04-10"]),
-        "holiday_name": ["Yilbasi", "Ramazan_Bayrami_1"],
-        "raw_holiday_name": ["Yılbaşı", "Ramazan Bayramı 1. Gün"],
-        "is_ramadan": [False, True],
-        "bayram_gun_no": [0, 1],
-        "bayrama_kalan_gun": [0, 0],
-    })
+    return pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2024-01-01", "2024-04-10"]),
+            "holiday_name": ["Yilbasi", "Ramazan_Bayrami_1"],
+            "raw_holiday_name": ["Yılbaşı", "Ramazan Bayramı 1. Gün"],
+            "is_ramadan": [False, True],
+            "bayram_gun_no": [0, 1],
+            "bayrama_kalan_gun": [0, 0],
+        }
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -122,7 +123,8 @@ class TestCalendarHolidayInjection:
         idx = pd.date_range("2024-04-09", periods=48, freq="h")
         rng = np.random.default_rng(42)
         df = pd.DataFrame(
-            {"consumption": rng.uniform(800, 1200, 48)}, index=idx,
+            {"consumption": rng.uniform(800, 1200, 48)},
+            index=idx,
         ).rename_axis("datetime")
 
         fe = CalendarFeatureEngineer(calendar_config, holidays_df=holidays_df)

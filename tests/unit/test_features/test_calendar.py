@@ -54,13 +54,15 @@ def holidays_parquet(tmp_path: Path) -> Path:
     """Small holidays parquet with varied holiday types."""
     holidays = pd.DataFrame(
         {
-            "date": pd.to_datetime([
-                "2024-01-01",  # New Year (resmi) — Monday
-                "2024-04-10",  # Ramazan Bayrami (dini) — Wednesday
-                "2024-04-11",  # Ramazan Bayrami 2. Gun (dini) — Thursday
-                "2024-04-12",  # Ramazan Bayrami 3. Gun (dini) — Friday
-                "2024-04-23",  # 23 Nisan (resmi) — Tuesday
-            ]),
+            "date": pd.to_datetime(
+                [
+                    "2024-01-01",  # New Year (resmi) — Monday
+                    "2024-04-10",  # Ramazan Bayrami (dini) — Wednesday
+                    "2024-04-11",  # Ramazan Bayrami 2. Gun (dini) — Thursday
+                    "2024-04-12",  # Ramazan Bayrami 3. Gun (dini) — Friday
+                    "2024-04-23",  # 23 Nisan (resmi) — Tuesday
+                ]
+            ),
             "holiday_name": [
                 "New Year's Day",
                 "Ramazan Bayrami 1. Gun",

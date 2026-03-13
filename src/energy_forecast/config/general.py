@@ -211,9 +211,7 @@ class OpenMeteoApiConfig(BaseModel, frozen=True):
     """OpenMeteo API connection settings."""
 
     base_url_historical: str = "https://archive-api.open-meteo.com/v1/archive"
-    base_url_historical_forecast: str = (
-        "https://historical-forecast-api.open-meteo.com/v1/forecast"
-    )
+    base_url_historical_forecast: str = "https://historical-forecast-api.open-meteo.com/v1/forecast"
     base_url_forecast: str = "https://api.open-meteo.com/v1/forecast"
     timeout: int = Field(default=30, ge=1)
     retry_attempts: int = Field(default=3, ge=1)

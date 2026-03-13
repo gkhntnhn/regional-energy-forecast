@@ -80,7 +80,8 @@ class TFTForecaster(BaseForecaster):
         # to only keep the required columns + specified covariates.
         cfg = self._tft_config.covariates
         covariate_cols = [
-            c for c in list(cfg.time_varying_known) + list(cfg.time_varying_unknown)
+            c
+            for c in list(cfg.time_varying_known) + list(cfg.time_varying_unknown)
             if c in nf_df.columns
         ]
         keep_cols = ["unique_id", "ds", "y", *covariate_cols]
@@ -285,7 +286,7 @@ class TFTForecaster(BaseForecaster):
         # Determine context and forecast boundaries
         if len(X) > pred_len:
             context_end = len(X) - pred_len
-            context_df = X.iloc[max(0, context_end - enc_len):context_end]
+            context_df = X.iloc[max(0, context_end - enc_len) : context_end]
             forecast_df = X.iloc[context_end:]
         else:
             # Short input — no explicit context (NeuralForecast uses internal state)
@@ -307,7 +308,9 @@ class TFTForecaster(BaseForecaster):
         nf_context = None
         if context_df is not None:
             nf_context = self._to_nf_format(
-                context_df, target_col, drop_target_nan=False,
+                context_df,
+                target_col,
+                drop_target_nan=False,
             )
             # Fill NaN target in context (forecast rows have NaN consumption)
             if nf_context["y"].isna().any():
@@ -339,7 +342,7 @@ class TFTForecaster(BaseForecaster):
         result_index = forecast_df.index[-n_preds:]
 
         result = pd.DataFrame(
-            {PREDICTION_COL: pred_values[-len(result_index):]},
+            {PREDICTION_COL: pred_values[-len(result_index) :]},
             index=result_index,
         )
 

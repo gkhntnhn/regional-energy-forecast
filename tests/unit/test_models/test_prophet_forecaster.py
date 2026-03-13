@@ -192,9 +192,7 @@ class TestSaveLoad:
             pred_after["consumption_mwh"].values,
         )
 
-    def test_save_without_model_raises(
-        self, forecaster: ProphetForecaster, tmp_path: Path
-    ) -> None:
+    def test_save_without_model_raises(self, forecaster: ProphetForecaster, tmp_path: Path) -> None:
         """Test that saving without model raises RuntimeError."""
         with pytest.raises(RuntimeError, match="No model to save"):
             forecaster.save(tmp_path / "model")

@@ -81,9 +81,7 @@ class WeatherCacheRepository:
         rows = [dict(r._mapping) for r in result.mappings().all()]
         return pd.DataFrame(rows) if rows else pd.DataFrame()
 
-    async def get_by_city(
-        self, city: str, start: datetime, end: datetime
-    ) -> pd.DataFrame:
+    async def get_by_city(self, city: str, start: datetime, end: datetime) -> pd.DataFrame:
         """Get weather data for a specific city in datetime range.
 
         Args:
@@ -114,8 +112,6 @@ class WeatherCacheRepository:
         Returns:
             Number of rows deleted.
         """
-        stmt = delete(WeatherCacheModel).where(
-            WeatherCacheModel.fetched_at < older_than
-        )
+        stmt = delete(WeatherCacheModel).where(WeatherCacheModel.fetched_at < older_than)
         result = await self._session.execute(stmt)
         return result.rowcount  # type: ignore[attr-defined, no-any-return]

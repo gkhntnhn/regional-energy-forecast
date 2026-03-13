@@ -533,18 +533,14 @@ class TestTFTPrediction:
         mock_tft = MagicMock()
         mock_tft._tft_config.training.encoder_length = 24
         idx = pd.date_range("2024-01-01", periods=48, freq="h")
-        mock_tft.predict.return_value = pd.DataFrame(
-            {"consumption_mwh": [1000.0] * 48}, index=idx
-        )
+        mock_tft.predict.return_value = pd.DataFrame({"consumption_mwh": [1000.0] * 48}, index=idx)
         forecaster.set_models(tft_model=mock_tft)
 
         # Feature df (48 hours) + history (168 hours)
         df = _make_feature_df(n_rows=48)
         hist_idx = pd.date_range("2023-12-24", periods=168, freq="h")
         rng = np.random.default_rng(42)
-        history = pd.DataFrame(
-            {"consumption": 800.0 + rng.random(168) * 400}, index=hist_idx
-        )
+        history = pd.DataFrame({"consumption": 800.0 + rng.random(168) * 400}, index=hist_idx)
 
         result = forecaster.predict(df, history=history)
         assert "consumption_mwh" in result.columns

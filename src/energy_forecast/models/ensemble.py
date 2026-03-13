@@ -48,11 +48,14 @@ class EnsembleForecaster(BaseForecaster):
         # Merge with defaults
         merged_config = {
             "active_models": config.get("active_models", list(default_cfg.active_models)),
-            "weights": config.get("weights", {
-                "catboost": default_cfg.weights.catboost,
-                "prophet": default_cfg.weights.prophet,
-                "tft": default_cfg.weights.tft,
-            }),
+            "weights": config.get(
+                "weights",
+                {
+                    "catboost": default_cfg.weights.catboost,
+                    "prophet": default_cfg.weights.prophet,
+                    "tft": default_cfg.weights.tft,
+                },
+            ),
             "target_col": config.get("target_col", "consumption"),
             "prophet_regressors": config.get("prophet_regressors", []),
             "mode": config.get("mode", default_cfg.mode),
@@ -258,9 +261,7 @@ class EnsembleForecaster(BaseForecaster):
         if "prophet" in self._active_models and self._prophet_model is not None:
             prophet_df = self._to_prophet_format(X)
             prophet_forecast = self._prophet_model.predict(prophet_df)
-            predictions["prophet"] = np.asarray(
-                prophet_forecast["yhat"].values, dtype=np.float64
-            )
+            predictions["prophet"] = np.asarray(prophet_forecast["yhat"].values, dtype=np.float64)
 
         # TFT prediction (uses median quantile)
         if "tft" in self._active_models and self._tft_model is not None:
@@ -271,9 +272,7 @@ class EnsembleForecaster(BaseForecaster):
                 context = history.iloc[-enc_len:]
                 full_df = pd.concat([context, X])
                 full_df = full_df[~full_df.index.duplicated(keep="last")].sort_index()
-                tft_result = self._tft_model.predict(
-                    full_df, target_col=self._target_col
-                )
+                tft_result = self._tft_model.predict(full_df, target_col=self._target_col)
                 # Reindex to X's index (drop encoder context timestamps)
                 tft_aligned = tft_result.reindex(X.index)
                 predictions["tft"] = np.asarray(
@@ -282,9 +281,7 @@ class EnsembleForecaster(BaseForecaster):
             else:
                 # No history — direct prediction (needs sufficient rows)
                 tft_result = self._tft_model.predict(X, target_col=self._target_col)
-                predictions["tft"] = np.asarray(
-                    tft_result[PREDICTION_COL].values, dtype=np.float64
-                )
+                predictions["tft"] = np.asarray(tft_result[PREDICTION_COL].values, dtype=np.float64)
 
         return predictions
 
@@ -309,7 +306,9 @@ class EnsembleForecaster(BaseForecaster):
 
         # Context features from DatetimeIndex + categorical conversion
         build_context_features(
-            meta_features, X, list(self._context_features),
+            meta_features,
+            X,
+            list(self._context_features),
             cast_categorical_to_str=True,
         )
 
@@ -337,9 +336,7 @@ class EnsembleForecaster(BaseForecaster):
         else:
             normalized_weights = {m: w / weight_sum for m, w in active_weights.items()}
 
-        ensemble_pred = sum(
-            normalized_weights[m] * predictions[m] for m in predictions
-        )
+        ensemble_pred = sum(normalized_weights[m] * predictions[m] for m in predictions)
         return np.asarray(ensemble_pred, dtype=np.float64)
 
     def _to_prophet_format(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -403,10 +400,15 @@ class EnsembleForecaster(BaseForecaster):
         else:
             # Flat format from ensemble_trainer — all keys are model weights
             self._weights = {
-                k: v for k, v in config.items()
-                if k not in (
-                    "active_models", "target_col", "prophet_regressors",
-                    "mode", "context_features",
+                k: v
+                for k, v in config.items()
+                if k
+                not in (
+                    "active_models",
+                    "target_col",
+                    "prophet_regressors",
+                    "mode",
+                    "context_features",
                 )
             }
         self._active_models = config.get("active_models", self._active_models)
@@ -465,9 +467,7 @@ class EnsembleForecaster(BaseForecaster):
                     metadata = json.load(f)
                 expected_hash = metadata.get("model_hash")
                 if expected_hash:
-                    actual = "sha256:" + hashlib.sha256(
-                        prophet_path.read_bytes()
-                    ).hexdigest()
+                    actual = "sha256:" + hashlib.sha256(prophet_path.read_bytes()).hexdigest()
                     if actual != expected_hash:
                         msg = f"Prophet model integrity check failed: {prophet_path}"
                         raise RuntimeError(msg)

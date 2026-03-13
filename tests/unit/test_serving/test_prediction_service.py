@@ -266,9 +266,7 @@ class TestPredictionServiceRunPrediction:
         with pytest.raises(PredictionError, match="Prediction failed"):
             service.run_prediction(tmp_path / "input.xlsx")
 
-    def test_progress_callback_called(
-        self, service: PredictionService, tmp_path: Path
-    ) -> None:
+    def test_progress_callback_called(self, service: PredictionService, tmp_path: Path) -> None:
         """Progress callback receives status messages."""
         self._make_ready_service(service)
 
@@ -431,9 +429,7 @@ class TestPredictionServiceFetchHelpers:
 class TestPrepareOutput:
     """Tests for _prepare_output method."""
 
-    def test_output_filters_to_t_plus_1(
-        self, service: PredictionService
-    ) -> None:
+    def test_output_filters_to_t_plus_1(self, service: PredictionService) -> None:
         """Output should only contain T+1 day rows."""
         # last_data_point = T-1 23:00 (Dec 30 23:00)
         # T+1 starts at Jan 1 00:00

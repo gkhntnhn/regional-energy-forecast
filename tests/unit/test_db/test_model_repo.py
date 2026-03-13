@@ -99,15 +99,11 @@ class TestModelRunQueries:
 
         r1 = repo.create_run("prophet")
         sync_session.commit()
-        repo.complete_run(
-            r1.id, metrics={"test_mape": 4.0}, model_path="a"
-        )
+        repo.complete_run(r1.id, metrics={"test_mape": 4.0}, model_path="a")
 
         r2 = repo.create_run("prophet")
         sync_session.commit()
-        repo.complete_run(
-            r2.id, metrics={"test_mape": 3.2}, model_path="b"
-        )
+        repo.complete_run(r2.id, metrics={"test_mape": 3.2}, model_path="b")
         sync_session.commit()
 
         best = repo.get_best_by_type("prophet")
@@ -130,9 +126,7 @@ class TestPromoteWorkflow:
         repo = ModelRunRepository(sync_session)
         run = repo.create_run("catboost")
         sync_session.commit()
-        repo.complete_run(
-            run.id, metrics={"test_mape": 2.5}, model_path="models/cb"
-        )
+        repo.complete_run(run.id, metrics={"test_mape": 2.5}, model_path="models/cb")
         sync_session.commit()
 
         repo.promote(run.id)

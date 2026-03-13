@@ -93,7 +93,11 @@ def print_summary(
     logger.info("")
     logger.info(
         "{:<20} {:<12} {:<12} {:<10} {:<12}",
-        "Model", "Val MAPE", "Test MAPE", "Weight", "Improvement"
+        "Model",
+        "Val MAPE",
+        "Test MAPE",
+        "Weight",
+        "Improvement",
     )
     logger.info("-" * 66)
 
@@ -101,8 +105,11 @@ def print_summary(
         improvement = row.get("Improvement", "")
         logger.info(
             "{:<20} {:>8.2f}%    {:>8.2f}%    {:>6.3f}    {:<12}",
-            row['Model'], row['Val MAPE (%)'], row['Test MAPE (%)'],
-            row['Weight'], improvement
+            row["Model"],
+            row["Val MAPE (%)"],
+            row["Test MAPE (%)"],
+            row["Weight"],
+            improvement,
         )
 
     logger.info("-" * 66)

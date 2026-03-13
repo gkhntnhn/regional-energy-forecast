@@ -61,9 +61,7 @@ class EmailService:
         self._enabled = bool(config.smtp_server and config.username)
 
         if not self._enabled:
-            logger.warning(
-                "Email service disabled: SMTP server or username not configured"
-            )
+            logger.warning("Email service disabled: SMTP server or username not configured")
 
     @property
     def is_enabled(self) -> bool:
@@ -194,13 +192,9 @@ class EmailService:
         last_error: str | None = None
         for attempt in range(1, max_retries + 1):
             try:
-                msg = self._create_message(
-                    to_email, attachment_path, job_id, created_at
-                )
+                msg = self._create_message(to_email, attachment_path, job_id, created_at)
                 self._send_message(msg, to_email)
-                logger.info(
-                    "Email sent to {} (attempt {})", to_email, attempt
-                )
+                logger.info("Email sent to {} (attempt {})", to_email, attempt)
                 return True, attempt, None
             except Exception as e:
                 last_error = str(e)
@@ -275,14 +269,9 @@ Energy Forecast Sistemi"""
 
         try:
             msg = MIMEMultipart()
-            msg["From"] = (
-                f"{self._config.sender_name} <{self._config.sender_email}>"
-            )
+            msg["From"] = f"{self._config.sender_name} <{self._config.sender_email}>"
             msg["To"] = admin_email
-            msg["Subject"] = (
-                f"[Energy Forecast] Drift Alert: "
-                f"{alert.alert_type} ({alert.severity})"
-            )
+            msg["Subject"] = f"[Energy Forecast] Drift Alert: {alert.alert_type} ({alert.severity})"
 
             action_map = {
                 "mape_threshold": "Model retrain degerlendir",

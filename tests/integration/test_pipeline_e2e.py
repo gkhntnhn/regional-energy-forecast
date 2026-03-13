@@ -91,9 +91,7 @@ class TestPipelineE2E:
         pipeline = FeaturePipeline(settings)
         result = pipeline.run(full_df)
         # Raw input has ~34 columns; output should be much larger
-        assert result.shape[1] > 100, (
-            f"Expected 100+ features, got {result.shape[1]}"
-        )
+        assert result.shape[1] > 100, f"Expected 100+ features, got {result.shape[1]}"
 
     def test_no_raw_epias_in_output(
         self,
@@ -122,12 +120,15 @@ class TestPipelineE2E:
         result = pipeline.run(full_df)
 
         # Only check consumption and EPIAS/generation lags (not weather/solar)
-        leakage_prefixes = ("consumption_", "Real_Time_", "DAM_", "Bilateral_",
-                            "Load_Forecast_", "gen_")
-        lag_cols = [
-            c for c in result.columns
-            if "_lag_" in c and c.startswith(leakage_prefixes)
-        ]
+        leakage_prefixes = (
+            "consumption_",
+            "Real_Time_",
+            "DAM_",
+            "Bilateral_",
+            "Load_Forecast_",
+            "gen_",
+        )
+        lag_cols = [c for c in result.columns if "_lag_" in c and c.startswith(leakage_prefixes)]
         assert len(lag_cols) > 0, "No consumption/EPIAS lag features found"
         for col in lag_cols:
             period_str = col.rsplit("_", maxsplit=1)[-1]

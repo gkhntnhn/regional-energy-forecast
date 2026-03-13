@@ -73,7 +73,10 @@ def build_oof_dataframe(
             row_df[f"pred_{model_name}"] = pred_arr[:min_len]
 
         build_context_features(
-            row_df, val_slice, context_features, max_len=min_len,
+            row_df,
+            val_slice,
+            context_features,
+            max_len=min_len,
         )
 
         row_df["y_true"] = y_true[:min_len]
@@ -116,7 +119,9 @@ def train_meta_learner(
 
     logger.info(
         "Training meta-learner: {} features, {} train / {} val rows",
-        len(feature_cols), len(x_train), len(x_val),
+        len(feature_cols),
+        len(x_train),
+        len(x_val),
     )
 
     meta_model = CatBoostRegressor(
@@ -137,9 +142,7 @@ def train_meta_learner(
     meta_val_mape = float(mape_fn(y_val.to_numpy(), val_pred))
 
     # Log feature importance
-    importances = dict(
-        zip(feature_cols, meta_model.get_feature_importance(), strict=True)
-    )
+    importances = dict(zip(feature_cols, meta_model.get_feature_importance(), strict=True))
     sorted_imp = sorted(importances.items(), key=lambda x: x[1], reverse=True)
     logger.info("Meta-learner val MAPE: {:.3f}%", meta_val_mape)
     logger.info("Meta-learner feature importance (top 5):")
@@ -200,8 +203,11 @@ def compute_stacking_test_mape(
             meta_df[f"pred_{model_name}"] = pred_arr[:min_len]
 
         build_context_features(
-            meta_df, test_slice, context_features,
-            max_len=min_len, cast_categorical_to_str=True,
+            meta_df,
+            test_slice,
+            context_features,
+            max_len=min_len,
+            cast_categorical_to_str=True,
         )
 
         ensemble_pred = meta_model.predict(meta_df)

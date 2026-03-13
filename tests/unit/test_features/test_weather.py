@@ -267,9 +267,7 @@ class TestCddPeakInteraction:
         assert "cdd_x_is_peak" in result.columns
         assert (result["cdd_x_is_peak"] == 0.0).all()
 
-    def test_cdd_x_is_peak_missing_is_peak(
-        self, engineer: WeatherFeatureEngineer
-    ) -> None:
+    def test_cdd_x_is_peak_missing_is_peak(self, engineer: WeatherFeatureEngineer) -> None:
         """Without is_peak column, cdd_x_is_peak is not created (graceful skip)."""
         idx = pd.date_range("2024-07-01", periods=168, freq="h")
         df = pd.DataFrame(

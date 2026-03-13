@@ -15,7 +15,6 @@ import pytest
 
 from energy_forecast.data.epias_client import EpiasClient
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -43,11 +42,14 @@ def sample_market_df() -> pd.DataFrame:
     """Sample market DataFrame with standard column names."""
     idx = pd.date_range("2024-01-01", periods=24, freq="h")
     rng = np.random.default_rng(42)
-    return pd.DataFrame({
-        "Real_Time_Consumption": rng.uniform(500, 1500, 24),
-        "DAM_Purchase": rng.uniform(400, 1200, 24),
-        "Load_Forecast": rng.uniform(600, 1600, 24),
-    }, index=idx).rename_axis("datetime")
+    return pd.DataFrame(
+        {
+            "Real_Time_Consumption": rng.uniform(500, 1500, 24),
+            "DAM_Purchase": rng.uniform(400, 1200, 24),
+            "Load_Forecast": rng.uniform(600, 1600, 24),
+        },
+        index=idx,
+    ).rename_axis("datetime")
 
 
 @pytest.fixture()
@@ -55,11 +57,14 @@ def sample_generation_df() -> pd.DataFrame:
     """Sample generation DataFrame with gen_ prefixed columns."""
     idx = pd.date_range("2024-01-01", periods=24, freq="h")
     rng = np.random.default_rng(42)
-    return pd.DataFrame({
-        "gen_natural_gas": rng.uniform(1000, 5000, 24),
-        "gen_wind": rng.uniform(100, 1000, 24),
-        "gen_total": rng.uniform(5000, 15000, 24),
-    }, index=idx).rename_axis("datetime")
+    return pd.DataFrame(
+        {
+            "gen_natural_gas": rng.uniform(1000, 5000, 24),
+            "gen_wind": rng.uniform(100, 1000, 24),
+            "gen_total": rng.uniform(5000, 15000, 24),
+        },
+        index=idx,
+    ).rename_axis("datetime")
 
 
 def _make_client(config: MagicMock) -> EpiasClient:
@@ -99,9 +104,12 @@ class TestDfToMarketRows:
     def test_nan_handling(self) -> None:
         """NaN values are converted to None."""
         idx = pd.date_range("2024-01-01", periods=2, freq="h")
-        df = pd.DataFrame({
-            "Real_Time_Consumption": [100.0, float("nan")],
-        }, index=idx).rename_axis("datetime")
+        df = pd.DataFrame(
+            {
+                "Real_Time_Consumption": [100.0, float("nan")],
+            },
+            index=idx,
+        ).rename_axis("datetime")
 
         rows = EpiasClient._df_to_market_rows(df)
         assert rows[0]["rtc"] == 100.0
@@ -147,7 +155,8 @@ class TestLoadCacheDbFirst:
         mock_dao.get_epias_market_year.assert_called_once_with(2024)
 
     def test_db_empty_falls_back_to_parquet(
-        self, epias_config: MagicMock,
+        self,
+        epias_config: MagicMock,
         sample_market_df: pd.DataFrame,
     ) -> None:
         """When DB is empty, falls back to parquet file."""
@@ -164,7 +173,8 @@ class TestLoadCacheDbFirst:
         assert len(result) == 24
 
     def test_no_db_session_uses_parquet(
-        self, epias_config: MagicMock,
+        self,
+        epias_config: MagicMock,
         sample_market_df: pd.DataFrame,
     ) -> None:
         """Without db_session, only parquet is used."""
@@ -178,7 +188,8 @@ class TestLoadCacheDbFirst:
         assert len(result) == 24
 
     def test_no_db_no_parquet_returns_none(
-        self, epias_config: MagicMock,
+        self,
+        epias_config: MagicMock,
     ) -> None:
         """Without DB or parquet, returns None."""
         client = _make_client(epias_config)
@@ -194,7 +205,8 @@ class TestSaveCacheDualWrite:
     """Test save_cache dual-write (DB + parquet)."""
 
     def test_dual_write_market(
-        self, epias_config: MagicMock,
+        self,
+        epias_config: MagicMock,
         sample_market_df: pd.DataFrame,
     ) -> None:
         """save_cache writes to both DB and parquet for market data."""
@@ -208,7 +220,8 @@ class TestSaveCacheDualWrite:
         assert parquet_path.exists()
 
     def test_dual_write_generation(
-        self, epias_config: MagicMock,
+        self,
+        epias_config: MagicMock,
         sample_generation_df: pd.DataFrame,
     ) -> None:
         """save_cache writes generation data to DB with correct method."""
@@ -221,7 +234,8 @@ class TestSaveCacheDualWrite:
         mock_dao.upsert_epias_generation.assert_called_once()
 
     def test_db_failure_still_writes_parquet(
-        self, epias_config: MagicMock,
+        self,
+        epias_config: MagicMock,
         sample_market_df: pd.DataFrame,
     ) -> None:
         """DB write failure is non-fatal; parquet is still written."""
@@ -256,7 +270,8 @@ class TestIsGenerationPattern:
         )
 
     def test_market_pattern_is_not_generation(
-        self, epias_config: MagicMock,
+        self,
+        epias_config: MagicMock,
     ) -> None:
         """Market pattern returns False."""
         client = _make_client(epias_config)

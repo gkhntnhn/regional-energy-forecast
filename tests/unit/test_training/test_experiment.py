@@ -85,13 +85,9 @@ class TestEnabledTracker:
         tracker._mlflow = mock_mlflow
         model = MagicMock()
         tracker.log_model(model, artifact_path="catboost")
-        mock_mlflow.catboost.log_model.assert_called_once_with(
-            model, artifact_path="catboost"
-        )
+        mock_mlflow.catboost.log_model.assert_called_once_with(model, artifact_path="catboost")
 
-    def test_log_feature_importance_when_enabled(
-        self, mock_mlflow: MagicMock
-    ) -> None:
+    def test_log_feature_importance_when_enabled(self, mock_mlflow: MagicMock) -> None:
         tracker = ExperimentTracker(enabled=False)
         tracker._enabled = True
         tracker._mlflow = mock_mlflow
@@ -99,15 +95,11 @@ class TestEnabledTracker:
         tracker.log_feature_importance(importance, top_n=2)
         assert mock_mlflow.log_metric.call_count == 2
 
-    def test_log_split_metrics_when_enabled(
-        self, mock_mlflow: MagicMock
-    ) -> None:
+    def test_log_split_metrics_when_enabled(self, mock_mlflow: MagicMock) -> None:
         tracker = ExperimentTracker(enabled=False)
         tracker._enabled = True
         tracker._mlflow = mock_mlflow
-        m = MetricsResult(
-            mape=5.0, mae=10.0, rmse=12.0, r2=0.9, smape=5.0, wmape=5.0, mbe=1.0
-        )
+        m = MetricsResult(mape=5.0, mae=10.0, rmse=12.0, r2=0.9, smape=5.0, wmape=5.0, mbe=1.0)
         tracker.log_split_metrics(0, m, m, m)
         mock_mlflow.log_metrics.assert_called_once()
         logged = mock_mlflow.log_metrics.call_args[0][0]
@@ -126,9 +118,7 @@ class TestEnabledTracker:
         mock_dump.assert_called_once()
         mock_mlflow.log_artifact.assert_called_once()
 
-    def test_log_tft_model_when_enabled(
-        self, mock_mlflow: MagicMock
-    ) -> None:
+    def test_log_tft_model_when_enabled(self, mock_mlflow: MagicMock) -> None:
         tracker = ExperimentTracker(enabled=False)
         tracker._enabled = True
         tracker._mlflow = mock_mlflow
@@ -137,9 +127,7 @@ class TestEnabledTracker:
         model.save.assert_called_once()
         mock_mlflow.log_artifacts.assert_called_once()
 
-    def test_log_ensemble_weights_when_enabled(
-        self, mock_mlflow: MagicMock
-    ) -> None:
+    def test_log_ensemble_weights_when_enabled(self, mock_mlflow: MagicMock) -> None:
         tracker = ExperimentTracker(enabled=False)
         tracker._enabled = True
         tracker._mlflow = mock_mlflow
