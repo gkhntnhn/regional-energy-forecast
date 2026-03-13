@@ -119,7 +119,7 @@ class GoogleDriveStorage:
     ) -> dict[str, str]:
         """Upload forecast artifacts to GDrive.
 
-        Structure: ``forecasts/YYYY/MM/DD/HH-MM_<job_id>/``
+        Structure: ``forecasts/YYYY/MM/DD/HH-MM-SS-fff_<job_id>/``
 
         Args:
             job_id: Job identifier.
@@ -130,7 +130,8 @@ class GoogleDriveStorage:
             Mapping of filename -> GDrive file ID.
         """
         ts = created_at or datetime.now(tz=TZ_ISTANBUL)
-        leaf = f"{ts.strftime('%H-%M')}_{job_id}"
+        ms = f"{ts.microsecond // 1000:03d}"
+        leaf = f"{ts.strftime('%H-%M-%S')}-{ms}_{job_id}"
         path_parts = [
             "forecasts",
             ts.strftime("%Y"),

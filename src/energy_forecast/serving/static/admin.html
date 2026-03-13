@@ -835,7 +835,7 @@ async function loadJobHistory(page) {
         if (!data.jobs.length) { el.innerHTML = emptyHTML('Henuz is kaydi yok'); document.getElementById('job-pagination').innerHTML = ''; return; }
         el.innerHTML = `<table class="data-table"><thead><tr><th>ID</th><th>E-posta</th><th>Durum</th><th>Ilerleme</th><th>Olusturulma</th><th>Tamamlanma</th></tr></thead><tbody>${data.jobs.map(j => {
             const badge = j.status === 'completed' ? 'badge-ok' : j.status === 'failed' ? 'badge-err' : j.status === 'archived' ? 'badge-info' : 'badge-warn';
-            return `<tr><td class="mono">${j.id}</td><td>${j.email}</td><td><span class="badge-status ${badge}">${j.status}</span></td><td style="font-size:.72rem">${j.progress || '—'}</td><td class="mono">${j.created_at.slice(0,16).replace('T',' ')}</td><td class="mono">${j.completed_at ? j.completed_at.slice(0,16).replace('T',' ') : '—'}</td></tr>`;
+            return `<tr><td class="mono">${j.id}</td><td>${j.email}</td><td><span class="badge-status ${badge}">${j.status}</span></td><td style="font-size:.72rem">${j.progress || '—'}</td><td class="mono" style="font-size:.7rem">${j.created_at.slice(0,23).replace('T',' ')}</td><td class="mono" style="font-size:.7rem">${j.completed_at ? j.completed_at.slice(0,23).replace('T',' ') : '—'}</td></tr>`;
         }).join('')}</tbody></table>`;
 
         // Pagination

@@ -694,7 +694,7 @@ class AnalyticsRepository:
         offset = (page - 1) * size
         stmt = (
             select(JobModel)
-            .order_by(JobModel.created_at.desc())
+            .order_by(JobModel.created_at.desc(), JobModel.id.desc())
             .offset(offset)
             .limit(size)
         )

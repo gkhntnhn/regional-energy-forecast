@@ -379,12 +379,29 @@ async def predict(
 
     if use_db:
         session_factory = request.app.state.session_factory
-        async with session_factory() as session:
-            job = await job_manager.create_job_db(
-                session, email=str(email), excel_path=excel_path, file_stem=file_stem
+
+        # Lock ensures create+enqueue is atomic — no interleaving under concurrency
+        async with job_manager._enqueue_lock:
+            async with session_factory() as session:
+                job = await job_manager.create_job_db(
+                    session, email=str(email), excel_path=excel_path, file_stem=file_stem
+                )
+
+            position = job_manager.enqueue(
+                job_id=job.id,
+                excel_path=str(excel_path),
+                email=str(email),
+                file_stem=file_stem,
+                created_at=job.created_at,
+                session_factory=session_factory,
+                prediction_service=prediction_service,
+                file_service=file_service,
+                email_service=email_service,
+                is_db_mode=True,
+                job_ref=None,
             )
 
-        # Audit log (non-fatal)
+        # Audit log (non-fatal, outside lock)
         try:
             from energy_forecast.db.repositories.audit_repo import AuditRepository
 
@@ -405,20 +422,6 @@ async def predict(
         except Exception as e:
             logger.warning("Audit log failed: {}", e)
 
-        position = job_manager.enqueue(
-            job_id=job.id,
-            excel_path=str(excel_path),
-            email=str(email),
-            file_stem=file_stem,
-            created_at=job.created_at,
-            session_factory=session_factory,
-            prediction_service=prediction_service,
-            file_service=file_service,
-            email_service=email_service,
-            is_db_mode=True,
-            job_ref=None,
-        )
-
         msg = "Job queued successfully. Results will be sent to your email."
         if position > 1:
             msg = f"Job queued at position {position}. Results will be sent to your email."
@@ -431,23 +434,24 @@ async def predict(
         )
 
     # In-memory fallback
-    job_mem = job_manager.create_job_in_memory(
-        email=str(email), excel_path=excel_path, file_stem=file_stem
-    )
+    async with job_manager._enqueue_lock:
+        job_mem = job_manager.create_job_in_memory(
+            email=str(email), excel_path=excel_path, file_stem=file_stem
+        )
 
-    position = job_manager.enqueue(
-        job_id=job_mem.id,
-        excel_path=str(excel_path),
-        email=str(email),
-        file_stem=file_stem,
-        created_at=job_mem.created_at,
-        session_factory=None,
-        prediction_service=prediction_service,
-        file_service=file_service,
-        email_service=email_service,
-        is_db_mode=False,
-        job_ref=job_mem,
-    )
+        position = job_manager.enqueue(
+            job_id=job_mem.id,
+            excel_path=str(excel_path),
+            email=str(email),
+            file_stem=file_stem,
+            created_at=job_mem.created_at,
+            session_factory=None,
+            prediction_service=prediction_service,
+            file_service=file_service,
+            email_service=email_service,
+            is_db_mode=False,
+            job_ref=job_mem,
+        )
 
     msg = "Job queued successfully. Results will be sent to your email."
     if position > 1:
@@ -470,16 +474,27 @@ async def get_active_status(request: Request) -> dict[str, object]:
     """
     job_manager: JobManager = request.app.state.job_manager
     qsize = job_manager.queue_size
+    max_q = job_manager.max_queue_size
 
     use_db: bool = getattr(request.app.state, "use_db", False)
     if use_db:
         session_factory = request.app.state.session_factory
         async with session_factory() as session:
             active = await job_manager.get_active_job_db(session)
-        return {"busy": active is not None, "queue_size": qsize}
+        return {
+            "busy": active is not None,
+            "queue_size": qsize,
+            "max_queue_size": max_q,
+            "queue_full": qsize >= max_q,
+        }
 
     active_mem = job_manager.get_active_job_in_memory()
-    return {"busy": active_mem is not None, "queue_size": qsize}
+    return {
+        "busy": active_mem is not None,
+        "queue_size": qsize,
+        "max_queue_size": max_q,
+        "queue_full": qsize >= max_q,
+    }
 
 
 @app.get("/status/{job_id}", response_model=JobStatusResponse)

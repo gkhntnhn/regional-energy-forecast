@@ -304,7 +304,7 @@ def _discover_files(full: bool) -> dict[str, list[Path]]:
     if full:
         market_paths = sorted(Path("data/external/epias").glob("epias_market_*.parquet"))
         gen_paths = sorted(Path("data/external/epias").glob("epias_generation_*.parquet"))
-        holiday_path = Path("data/static/turkish_holidays.parquet")
+        holiday_path = Path("data/external/holidays/turkish_holidays.parquet")
         profile_paths = sorted(Path("data/external/profile").glob("profile_coef_*.parquet"))
     else:
         # Sample mode: data/seed/ directory (for quick smoke tests)
@@ -313,6 +313,12 @@ def _discover_files(full: bool) -> dict[str, list[Path]]:
         gen_paths = sorted(seed_dir.glob("epias_generation_*.parquet"))
         holiday_path = seed_dir / "turkish_holidays.parquet"
         profile_paths = sorted(seed_dir.glob("profile_coef_*.parquet"))
+
+    # Fallback: try data/static/ if external/holidays/ not found
+    if not holiday_path.exists():
+        fallback = Path("data/static/turkish_holidays.parquet")
+        if fallback.exists():
+            holiday_path = fallback
 
     return {
         "market": market_paths,
@@ -382,11 +388,7 @@ def main() -> None:
         else:
             logger.warning("profile_coefficients: no parquet files found")
 
-    logger.info(
-        "Seed complete. Total rows upserted: {}. "
-        "Note: weather_cache NOT seeded (Faz 2).",
-        total_rows,
-    )
+    logger.info("Seed complete (static data). Total rows upserted: {}", total_rows)
 
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-.PHONY: install test lint format serve train-catboost train-prophet train-tft train-ensemble prepare-data clean generate-holidays backfill-epias db-up db-down db-migrate db-revision db-downgrade fetch-weather-actuals db-backup promote-model cleanup-old-data cleanup-dry-run seed-db seed-db-full seed-weather export-weather mlflow-up mlflow-logs help
+.PHONY: install test lint format serve train-catboost train-prophet train-tft train-ensemble prepare-data clean generate-holidays backfill-epias db-up db-down db-migrate db-revision db-downgrade fetch-weather-actuals db-backup promote-model cleanup-old-data cleanup-dry-run seed-db seed-db-full seed-weather seed-all export-weather db-reset mlflow-up mlflow-logs help
 
 install: ## Install dependencies
 	uv sync --all-extras
@@ -77,8 +77,20 @@ seed-db-full: ## Seed DB with all parquet data (full import)
 seed-weather: ## Seed weather_cache (parquet-first, API fallback)
 	uv run python scripts/seed_weather.py
 
+seed-all: ## Seed everything: static data + weather cache
+	uv run python scripts/seed_db.py --full
+	uv run python scripts/seed_weather.py
+
 export-weather: ## Export weather_cache DB to yearly parquet files
 	uv run python scripts/export_weather.py
+
+db-reset: ## Full DB reset: destroy volumes, recreate, migrate, seed everything
+	docker compose down -v
+	docker compose up -d --wait
+	uv run alembic upgrade head
+	uv run python scripts/seed_db.py --full
+	uv run python scripts/seed_weather.py
+	@echo "DB reset complete: volumes recreated + migrated + seeded (static + weather)"
 
 mlflow-up: ## Start MLflow + DB (Docker Compose)
 	docker compose up -d

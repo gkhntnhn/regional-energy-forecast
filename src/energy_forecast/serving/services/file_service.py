@@ -78,8 +78,9 @@ class FileService:
                 f"File type '{ext}' not allowed. Allowed: {self._config.allowed_extensions}"
             )
 
-        # Generate traceable filename: DD-MM-YYYY_HH-MM-SS_Input.xlsx
-        file_stem = datetime.now(tz=TZ_ISTANBUL).strftime("%d-%m-%Y_%H-%M-%S")
+        # Generate traceable filename: DD-MM-YYYY_HH-MM-SS-fff_Input.xlsx
+        now = datetime.now(tz=TZ_ISTANBUL)
+        file_stem = now.strftime("%d-%m-%Y_%H-%M-%S") + f"-{now.microsecond // 1000:03d}"
         safe_filename = f"{file_stem}_Input{ext}"
         save_path = self._config.upload_dir / safe_filename
 

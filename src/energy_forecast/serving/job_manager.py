@@ -75,6 +75,7 @@ class JobManager:
             maxsize=max_queue_size
         )
         self._max_queue_size = max_queue_size
+        self._enqueue_lock = asyncio.Lock()
         self._worker_task: asyncio.Task[None] | None = None
 
     # ------------------------------------------------------------------
@@ -163,6 +164,11 @@ class JobManager:
     def queue_size(self) -> int:
         """Current number of jobs waiting in the queue."""
         return self._queue.qsize()
+
+    @property
+    def max_queue_size(self) -> int:
+        """Maximum queue capacity."""
+        return self._max_queue_size
 
     # ------------------------------------------------------------------
     # In-memory helpers (dev mode fallback)
@@ -259,6 +265,7 @@ class JobManager:
             "file_stem": file_stem,
             "status": status,
             "email_status": "pending",
+            "created_at": datetime.now(tz=TZ_ISTANBUL),
         }
         job = await repo.create(job_data)
         await session.commit()
