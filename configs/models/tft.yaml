@@ -72,7 +72,7 @@ covariates:
     - consumption_lag_720         # long-term baseline
     # Consumption derived (momentum, ratios, profile — 22.7% total)
     - consumption_week_ratio      # 8.02%
-    - consumption_hourly_profile  # 5.59%
+    # - consumption_hourly_profile  # 5.59%
     - consumption_momentum_168    # 2.46%
     - consumption_pct_change_168  # 1.96%
     - consumption_trend_ratio_168_336  # 0.80%

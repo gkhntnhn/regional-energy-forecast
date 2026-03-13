@@ -237,6 +237,22 @@ class PredictionService:
             weather_df = self._fetch_weather_data(extended_df)
             merged_df = merged_df.join(weather_df, how="left")
 
+            # Fill missing weather values (forecast rows may have gaps)
+            # Matches prepare_dataset.py logic — only weather columns, never consumption/EPIAS
+            weather_prefixes = (
+                "temperature", "humidity", "dew_point", "apparent_temperature",
+                "precipitation", "snow_depth", "surface_pressure",
+                "wind_speed", "wind_direction", "shortwave_radiation",
+            )
+            weather_cols = [c for c in merged_df.columns if c.startswith(weather_prefixes)]
+            if weather_cols:
+                merged_df[weather_cols] = merged_df[weather_cols].ffill()
+            cat_weather_cols = [
+                c for c in merged_df.columns if c.startswith(("weather_code", "weather_group"))
+            ]
+            if cat_weather_cols:
+                merged_df[cat_weather_cols] = merged_df[cat_weather_cols].ffill()
+
             # Step 5: Run feature pipeline (with DB holidays if available)
             update_progress("Running feature engineering pipeline...")
             try:

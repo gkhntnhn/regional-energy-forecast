@@ -291,7 +291,7 @@ class OpenMeteoClient:
             df = df.drop(columns=["city", "source", "fetched_at"], errors="ignore")
             idx = pd.DatetimeIndex(df.index)
             if idx.tz is not None:
-                df.index = idx.tz_localize(None)
+                df.index = idx.tz_convert(self.timezone).tz_localize(None)
             df.index.name = "datetime"
             city_dfs.append((city, df))
         return city_dfs

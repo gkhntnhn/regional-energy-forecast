@@ -238,11 +238,18 @@ class EnsembleForecaster(BaseForecaster):
         # CatBoost prediction
         if "catboost" in self._active_models and self._catboost_model is not None:
             features = X.drop(columns=[self._target_col], errors="ignore").copy()
+            # Reorder columns to match training order and resolve cat features by name
+            model_features = self._catboost_model.feature_names_
+            if model_features:
+                # Keep only features the model knows, in training order
+                common = [f for f in model_features if f in features.columns]
+                features = features[common]
             cat_indices = self._catboost_model.get_cat_feature_indices()
-            if cat_indices:
-                cat_cols = [features.columns[i] for i in cat_indices if i < len(features.columns)]
-                for col in cat_cols:
-                    features[col] = features[col].fillna("missing").astype(str)
+            if cat_indices and model_features:
+                cat_names = {model_features[i] for i in cat_indices}
+                for col in features.columns:
+                    if col in cat_names:
+                        features[col] = features[col].fillna("missing").astype(str)
             predictions["catboost"] = np.asarray(
                 self._catboost_model.predict(features), dtype=np.float64
             )

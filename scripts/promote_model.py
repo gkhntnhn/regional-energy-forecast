@@ -16,9 +16,12 @@ import shutil
 import sys
 from pathlib import Path
 
+from dotenv import load_dotenv
 from loguru import logger
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+load_dotenv(_PROJECT_ROOT / ".env")
 
 
 def parse_args() -> argparse.Namespace:
@@ -82,8 +85,14 @@ def main() -> None:
 
         src = Path(run.model_path)
         if not src.exists():
-            logger.error("Source path does not exist: {}", src)
-            sys.exit(1)
+            # Fallback: training now saves flat (models/{type}/) without timestamp subdirs
+            fallback = _PROJECT_ROOT / "models" / args.model
+            if fallback.exists() and any(fallback.iterdir()):
+                logger.warning("DB path {} missing, using fallback: {}", src, fallback)
+                src = fallback
+            else:
+                logger.error("Source path does not exist: {}", src)
+                sys.exit(1)
 
         dst = _PROJECT_ROOT / "final_models" / args.model
         dst.mkdir(parents=True, exist_ok=True)
