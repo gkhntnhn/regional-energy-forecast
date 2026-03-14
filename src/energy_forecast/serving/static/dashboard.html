@@ -108,9 +108,72 @@
             font-size: 0.9rem;
             color: var(--text-muted);
         }
+        /* ── Auth gate ───────────────────────────── */
+        .auth-gate {
+            position: fixed;
+            inset: 0;
+            background: var(--light-bg);
+            z-index: 999;
+            display: grid;
+            place-items: center;
+        }
+        .auth-gate.hidden { display: none; }
+        .auth-box {
+            background: var(--card-bg);
+            border: 1px solid #dee2e6;
+            border-radius: 16px;
+            padding: 2.5rem;
+            width: min(400px, 90vw);
+            text-align: center;
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
+        }
+        .auth-box h2 {
+            font-size: 1.2rem;
+            font-weight: 700;
+            margin-bottom: .5rem;
+            color: var(--primary);
+        }
+        .auth-box p { color: var(--text-muted); font-size: .85rem; margin-bottom: 1.5rem; }
+        .auth-input {
+            width: 100%;
+            padding: .65rem 1rem;
+            background: var(--light-bg);
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            color: var(--text-dark);
+            font-family: 'Inter', sans-serif;
+            font-size: .85rem;
+            margin-bottom: 1rem;
+            outline: none;
+            transition: border-color .2s;
+        }
+        .auth-input:focus { border-color: var(--primary); }
+        .auth-btn {
+            width: 100%;
+            padding: .65rem;
+            background: linear-gradient(135deg, var(--primary), var(--primary-light));
+            border: none;
+            border-radius: 8px;
+            color: #fff;
+            font-weight: 600;
+            font-size: .9rem;
+            cursor: pointer;
+            transition: opacity .2s;
+        }
+        .auth-btn:hover { opacity: .9; }
     </style>
 </head>
 <body>
+    <!-- Auth Gate -->
+    <div id="authGate" class="auth-gate">
+        <div class="auth-box">
+            <h2><i class="fas fa-lock me-2"></i>API Anahtari Gerekli</h2>
+            <p>Tahmin platformuna erismek icin API anahtarinizi girin.</p>
+            <input id="authInput" type="password" class="auth-input" placeholder="API Key">
+            <button onclick="doAuth()" class="auth-btn">Giris Yap</button>
+        </div>
+    </div>
+
     <div class="container">
         <!-- Header -->
         <div class="row mb-4">
@@ -206,10 +269,37 @@
 
     <script>
         // ── Config ──────────────────────────────────────────
-        const API_KEY = 'local-dev-secret-key';
+        let API_TOKEN = localStorage.getItem('dashboard_token') || '';
         const POLL_INTERVAL_MS = 2000;
         const BUSY_CHECK_MS = 5000;
         let busyTimer = null;
+
+        // ── Auth ──────────────────────────────────────────
+        function checkAuth() {
+            const gate = document.getElementById('authGate');
+            if (API_TOKEN) { gate.classList.add('hidden'); checkBusyState(); }
+            else gate.classList.remove('hidden');
+        }
+        function doAuth() {
+            const v = document.getElementById('authInput').value.trim();
+            if (!v) return;
+            API_TOKEN = v;
+            localStorage.setItem('dashboard_token', v);
+            checkAuth();
+        }
+        function doLogout() {
+            API_TOKEN = '';
+            localStorage.removeItem('dashboard_token');
+            checkAuth();
+        }
+        document.getElementById('authInput').addEventListener('keydown', e => { if (e.key === 'Enter') doAuth(); });
+
+        // ── XSS helper ────────────────────────────────────
+        function escapeHtml(str) {
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        }
 
         // ── Queue-aware state check ───────────────────────
         async function checkBusyState() {
@@ -253,7 +343,7 @@
             }
         }
 
-        document.addEventListener('DOMContentLoaded', checkBusyState);
+        document.addEventListener('DOMContentLoaded', checkAuth);
 
         // ── DOM refs ────────────────────────────────────────
         const dropZone = document.getElementById('dropZone');
@@ -332,7 +422,7 @@
                 } else if (job.status === 'failed') {
                     html += `<div class="alert alert-danger py-2 mb-2">
                         <i class="fas fa-times-circle me-2"></i>
-                        <strong>${shortId}</strong> — Hata: ${job.error || 'Bilinmeyen hata'}
+                        <strong>${shortId}</strong> — Hata: ${escapeHtml(job.error || 'Bilinmeyen hata')}
                     </div>`;
                 } else {
                     const prog = resolveProgress(job.progress);
@@ -388,7 +478,7 @@
 
         // ── API calls ───────────────────────────────────────
         function authHeaders() {
-            return { 'Authorization': 'Bearer ' + API_KEY };
+            return { 'Authorization': 'Bearer ' + API_TOKEN };
         }
 
         async function submitPrediction(formData) {
@@ -397,6 +487,11 @@
                 headers: authHeaders(),
                 body: formData
             });
+
+            if (resp.status === 401) {
+                doLogout();
+                throw new Error('Yetkisiz erisim. Lutfen gecerli bir API anahtari girin.');
+            }
 
             if (resp.status === 429) {
                 const data = await resp.json();
@@ -449,7 +544,7 @@
                 // Show inline error
                 activeJobsList.innerHTML =
                     `<div class="alert alert-danger py-2 mb-2">
-                        <i class="fas fa-exclamation-triangle me-2"></i>${err.message}
+                        <i class="fas fa-exclamation-triangle me-2"></i>${escapeHtml(err.message)}
                     </div>` + activeJobsList.innerHTML;
             } finally {
                 submitBtn.disabled = false;
