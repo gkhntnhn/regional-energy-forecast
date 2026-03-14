@@ -99,6 +99,7 @@ class CatBoostConfig(BaseModel, frozen=True):
             "is_business_hours",
             "is_peak",
             "is_ramp_morning",
+            "is_ramp_evening",
             "is_friday",
             "is_monday",
             "is_sunday",
@@ -106,8 +107,14 @@ class CatBoostConfig(BaseModel, frozen=True):
             "weather_code",
             "weather_group",
             "wth_extreme_cold",
+            "wth_extreme_hot",
+            "wth_extreme_wind",
+            "wth_heavy_precip",
+            "wth_is_severe",
             # Season / solar
             "is_cooling_season",
+            "is_heating_season",
+            "sol_is_daylight",
         ]
     )
     nan_handling: CatBoostNanHandling = Field(default_factory=CatBoostNanHandling)
@@ -284,7 +291,6 @@ class TFTCovariatesConfig(BaseModel, frozen=True):
             "consumption_lag_336",
             "consumption_lag_720",
             "consumption_week_ratio",
-            "consumption_hourly_profile",
             "consumption_momentum_168",
             "consumption_pct_change_168",
             "consumption_trend_ratio_168_336",

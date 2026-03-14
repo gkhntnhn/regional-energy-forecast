@@ -88,14 +88,14 @@ class HolidaysConfig(BaseModel, frozen=True):
 class AnticipationConfig(BaseModel, frozen=True):
     """Holiday anticipation feature settings."""
 
-    enabled: bool = False
+    enabled: bool = True
     windows: list[int] = Field(default_factory=lambda: [3, 7, 15])
 
 
 class SplineSeasonalityConfig(BaseModel, frozen=True):
     """Periodic spline encoding settings."""
 
-    enabled: bool = False
+    enabled: bool = True
     n_splines: int = Field(default=12, ge=2)
 
 
@@ -213,7 +213,7 @@ class TrendRatioConfig(BaseModel, frozen=True):
 class TargetEncodingConfig(BaseModel, frozen=True):
     """Hour x DayOfWeek target encoding feature parameters."""
 
-    enabled: bool = False
+    enabled: bool = True
 
 
 class ConsumptionConfig(BaseModel, frozen=True):
@@ -278,7 +278,7 @@ class WeatherRollingConfig(BaseModel, frozen=True):
 class WeatherLagsConfig(BaseModel, frozen=True):
     """Weather lag feature settings."""
 
-    enabled: bool = False
+    enabled: bool = True
     hours: list[int] = Field(default_factory=lambda: [6, 12, 18, 24, 30, 36, 42, 48])
     columns: list[str] = Field(
         default_factory=lambda: ["temperature_2m", "relative_humidity_2m", "wind_speed_10m"]
@@ -288,20 +288,20 @@ class WeatherLagsConfig(BaseModel, frozen=True):
 class QuadraticTemperatureConfig(BaseModel, frozen=True):
     """Quadratic temperature feature settings."""
 
-    enabled: bool = False
+    enabled: bool = True
 
 
 class HeatIndexConfig(BaseModel, frozen=True):
     """Heat index (Steadman) feature settings."""
 
-    enabled: bool = False
+    enabled: bool = True
     threshold: float = Field(default=27.0, ge=20.0, le=40.0)
 
 
 class TempDeviationConfig(BaseModel, frozen=True):
     """Temperature deviation from expanding mean."""
 
-    enabled: bool = False
+    enabled: bool = True
 
 
 class WeatherInteractionsConfig(BaseModel, frozen=True):
@@ -481,7 +481,7 @@ class GenerationExpandingConfig(BaseModel, frozen=True):
 class GenerationCompositesConfig(BaseModel, frozen=True):
     """Generation composite ratio feature settings."""
 
-    enabled: bool = False
+    enabled: bool = True
     renewable_vars: list[str] = Field(
         default_factory=lambda: ["gen_wind", "gen_sun", "gen_river", "gen_dammed_hydro"]
     )
@@ -535,6 +535,7 @@ class EpiasConfig(BaseModel, frozen=True):
             "Real_Time_Consumption",
             "DAM_Purchase",
             "Load_Forecast",
+            "Bilateral_Agreement_Purchase",
         ]
     )
     lags: EpiasLagConfig = Field(default_factory=EpiasLagConfig)
