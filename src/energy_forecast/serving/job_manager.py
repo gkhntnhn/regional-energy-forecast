@@ -11,6 +11,7 @@ import asyncio
 import contextlib
 import os
 import uuid
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -48,38 +49,21 @@ class Job(BaseModel):
     model_config = {"arbitrary_types_allowed": True}
 
 
+@dataclass(slots=True)
 class _QueueItem:
     """Internal queue item for job processing."""
 
-    __slots__ = (
-        "created_at",
-        "email",
-        "email_service",
-        "excel_path",
-        "file_service",
-        "file_stem",
-        "is_db_mode",
-        "job_id",
-        "job_ref",
-        "prediction_service",
-        "session_factory",
-    )
-
-    created_at: Any
-    email: Any
-    email_service: Any
-    excel_path: Any
-    file_service: Any
-    file_stem: Any
-    is_db_mode: bool
     job_id: str
-    job_ref: Any
-    prediction_service: Any
-    session_factory: Any
-
-    def __init__(self, **kwargs: Any) -> None:
-        for k, v in kwargs.items():
-            setattr(self, k, v)
+    excel_path: str
+    email: str
+    file_stem: str
+    created_at: datetime
+    is_db_mode: bool
+    prediction_service: PredictionService
+    file_service: FileService
+    email_service: EmailService
+    session_factory: async_sessionmaker[AsyncSession] | None = field(default=None)
+    job_ref: Job | None = field(default=None)
 
 
 class JobManager:
@@ -127,6 +111,7 @@ class JobManager:
             item = await self._queue.get()
             try:
                 if item.is_db_mode:
+                    assert item.session_factory is not None  # guaranteed by enqueue caller
                     await self.process_job_db(
                         job_id=item.job_id,
                         excel_path=item.excel_path,
@@ -139,6 +124,7 @@ class JobManager:
                         email_service=item.email_service,
                     )
                 else:
+                    assert item.job_ref is not None  # guaranteed by enqueue caller
                     await self.process_job_in_memory(
                         job=item.job_ref,
                         prediction_service=item.prediction_service,
@@ -335,7 +321,8 @@ class JobManager:
         prediction_service: PredictionService,
     ) -> pd.DataFrame:
         """Run model prediction pipeline. Raises on failure."""
-        return prediction_service.run_prediction(
+        return await asyncio.to_thread(
+            prediction_service.run_prediction,
             excel_path=Path(excel_path),
             progress_callback=lambda msg: None,
         )
@@ -476,7 +463,9 @@ class JobManager:
         file_service: FileService,
     ) -> Path:
         """Create output Excel file. Raises on failure."""
-        return file_service.create_output_xlsx(predictions, file_stem)
+        return await asyncio.to_thread(
+            file_service.create_output_xlsx, predictions, file_stem,
+        )
 
     async def _send_email_step(
         self,
