@@ -772,8 +772,20 @@ class JobManager:
                 file_service,
             )
 
-            # Step 7: Send email (NON-FATAL — prediction succeeded)
-            logger.info("[Job {}] Step 7/8: Sending email", job_id)
+            # Step 7: Archive features + GDrive upload
+            logger.info("[Job {}] Step 7/8: Archiving artifacts", job_id)
+            await self._archive_step(
+                job_id,
+                file_stem,
+                output_path,
+                created_at,
+                predictions,
+                prediction_service,
+                session_factory,
+            )
+
+            # Step 8: Send email (NON-FATAL — last step, after GDrive)
+            logger.info("[Job {}] Step 8/8: Sending email", job_id)
             await self._update_progress_db(session_factory, job_id, "E-posta gonderiliyor...")
 
             await self._send_email_step(
@@ -783,18 +795,6 @@ class JobManager:
                 created_at,
                 session_factory,
                 email_service,
-            )
-
-            # Step 8: Archive features + GDrive upload
-            logger.info("[Job {}] Step 8/8: Archiving artifacts", job_id)
-            await self._archive_step(
-                job_id,
-                file_stem,
-                output_path,
-                created_at,
-                predictions,
-                prediction_service,
-                session_factory,
             )
 
             # Mark complete
