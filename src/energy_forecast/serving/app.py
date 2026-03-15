@@ -214,6 +214,33 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.use_db = False
         logger.warning("DATABASE_URL not set — using in-memory job storage (dev mode)")
 
+    # Startup cleanup: mark stuck running/queued jobs as failed
+    if app.state.use_db:
+        try:
+            async with session_factory() as session:
+                from energy_forecast.db.models import JobModel
+
+                from sqlalchemy import update
+
+                stmt = (
+                    update(JobModel)
+                    .where(JobModel.status.in_(["running", "queued"]))
+                    .values(
+                        status="failed",
+                        progress="Server restart — isleniyor durumundan cikarildi",
+                        error="Job interrupted by server restart",
+                    )
+                )
+                res = await session.execute(stmt)
+                await session.commit()
+                count = getattr(res, "rowcount", 0) or 0
+                if count > 0:
+                    logger.info(
+                        "Startup cleanup: marked {} stuck jobs as failed", count,
+                    )
+        except Exception as e:
+            logger.warning("Startup cleanup failed: {}", e)
+
     # Start weather actuals scheduler (DB mode only)
     _scheduler_task = None
     if app.state.use_db:
@@ -337,15 +364,27 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 
-# Admin dashboard HTML — served without auth (JS handles its own token auth)
+# SPA frontend — serve index.html for all non-API routes
+_spa_dist = Path(__file__).parent / "static" / "dist"
+_spa_index = _spa_dist / "index.html"
+
+
+def _serve_spa() -> FileResponse:
+    """Serve SPA index.html, fallback to legacy admin.html."""
+    if _spa_index.exists():
+        return FileResponse(_spa_index, headers={"Cache-Control": "no-cache"})
+    # Fallback to legacy HTML
+    return FileResponse(
+        Path(__file__).parent / "static" / "legacy" / "admin.html",
+        headers={"Cache-Control": "no-cache"},
+    )
+
+
 @app.get("/admin", include_in_schema=False)
 @app.get("/admin/", include_in_schema=False)
 async def admin_dashboard() -> FileResponse:
-    """Serve the admin dashboard HTML (no auth — JS manages API key)."""
-    return FileResponse(
-        Path(__file__).parent / "static" / "admin.html",
-        headers={"Cache-Control": "no-cache"},
-    )
+    """Serve the SPA for admin route."""
+    return _serve_spa()
 
 
 # Admin API router (analytics endpoints) — auth required
@@ -353,7 +392,9 @@ from energy_forecast.serving.routers.admin import admin_router  # noqa: E402
 
 app.include_router(admin_router, dependencies=[Depends(verify_api_key)])
 
-# Static files for dashboard
+# Static files — SPA build assets first, then legacy static
+if _spa_dist.exists():
+    app.mount("/assets", StaticFiles(directory=_spa_dist / "assets"), name="spa-assets")
 _static_dir = Path(__file__).parent / "static"
 if _static_dir.exists():
     app.mount("/static", StaticFiles(directory=_static_dir), name="static")
@@ -702,8 +743,38 @@ async def list_jobs(
 
 @app.get("/", include_in_schema=False)
 async def root() -> FileResponse:
-    """Serve the dashboard."""
+    """Serve the SPA or legacy dashboard."""
+    if _spa_index.exists():
+        return FileResponse(_spa_index, headers={"Cache-Control": "no-cache"})
     return FileResponse(
-        Path(__file__).parent / "static" / "dashboard.html",
+        Path(__file__).parent / "static" / "legacy" / "dashboard.html",
         headers={"Cache-Control": "no-cache"},
     )
+
+
+# File download endpoint — serves output Excel files
+@app.get("/files/{filename}")
+async def download_file(
+    filename: str,
+    _auth: HTTPAuthorizationCredentials = Depends(verify_api_key),  # noqa: B008
+) -> FileResponse:
+    """Download output file by filename."""
+    # Sanitize: only allow filenames, no path traversal
+    safe_name = Path(filename).name
+    file_path = Path("data/outputs") / safe_name
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="File not found")
+    return FileResponse(
+        file_path,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        filename=safe_name,
+        headers={"Cache-Control": "no-cache"},
+    )
+
+
+# SPA catch-all: serve index.html for client-side routes (/login, /history, etc.)
+@app.get("/login", include_in_schema=False)
+@app.get("/history", include_in_schema=False)
+async def spa_routes() -> FileResponse:
+    """Serve SPA index.html for client-side routes."""
+    return _serve_spa()

@@ -1,4 +1,4 @@
-.PHONY: install test lint format serve train-catboost train-prophet train-tft train-ensemble prepare-data clean generate-holidays backfill-epias db-up db-down db-migrate db-revision db-downgrade fetch-weather-actuals db-backup promote-model cleanup-old-data cleanup-dry-run seed-db seed-db-full seed-weather seed-all export-weather db-reset mlflow-up mlflow-logs help
+.PHONY: install test lint format serve train-catboost train-prophet train-tft train-ensemble prepare-data clean generate-holidays backfill-epias db-up db-down db-migrate db-revision db-downgrade fetch-weather-actuals db-backup promote-model cleanup-old-data cleanup-dry-run seed-db seed-db-full seed-weather seed-all export-weather db-reset mlflow-up mlflow-logs frontend-dev frontend-build help
 
 install: ## Install dependencies
 	uv sync --all-extras
@@ -98,6 +98,12 @@ mlflow-up: ## Start MLflow + DB (Docker Compose)
 mlflow-logs: ## Show MLflow server logs
 	docker compose logs -f mlflow
 
+
+frontend-dev: ## Start frontend dev server (Vite HMR)
+	cd frontend && npm run dev
+
+frontend-build: ## Build frontend for production
+	cd frontend && npm run build
 
 clean: ## Remove build/cache artifacts
 	find . -type d -name __pycache__ -exec rm -rf {} +

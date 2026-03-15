@@ -445,17 +445,20 @@ class PredictionService:
         predictions: pd.DataFrame,
         last_data_point: pd.Timestamp,
     ) -> pd.DataFrame:
-        """Prepare final output DataFrame for customer delivery.
+        """Prepare final output DataFrame with all 48 hours and period labels.
 
-        Customer provides data up to T-1 23:00 and needs T+1 day forecast (GOP).
-        Output contains only T+1 (24 rows) with datetime and prediction columns.
+        Returns all 48 forecast rows (T + T+1) with a 'period' column:
+        - T day (hours 0-23): 'intraday' (GIP)
+        - T+1 day (hours 0-23): 'day_ahead' (GOP)
+
+        Frontend toggles which rows to display.
         """
         result = predictions[["consumption_mwh"]].copy()
 
-        # Filter to T+1 only (day_ahead / GOP)
-        # last_data_point = T-1 23:00, so T+1 starts 2 days later at 00:00
+        # T+1 starts 2 days after last_data_point (T-1 23:00)
         t_plus_1_start = (last_data_point + pd.Timedelta(days=2)).normalize()
-        result = result.loc[result.index >= t_plus_1_start]
+        result["period"] = "intraday"
+        result.loc[result.index >= t_plus_1_start, "period"] = "day_ahead"
 
         return result
 
