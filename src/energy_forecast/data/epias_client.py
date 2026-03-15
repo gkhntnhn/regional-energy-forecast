@@ -302,10 +302,10 @@ class EpiasClient:
                     year,
                     len(df),
                 )
-                # Normalize index to tz-naive DatetimeIndex for compatibility
+                # Normalize index: convert to Istanbul TZ first, then strip TZ
                 idx = pd.DatetimeIndex(df.index)
                 if idx.tz is not None:
-                    df.index = idx.tz_localize(None)
+                    df.index = idx.tz_convert("Europe/Istanbul").tz_localize(None)
                 # Drop internal columns not expected by downstream
                 df = df.drop(columns=["fetched_at"], errors="ignore")
                 # Rename DB columns back to pipeline-expected names

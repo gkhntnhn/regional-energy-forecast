@@ -224,10 +224,21 @@ class TestWeatherSchema:
             "wind_direction_10m",
             "shortwave_radiation",
         ]
-        df = pd.DataFrame(
-            {col: [1.0, 2.0, 3.0] for col in columns},
-            index=idx,
-        )
+        # Realistic weather values within physical bounds
+        data = {
+            "temperature_2m": [10.0, 12.0, 14.0],
+            "relative_humidity_2m": [60.0, 65.0, 70.0],
+            "dew_point_2m": [5.0, 6.0, 7.0],
+            "apparent_temperature": [8.0, 10.0, 12.0],
+            "precipitation": [0.0, 0.5, 1.0],
+            "snow_depth": [0.0, 0.0, 0.0],
+            "weather_code": [0.0, 1.0, 3.0],
+            "surface_pressure": [1013.0, 1012.0, 1011.0],
+            "wind_speed_10m": [5.0, 8.0, 12.0],
+            "wind_direction_10m": [180.0, 200.0, 220.0],
+            "shortwave_radiation": [100.0, 200.0, 300.0],
+        }
+        df = pd.DataFrame(data, index=idx)
         validated = WeatherSchema.validate(df)
         assert len(validated) == 3
 

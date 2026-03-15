@@ -38,14 +38,6 @@ class EpiasFeatureEngineer(BaseFeatureEngineer):
 
         # --- Market features ---
         raw_vars: list[str] = self.config["variables"]
-        # Known EPIAS market columns (drop any not in config to prevent leakage)
-        all_market_cols = [
-            "FDPP",
-            "Real_Time_Consumption",
-            "DAM_Purchase",
-            "Bilateral_Agreement_Purchase",
-            "Load_Forecast",
-        ]
         available_vars = [v for v in raw_vars if v in df.columns]
         if available_vars:
             lag_cfg: dict[str, Any] = self.config["lags"]
@@ -54,7 +46,7 @@ class EpiasFeatureEngineer(BaseFeatureEngineer):
             df = self._add_rolling(df, available_vars, min_lag, self.config["rolling"])
             df = self._add_expanding(df, available_vars, min_lag, self.config["expanding"])
             if self.config.get("drop_raw", True):
-                drop_market = [c for c in all_market_cols if c in df.columns]
+                drop_market = [c for c in raw_vars if c in df.columns]
                 df = df.drop(columns=drop_market, errors="ignore")
         else:
             logger.warning("No EPIAS market columns found in DataFrame, skipping")
