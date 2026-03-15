@@ -10,7 +10,10 @@ from loguru import logger
 from energy_forecast.db.repositories.analytics_repo import AnalyticsRepository
 from energy_forecast.db.repositories.job_repo import JobRepository
 from energy_forecast.db.repositories.prediction_repo import PredictionRepository
+from energy_forecast.serving.rate_limit import limiter
 from energy_forecast.serving.utils import mask_email
+
+_ADMIN_RATE_LIMIT = "30/minute"
 
 admin_router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -36,6 +39,7 @@ def _get_session_factory(request: Request) -> Any:
 
 
 @admin_router.get("/analytics/mape/daily")
+@limiter.limit(_ADMIN_RATE_LIMIT)
 async def get_daily_mape(
     request: Request, days: int = Query(default=30, ge=1, le=365)
 ) -> list[dict[str, Any]]:
@@ -49,6 +53,7 @@ async def get_daily_mape(
 
 
 @admin_router.get("/analytics/mape/weekly")
+@limiter.limit(_ADMIN_RATE_LIMIT)
 async def get_weekly_mape(
     request: Request, weeks: int = Query(default=12, ge=1, le=52)
 ) -> list[dict[str, Any]]:
@@ -62,6 +67,7 @@ async def get_weekly_mape(
 
 
 @admin_router.get("/analytics/mape/hourly")
+@limiter.limit(_ADMIN_RATE_LIMIT)
 async def get_hourly_mape(request: Request) -> list[dict[str, Any]]:
     """Hourly MAPE pattern."""
     sf = _get_session_factory(request)
@@ -78,6 +84,7 @@ async def get_hourly_mape(request: Request) -> list[dict[str, Any]]:
 
 
 @admin_router.get("/analytics/models/mape")
+@limiter.limit(_ADMIN_RATE_LIMIT)
 async def get_per_model_mape(
     request: Request, days: int = Query(default=30, ge=1, le=365)
 ) -> list[dict[str, Any]]:
@@ -91,6 +98,7 @@ async def get_per_model_mape(
 
 
 @admin_router.get("/analytics/models/hourly")
+@limiter.limit(_ADMIN_RATE_LIMIT)
 async def get_hourly_model_performance(
     request: Request,
 ) -> list[dict[str, Any]]:
@@ -104,6 +112,7 @@ async def get_hourly_model_performance(
 
 
 @admin_router.get("/analytics/models/comparison")
+@limiter.limit(_ADMIN_RATE_LIMIT)
 async def get_model_comparison(
     request: Request, days: int = Query(default=30, ge=1, le=365)
 ) -> list[dict[str, Any]]:
@@ -122,6 +131,7 @@ async def get_model_comparison(
 
 
 @admin_router.get("/analytics/weather/horizon")
+@limiter.limit(_ADMIN_RATE_LIMIT)
 async def get_weather_horizon(
     request: Request, weeks: int = Query(default=8, ge=1, le=52)
 ) -> list[dict[str, Any]]:
@@ -135,6 +145,7 @@ async def get_weather_horizon(
 
 
 @admin_router.get("/analytics/weather/variables")
+@limiter.limit(_ADMIN_RATE_LIMIT)
 async def get_weather_variables(
     request: Request,
 ) -> list[dict[str, Any]]:
@@ -153,6 +164,7 @@ async def get_weather_variables(
 
 
 @admin_router.get("/analytics/features/trend")
+@limiter.limit(_ADMIN_RATE_LIMIT)
 async def get_feature_trend(
     request: Request, days: int = Query(default=30, ge=1, le=365)
 ) -> list[dict[str, Any]]:
@@ -171,6 +183,7 @@ async def get_feature_trend(
 
 
 @admin_router.get("/analytics/epias/accuracy")
+@limiter.limit(_ADMIN_RATE_LIMIT)
 async def get_epias_accuracy(
     request: Request, days: int = Query(default=30, ge=1, le=365)
 ) -> list[dict[str, Any]]:
@@ -189,6 +202,7 @@ async def get_epias_accuracy(
 
 
 @admin_router.get("/jobs/history")
+@limiter.limit(_ADMIN_RATE_LIMIT)
 async def get_job_history(
     request: Request,
     page: int = Query(default=1, ge=1),
@@ -204,6 +218,7 @@ async def get_job_history(
 
 
 @admin_router.get("/jobs/{job_id}/details")
+@limiter.limit(_ADMIN_RATE_LIMIT)
 async def get_job_details(request: Request, job_id: str) -> dict[str, Any]:
     """Detailed job info with predictions and weather snapshots."""
     sf = _get_session_factory(request)
@@ -248,6 +263,7 @@ async def get_job_details(request: Request, job_id: str) -> dict[str, Any]:
 
 
 @admin_router.get("/models/runs")
+@limiter.limit(_ADMIN_RATE_LIMIT)
 async def get_model_runs(request: Request, model_type: str | None = None) -> list[dict[str, Any]]:
     """Training history from model_runs table."""
     sf = _get_session_factory(request)
@@ -259,6 +275,7 @@ async def get_model_runs(request: Request, model_type: str | None = None) -> lis
 
 
 @admin_router.get("/models/promoted")
+@limiter.limit(_ADMIN_RATE_LIMIT)
 async def get_promoted_models(
     request: Request,
 ) -> list[dict[str, Any]]:
@@ -272,6 +289,7 @@ async def get_promoted_models(
 
 
 @admin_router.get("/models/drift/status")
+@limiter.limit(_ADMIN_RATE_LIMIT)
 async def get_drift_status(
     request: Request,
 ) -> list[dict[str, Any]]:
@@ -290,6 +308,7 @@ async def get_drift_status(
 
 
 @admin_router.get("/system/health")
+@limiter.limit(_ADMIN_RATE_LIMIT)
 async def system_health(request: Request) -> dict[str, Any]:
     """Detailed system health check."""
     sf = _get_session_factory(request)

@@ -19,6 +19,7 @@ import sys
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 from dotenv import load_dotenv
@@ -175,7 +176,9 @@ def main() -> int:
         start_date = args.start
 
     if args.end is None:
-        end_date = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+        end_date = (
+            datetime.now(tz=ZoneInfo("Europe/Istanbul")) - timedelta(days=1)
+        ).strftime("%Y-%m-%d")
     else:
         end_date = args.end
 

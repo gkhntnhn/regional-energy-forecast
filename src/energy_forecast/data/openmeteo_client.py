@@ -307,15 +307,18 @@ class OpenMeteoClient:
         try:
             total = 0
             for city, df in city_dfs:
+                tmp = df.reset_index()
+                idx_name = df.index.name or "index"
+                records = tmp.to_dict("records")
                 rows: list[dict[str, Any]] = []
-                for idx, row in df.iterrows():
+                for rec in records:
                     d: dict[str, Any] = {
-                        "datetime": idx,
+                        "datetime": rec[idx_name],
                         "city": city.name,
                         "source": source,
                     }
                     for col in df.columns:
-                        val = row[col]
+                        val = rec[col]
                         d[col] = float(val) if pd.notna(val) else None
                     rows.append(d)
                 count = self._db.upsert_weather(rows)

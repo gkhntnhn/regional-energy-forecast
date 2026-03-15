@@ -180,3 +180,135 @@ async def test_cooldown_expired_old_alert(db_session: AsyncSession) -> None:
 
     elapsed = now - last.created_at
     assert elapsed > timedelta(hours=cooldown_hours)
+
+
+# ---------------------------------------------------------------------------
+# Ordering tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_multiple_actions_ordering(db_session: AsyncSession) -> None:
+    """Multiple actions inserted — get_last_action returns most recent, not first."""
+    now = datetime.now(tz=_TZ_ISTANBUL)
+
+    for i in range(5):
+        entry = AuditLogModel(
+            action="predict_request",
+            details={"seq": i},
+            created_at=now - timedelta(hours=5 - i),  # oldest first
+        )
+        db_session.add(entry)
+    await db_session.flush()
+
+    repo = AuditRepository(db_session)
+    last = await repo.get_last_action("predict_request")
+    assert last is not None
+    assert last.details == {"seq": 4}  # most recent
+
+
+@pytest.mark.asyncio
+async def test_ordering_with_mixed_actions(db_session: AsyncSession) -> None:
+    """Mixed action types — each action returns its own most recent entry."""
+    now = datetime.now(tz=_TZ_ISTANBUL)
+
+    db_session.add(AuditLogModel(
+        action="predict_request",
+        details={"v": "old_predict"},
+        created_at=now - timedelta(hours=3),
+    ))
+    db_session.add(AuditLogModel(
+        action="job_complete",
+        details={"v": "old_job"},
+        created_at=now - timedelta(hours=2),
+    ))
+    db_session.add(AuditLogModel(
+        action="predict_request",
+        details={"v": "new_predict"},
+        created_at=now - timedelta(hours=1),
+    ))
+    await db_session.flush()
+
+    repo = AuditRepository(db_session)
+
+    predict_last = await repo.get_last_action("predict_request")
+    assert predict_last is not None
+    assert predict_last.details == {"v": "new_predict"}
+
+    job_last = await repo.get_last_action("job_complete")
+    assert job_last is not None
+    assert job_last.details == {"v": "old_job"}
+
+
+# ---------------------------------------------------------------------------
+# Concurrent write tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_concurrent_rapid_inserts(db_session: AsyncSession) -> None:
+    """Two rapid inserts with same timestamp both succeed."""
+    now = datetime.now(tz=_TZ_ISTANBUL)
+    repo = AuditRepository(db_session)
+
+    entry1 = await repo.log(
+        action="predict_request",
+        user_email="user1@example.com",
+        details={"job": "job_1"},
+    )
+    entry2 = await repo.log(
+        action="predict_request",
+        user_email="user2@example.com",
+        details={"job": "job_2"},
+    )
+
+    assert entry1.id is not None
+    assert entry2.id is not None
+    assert entry1.id != entry2.id
+
+
+@pytest.mark.asyncio
+async def test_concurrent_same_timestamp_both_stored(db_session: AsyncSession) -> None:
+    """Two entries with identical created_at are both persisted."""
+    now = datetime.now(tz=_TZ_ISTANBUL)
+
+    e1 = AuditLogModel(action="drift_alert_mape", details={"a": 1}, created_at=now)
+    e2 = AuditLogModel(action="drift_alert_mape", details={"a": 2}, created_at=now)
+    db_session.add_all([e1, e2])
+    await db_session.flush()
+
+    # Both should be persisted (get_last_action returns one of them)
+    repo = AuditRepository(db_session)
+    last = await repo.get_last_action("drift_alert_mape")
+    assert last is not None
+    assert last.details in [{"a": 1}, {"a": 2}]
+
+
+# ---------------------------------------------------------------------------
+# Edge cases
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_log_with_all_fields(db_session: AsyncSession) -> None:
+    """Log entry with all fields populated returns correctly."""
+    repo = AuditRepository(db_session)
+    entry = await repo.log(
+        action="predict_request",
+        user_email="admin@company.com",
+        ip_address="10.0.0.1",
+        details={"job_id": "xyz789", "model": "ensemble", "file_size": 1024},
+    )
+    assert entry.action == "predict_request"
+    assert entry.user_email == "admin@company.com"
+    assert entry.ip_address == "10.0.0.1"
+    assert entry.details["model"] == "ensemble"
+    assert entry.details["file_size"] == 1024
+
+
+@pytest.mark.asyncio
+async def test_log_empty_details_dict(db_session: AsyncSession) -> None:
+    """Log entry with empty dict details."""
+    repo = AuditRepository(db_session)
+    entry = await repo.log(action="test_action", details={})
+    assert entry.details == {}

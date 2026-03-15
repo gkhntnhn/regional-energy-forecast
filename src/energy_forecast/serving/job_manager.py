@@ -508,7 +508,9 @@ class JobManager:
     ) -> Path:
         """Create output Excel file. Raises on failure."""
         return await asyncio.to_thread(
-            file_service.create_output_xlsx, predictions, file_stem,
+            file_service.create_output_xlsx,
+            predictions,
+            file_stem,
         )
 
     async def _send_email_step(
@@ -563,8 +565,8 @@ class JobManager:
                     repo = JobRepository(session)
                     await repo.update_email_status(job_id, "failed", attempts=0)
                     await session.commit()
-            except Exception:
-                pass  # DB update failure is also non-fatal
+            except Exception as exc:
+                logger.debug("Email status DB update failed (non-fatal): {}", exc)
             return False
 
     async def _archive_step(
@@ -792,8 +794,8 @@ class JobManager:
                         details={"job_id": job_id},
                     )
                     await session.commit()
-            except Exception:
-                pass  # audit failure is silent
+            except Exception as exc:
+                logger.debug("Audit log (job_complete) failed: {}", exc)
 
         except Exception as e:
             error_msg = str(e)
@@ -820,8 +822,8 @@ class JobManager:
                         },
                     )
                     await session.commit()
-            except Exception:
-                pass  # audit failure is silent
+            except Exception as exc:
+                logger.debug("Audit log (job_failed) failed: {}", exc)
 
             try:
                 email_service.send_error_notification(
@@ -850,7 +852,8 @@ class JobManager:
 
         try:
             self._jobs[job.id].progress = "Veri analizi yapiliyor..."
-            predictions = prediction_service.run_prediction(
+            predictions = await asyncio.to_thread(
+                prediction_service.run_prediction,
                 excel_path=job.excel_path,
                 progress_callback=lambda msg: setattr(self._jobs.get(job.id, job), "progress", msg),
             )

@@ -19,7 +19,6 @@ import yaml
 from loguru import logger
 
 from energy_forecast.config import SearchParamConfig, Settings, load_config
-from energy_forecast.training.catboost_trainer import CatBoostTrainer
 from energy_forecast.training.experiment import ExperimentTracker
 
 
@@ -185,6 +184,76 @@ def apply_config_overrides(settings: Settings, config_path: Path) -> None:
             logger.debug("Post-Optuna validation skip enabled")
 
 
+def _run_model(
+    model_name: str,
+    settings: Settings,
+    data: pd.DataFrame,
+    *,
+    no_mlflow: bool = False,
+) -> dict[str, Any]:
+    """Run a single-model training pipeline (CatBoost, Prophet, or TFT).
+
+    Shared logic for tracker creation, training, logging, and result formatting.
+
+    Args:
+        model_name: One of "catboost", "prophet", "tft".
+        settings: Full application settings.
+        data: Feature-engineered DataFrame.
+        no_mlflow: If True, disable MLflow tracking.
+
+    Returns:
+        Dict with metrics and model_path for DB recording.
+    """
+    from datetime import datetime
+
+    from energy_forecast.utils import TZ_ISTANBUL
+
+    # Lazy imports for each trainer
+    trainer_factories: dict[str, tuple[str, str]] = {
+        "catboost": (
+            "energy_forecast.training.catboost_trainer",
+            "CatBoostTrainer",
+        ),
+        "prophet": (
+            "energy_forecast.training.prophet_trainer",
+            "ProphetTrainer",
+        ),
+        "tft": (
+            "energy_forecast.training.tft_trainer",
+            "TFTTrainer",
+        ),
+    }
+
+    import importlib
+
+    module_path, class_name = trainer_factories[model_name]
+    module = importlib.import_module(module_path)
+    trainer_cls = getattr(module, class_name)
+
+    tracker = ExperimentTracker(
+        experiment_name=f"energy-forecast-{model_name}",
+        tracking_uri=settings.env.mlflow_tracking_uri,
+        enabled=not no_mlflow,
+    )
+    trainer = trainer_cls(settings, tracker)
+    result = trainer.run(data)
+
+    logger.info("Best val MAPE: {:.2f}%", result.training_result.avg_val_mape)
+    logger.info("Best test MAPE: {:.2f}%", result.training_result.avg_test_mape)
+    logger.info("Best params: {}", result.best_params)
+    logger.info("Training time: {:.1f}s", result.training_time_seconds)
+
+    run_ts = datetime.now(tz=TZ_ISTANBUL).strftime("%Y-%m-%d_%H-%M")
+    return {
+        "metrics": {
+            "val_mape": result.training_result.avg_val_mape,
+            "test_mape": result.training_result.avg_test_mape,
+        },
+        "model_path": str(Path(settings.paths.models_dir) / model_name / f"{model_name}_{run_ts}"),
+        "best_params": result.best_params,
+    }
+
+
 def run_catboost(
     settings: Settings,
     data: pd.DataFrame,
@@ -201,32 +270,7 @@ def run_catboost(
     Returns:
         Dict with metrics and model_path for DB recording.
     """
-    tracker = ExperimentTracker(
-        experiment_name="energy-forecast-catboost",
-        tracking_uri=settings.env.mlflow_tracking_uri,
-        enabled=not no_mlflow,
-    )
-    trainer = CatBoostTrainer(settings, tracker)
-    result = trainer.run(data)
-
-    logger.info("Best val MAPE: {:.2f}%", result.training_result.avg_val_mape)
-    logger.info("Best test MAPE: {:.2f}%", result.training_result.avg_test_mape)
-    logger.info("Best params: {}", result.best_params)
-    logger.info("Training time: {:.1f}s", result.training_time_seconds)
-
-    from datetime import datetime
-
-    from energy_forecast.utils import TZ_ISTANBUL
-
-    run_ts = datetime.now(tz=TZ_ISTANBUL).strftime("%Y-%m-%d_%H-%M")
-    return {
-        "metrics": {
-            "val_mape": result.training_result.avg_val_mape,
-            "test_mape": result.training_result.avg_test_mape,
-        },
-        "model_path": str(Path(settings.paths.models_dir) / "catboost" / f"catboost_{run_ts}"),
-        "best_params": result.best_params,
-    }
+    return _run_model("catboost", settings, data, no_mlflow=no_mlflow)
 
 
 def run_prophet(
@@ -245,34 +289,7 @@ def run_prophet(
     Returns:
         Dict with metrics and model_path for DB recording.
     """
-    from energy_forecast.training.prophet_trainer import ProphetTrainer
-
-    tracker = ExperimentTracker(
-        experiment_name="energy-forecast-prophet",
-        tracking_uri=settings.env.mlflow_tracking_uri,
-        enabled=not no_mlflow,
-    )
-    trainer = ProphetTrainer(settings, tracker)
-    result = trainer.run(data)
-
-    logger.info("Best val MAPE: {:.2f}%", result.training_result.avg_val_mape)
-    logger.info("Best test MAPE: {:.2f}%", result.training_result.avg_test_mape)
-    logger.info("Best params: {}", result.best_params)
-    logger.info("Training time: {:.1f}s", result.training_time_seconds)
-
-    from datetime import datetime
-
-    from energy_forecast.utils import TZ_ISTANBUL
-
-    run_ts = datetime.now(tz=TZ_ISTANBUL).strftime("%Y-%m-%d_%H-%M")
-    return {
-        "metrics": {
-            "val_mape": result.training_result.avg_val_mape,
-            "test_mape": result.training_result.avg_test_mape,
-        },
-        "model_path": str(Path(settings.paths.models_dir) / "prophet" / f"prophet_{run_ts}"),
-        "best_params": result.best_params,
-    }
+    return _run_model("prophet", settings, data, no_mlflow=no_mlflow)
 
 
 def run_tft(
@@ -291,34 +308,7 @@ def run_tft(
     Returns:
         Dict with metrics and model_path for DB recording.
     """
-    from energy_forecast.training.tft_trainer import TFTTrainer
-
-    tracker = ExperimentTracker(
-        experiment_name="energy-forecast-tft",
-        tracking_uri=settings.env.mlflow_tracking_uri,
-        enabled=not no_mlflow,
-    )
-    trainer = TFTTrainer(settings, tracker)
-    result = trainer.run(data)
-
-    logger.info("Best val MAPE: {:.2f}%", result.training_result.avg_val_mape)
-    logger.info("Best test MAPE: {:.2f}%", result.training_result.avg_test_mape)
-    logger.info("Best params: {}", result.best_params)
-    logger.info("Training time: {:.1f}s", result.training_time_seconds)
-
-    from datetime import datetime
-
-    from energy_forecast.utils import TZ_ISTANBUL
-
-    run_ts = datetime.now(tz=TZ_ISTANBUL).strftime("%Y-%m-%d_%H-%M")
-    return {
-        "metrics": {
-            "val_mape": result.training_result.avg_val_mape,
-            "test_mape": result.training_result.avg_test_mape,
-        },
-        "model_path": str(Path(settings.paths.models_dir) / "tft" / f"tft_{run_ts}"),
-        "best_params": result.best_params,
-    }
+    return _run_model("tft", settings, data, no_mlflow=no_mlflow)
 
 
 def run_ensemble(
@@ -483,9 +473,7 @@ def _get_n_trials(settings: Settings, model: str) -> int:
     return trial_map.get(model, 0)
 
 
-def _get_db_session() -> (
-    tuple[Any, Any] | tuple[None, None]
-):
+def _get_db_session() -> tuple[Any, Any] | tuple[None, None]:
     """Get a sync DB session factory and engine, or (None, None) if DB not configured."""
     db_url = os.environ.get("DATABASE_URL_SYNC", "")
     if not db_url:

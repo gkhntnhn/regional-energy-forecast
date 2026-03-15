@@ -245,8 +245,8 @@ class TFTForecaster(BaseForecaster):
                         metrics[key] = float(value.item())
                     else:
                         metrics[key] = float(value)
-        except Exception:
-            logger.debug("Could not extract trainer metrics")
+        except Exception as e:
+            logger.debug("Could not extract trainer metrics: {}", e)
 
         logger.info("TFT training complete | metrics={}", metrics)
         return metrics
@@ -315,7 +315,7 @@ class TFTForecaster(BaseForecaster):
             # Fill NaN target in context (forecast rows have NaN consumption)
             if nf_context["y"].isna().any():
                 nf_context = nf_context.copy()
-                nf_context["y"] = nf_context["y"].ffill().fillna(0)
+                nf_context["y"] = nf_context["y"].ffill().bfill()
 
         # Generate predictions
         if self._nf is None:

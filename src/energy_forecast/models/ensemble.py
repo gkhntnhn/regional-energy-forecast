@@ -416,7 +416,7 @@ class EnsembleForecaster(BaseForecaster):
         self._mode = config.get("mode", "weighted_average")
         self._context_features = config.get(
             "context_features",
-            ["hour", "day_of_week", "is_weekend", "is_holiday", "month"],
+            list(EnsembleConfig().stacking.context_features),
         )
         if "prophet_regressors" in config:
             self._prophet_regressors = config["prophet_regressors"]

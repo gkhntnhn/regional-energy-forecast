@@ -17,15 +17,14 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.staticfiles import StaticFiles
 from loguru import logger
 from pydantic import EmailStr
-from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
-from slowapi.util import get_remote_address
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from energy_forecast import __version__
 from energy_forecast.config import load_config
 from energy_forecast.serving.exceptions import APIError, JobNotFoundError, JobQueueFullError
 from energy_forecast.serving.job_manager import JobManager
+from energy_forecast.serving.rate_limit import limiter
 from energy_forecast.serving.schemas import (
     ErrorResponse,
     HealthResponse,
@@ -73,8 +72,6 @@ async def verify_api_key(
 # ---------------------------------------------------------------------------
 # Rate Limiter
 # ---------------------------------------------------------------------------
-
-limiter = Limiter(key_func=get_remote_address)
 
 
 def _rate_limit_exceeded_handler(
@@ -218,12 +215,33 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
         from energy_forecast.jobs.weather_actuals import run_scheduler
 
+        _scheduler_restart_count = 0
+        _max_scheduler_restarts = 3
+
         def _on_scheduler_done(task: asyncio.Task[None]) -> None:
+            nonlocal _scheduler_task, _scheduler_restart_count
             if task.cancelled():
                 return
             exc = task.exception()
             if exc is not None:
-                logger.error("Weather scheduler crashed (NOT restarting): {}", exc)
+                _scheduler_restart_count += 1
+                if _scheduler_restart_count <= _max_scheduler_restarts:
+                    logger.error(
+                        "Weather scheduler crashed (restart {}/{}): {}",
+                        _scheduler_restart_count,
+                        _max_scheduler_restarts,
+                        exc,
+                    )
+                    _scheduler_task = asyncio.create_task(
+                        run_scheduler(app.state.session_factory, settings)
+                    )
+                    _scheduler_task.add_done_callback(_on_scheduler_done)
+                else:
+                    logger.critical(
+                        "Weather scheduler crashed {} times — NOT restarting. "
+                        "Manual intervention required.",
+                        _scheduler_restart_count,
+                    )
 
         _scheduler_task = asyncio.create_task(run_scheduler(app.state.session_factory, settings))
         _scheduler_task.add_done_callback(_on_scheduler_done)
@@ -283,6 +301,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 # Security headers middleware
 class _SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: Any) -> Any:
@@ -301,9 +320,7 @@ class _SecurityHeadersMiddleware(BaseHTTPMiddleware):
             "connect-src 'self'"
         )
         if os.environ.get("APP_ENV") == "production":
-            response.headers["Strict-Transport-Security"] = (
-                "max-age=31536000; includeSubDomains"
-            )
+            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
         return response
 
 
@@ -603,18 +620,14 @@ async def delete_job(
                 if job is None:
                     raise JobNotFoundError(f"Job not found: {job_id}")
                 if job.status in ("running",):
-                    raise HTTPException(
-                        status_code=409, detail="Cannot delete a running job"
-                    )
+                    raise HTTPException(status_code=409, detail="Cannot delete a running job")
                 await repo.update_status(job_id, "archived")
                 await session.commit()
             return {"detail": f"Job {job_id} archived"}
 
         job_mem = job_manager.get_job_in_memory(job_id)
         if job_mem.status == JobStatus.RUNNING:
-            raise HTTPException(
-                status_code=409, detail="Cannot delete a running job"
-            )
+            raise HTTPException(status_code=409, detail="Cannot delete a running job")
         job_mem.status = JobStatus.FAILED
         job_mem.error = "Cancelled by user"
         return {"detail": f"Job {job_id} cancelled"}

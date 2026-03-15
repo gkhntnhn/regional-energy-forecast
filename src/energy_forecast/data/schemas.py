@@ -32,13 +32,14 @@ class EpiasSchema(pa.DataFrameModel):
     """
 
     datetime: Index[pa.DateTime]
+    # FDPP: active via region=TR1, validated when present (strict=False allows absence)
     Real_Time_Consumption: Series[float] = pa.Field(nullable=True)
     DAM_Purchase: Series[float] = pa.Field(nullable=True)
     Bilateral_Agreement_Purchase: Series[float] = pa.Field(nullable=True)
     Load_Forecast: Series[float] = pa.Field(nullable=True)
 
     class Config:
-        strict = False  # allow extra columns (e.g. FDPP if present in old cache)
+        strict = False  # allow extra columns (e.g. generation data)
 
 
 class WeatherSchema(pa.DataFrameModel):

@@ -295,3 +295,133 @@ class TestWeatherSchemaNegative:
         )
         validated = WeatherSchema.validate(df)
         assert len(validated) == 3
+
+    def test_temperature_above_60_raises(self) -> None:
+        """temperature_2m > 60 violates le=60 constraint."""
+        idx = pd.date_range("2024-01-01", periods=1, freq="h", name="datetime")
+        df = _make_valid_weather_df(idx)
+        df["temperature_2m"] = [61.0]
+        with pytest.raises((SchemaError, SchemaErrors)):
+            WeatherSchema.validate(df)
+
+    def test_temperature_below_minus_50_raises(self) -> None:
+        """temperature_2m < -50 violates ge=-50 constraint."""
+        idx = pd.date_range("2024-01-01", periods=1, freq="h", name="datetime")
+        df = _make_valid_weather_df(idx)
+        df["temperature_2m"] = [-51.0]
+        with pytest.raises((SchemaError, SchemaErrors)):
+            WeatherSchema.validate(df)
+
+    def test_pressure_below_870_raises(self) -> None:
+        """surface_pressure < 870 violates ge=870 constraint."""
+        idx = pd.date_range("2024-01-01", periods=1, freq="h", name="datetime")
+        df = _make_valid_weather_df(idx)
+        df["surface_pressure"] = [869.0]
+        with pytest.raises((SchemaError, SchemaErrors)):
+            WeatherSchema.validate(df)
+
+    def test_pressure_above_1085_raises(self) -> None:
+        """surface_pressure > 1085 violates le=1085 constraint."""
+        idx = pd.date_range("2024-01-01", periods=1, freq="h", name="datetime")
+        df = _make_valid_weather_df(idx)
+        df["surface_pressure"] = [1086.0]
+        with pytest.raises((SchemaError, SchemaErrors)):
+            WeatherSchema.validate(df)
+
+    def test_humidity_above_100_raises(self) -> None:
+        """relative_humidity_2m > 100 violates le=100 constraint."""
+        idx = pd.date_range("2024-01-01", periods=1, freq="h", name="datetime")
+        df = _make_valid_weather_df(idx)
+        df["relative_humidity_2m"] = [101.0]
+        with pytest.raises((SchemaError, SchemaErrors)):
+            WeatherSchema.validate(df)
+
+    def test_negative_precipitation_raises(self) -> None:
+        """precipitation < 0 violates ge=0 constraint."""
+        idx = pd.date_range("2024-01-01", periods=1, freq="h", name="datetime")
+        df = _make_valid_weather_df(idx)
+        df["precipitation"] = [-0.1]
+        with pytest.raises((SchemaError, SchemaErrors)):
+            WeatherSchema.validate(df)
+
+    def test_wind_direction_above_360_raises(self) -> None:
+        """wind_direction_10m > 360 violates le=360 constraint."""
+        idx = pd.date_range("2024-01-01", periods=1, freq="h", name="datetime")
+        df = _make_valid_weather_df(idx)
+        df["wind_direction_10m"] = [361.0]
+        with pytest.raises((SchemaError, SchemaErrors)):
+            WeatherSchema.validate(df)
+
+    def test_weather_code_above_99_raises(self) -> None:
+        """weather_code > 99 violates le=99 constraint."""
+        idx = pd.date_range("2024-01-01", periods=1, freq="h", name="datetime")
+        df = _make_valid_weather_df(idx)
+        df["weather_code"] = [100.0]
+        with pytest.raises((SchemaError, SchemaErrors)):
+            WeatherSchema.validate(df)
+
+
+# ---------------------------------------------------------------------------
+# ConsumptionSchema additional negative tests
+# ---------------------------------------------------------------------------
+
+
+class TestConsumptionSchemaDtype:
+    """Tests for ConsumptionSchema dtype enforcement."""
+
+    def test_string_consumption_raises(self) -> None:
+        """String consumption column that cannot be coerced raises SchemaError."""
+        idx = pd.date_range("2024-01-01", periods=3, freq="h", name="datetime")
+        df = pd.DataFrame({"consumption": ["not_a_number", "abc", "xyz"]}, index=idx)
+        with pytest.raises((SchemaError, SchemaErrors)):
+            ConsumptionSchema.validate(df)
+
+
+# ---------------------------------------------------------------------------
+# EpiasSchema additional negative tests
+# ---------------------------------------------------------------------------
+
+
+class TestEpiasSchemaDtype:
+    """Additional negative tests for EpiasSchema."""
+
+    def test_string_column_raises(self) -> None:
+        """Non-numeric Real_Time_Consumption raises SchemaError."""
+        idx = pd.date_range("2024-01-01", periods=3, freq="h", name="datetime")
+        df = pd.DataFrame(
+            {
+                "Real_Time_Consumption": ["abc", "def", "ghi"],
+                "DAM_Purchase": [100.0, 200.0, 300.0],
+                "Bilateral_Agreement_Purchase": [100.0, 200.0, 300.0],
+                "Load_Forecast": [100.0, 200.0, 300.0],
+            },
+            index=idx,
+        )
+        with pytest.raises((SchemaError, SchemaErrors)):
+            EpiasSchema.validate(df)
+
+
+# ---------------------------------------------------------------------------
+# Helper to build valid weather DataFrame
+# ---------------------------------------------------------------------------
+
+
+def _make_valid_weather_df(idx: pd.DatetimeIndex) -> pd.DataFrame:
+    """Create a valid weather DataFrame for mutation testing."""
+    n = len(idx)
+    return pd.DataFrame(
+        {
+            "temperature_2m": [15.0] * n,
+            "relative_humidity_2m": [60.0] * n,
+            "dew_point_2m": [5.0] * n,
+            "apparent_temperature": [13.0] * n,
+            "precipitation": [0.0] * n,
+            "snow_depth": [0.0] * n,
+            "weather_code": [1.0] * n,
+            "surface_pressure": [1013.0] * n,
+            "wind_speed_10m": [10.0] * n,
+            "wind_direction_10m": [180.0] * n,
+            "shortwave_radiation": [200.0] * n,
+        },
+        index=idx,
+    )

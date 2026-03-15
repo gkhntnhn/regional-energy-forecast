@@ -405,26 +405,36 @@ class EpiasClient:
             "Bilateral_Agreement_Purchase": "bilateral",
             "Load_Forecast": "load_forecast",
         }
+        # Vectorized: reset index to get datetime as column, then to_dict
+        tmp = df.reset_index()
+        available = {src: dst for src, dst in col_map.items() if src in tmp.columns}
+        idx_col = str(df.index.name) if df.index.name is not None else "index"
+        rename_map: dict[str, str] = {**available, idx_col: "datetime"}
+        tmp = tmp.rename(columns=rename_map)[["datetime", *available.values()]]
+        records = tmp.to_dict("records")
+        # Convert NaN to None for DB compatibility
         rows: list[dict[str, Any]] = []
-        for idx, row in df.iterrows():
-            d: dict[str, Any] = {"datetime": idx}
-            for src, dst in col_map.items():
-                if src in df.columns:
-                    val = row[src]
-                    d[dst] = float(val) if pd.notna(val) else None
+        for rec in records:
+            d: dict[str, Any] = {"datetime": rec["datetime"]}
+            for dst in available.values():
+                val = rec[dst]
+                d[dst] = float(val) if pd.notna(val) else None
             rows.append(d)
         return rows
 
     @staticmethod
     def _df_to_generation_rows(df: pd.DataFrame) -> list[dict[str, Any]]:
         """Convert generation DataFrame to list of dicts for DB upsert."""
+        gen_cols = [c for c in df.columns if c.startswith("gen_")]
+        tmp = df.reset_index()
+        idx_name = df.index.name or "index"
+        records = tmp[[idx_name, *gen_cols]].to_dict("records")
         rows: list[dict[str, Any]] = []
-        for idx, row in df.iterrows():
-            d: dict[str, Any] = {"datetime": idx}
-            for col in df.columns:
-                if col.startswith("gen_"):
-                    val = row[col]
-                    d[col] = float(val) if pd.notna(val) else None
+        for rec in records:
+            d: dict[str, Any] = {"datetime": rec[idx_name]}
+            for col in gen_cols:
+                val = rec[col]
+                d[col] = float(val) if pd.notna(val) else None
             rows.append(d)
         return rows
 
