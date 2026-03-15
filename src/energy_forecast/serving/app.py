@@ -38,6 +38,7 @@ from energy_forecast.serving.services.prediction_service import (
     PredictionService,
     PredictionServiceConfig,
 )
+from energy_forecast.serving.utils import mask_email
 from energy_forecast.utils import TZ_ISTANBUL
 
 if TYPE_CHECKING:
@@ -591,7 +592,7 @@ async def list_jobs(
                 {
                     "id": j.id,
                     "status": j.status,
-                    "email": j.email[:3] + "***",
+                    "email": mask_email(j.email),
                     "created_at": j.created_at.isoformat(),
                     "completed_at": (j.completed_at.isoformat() if j.completed_at else None),
                 }
@@ -607,7 +608,7 @@ async def list_jobs(
             {
                 "id": j.id,
                 "status": j.status,
-                "email": j.email[:3] + "***",
+                "email": mask_email(j.email),
                 "created_at": j.created_at.isoformat(),
                 "completed_at": (j.completed_at.isoformat() if j.completed_at else None),
             }

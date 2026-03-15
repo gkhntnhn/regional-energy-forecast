@@ -10,6 +10,7 @@ from loguru import logger
 from energy_forecast.db.repositories.analytics_repo import AnalyticsRepository
 from energy_forecast.db.repositories.job_repo import JobRepository
 from energy_forecast.db.repositories.prediction_repo import PredictionRepository
+from energy_forecast.serving.utils import mask_email
 
 admin_router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -201,7 +202,7 @@ async def get_job_details(request: Request, job_id: str) -> dict[str, Any]:
 
         return {
             "id": job.id,
-            "email": job.email[:3] + "***" if job.email else "",
+            "email": mask_email(job.email) if job.email else "",
             "status": job.status,
             "progress": job.progress,
             "error": job.error,

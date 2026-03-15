@@ -468,7 +468,7 @@
 // ═══════════════════════════════════════════════════
 // GLOBALS
 // ═══════════════════════════════════════════════════
-let API_TOKEN = localStorage.getItem('admin_token') || '';
+let API_TOKEN = sessionStorage.getItem('admin_token') || '';
 const charts = {};
 let jobPage = 1;
 
@@ -482,15 +482,22 @@ function doAuth() {
     const v = document.getElementById('authInput').value.trim();
     if (!v) return;
     API_TOKEN = v;
-    localStorage.setItem('admin_token', v);
+    sessionStorage.setItem('admin_token', v);
     checkAuth();
 }
 function doLogout() {
     API_TOKEN = '';
-    localStorage.removeItem('admin_token');
+    sessionStorage.removeItem('admin_token');
     checkAuth();
 }
 document.getElementById('authInput').addEventListener('keydown', e => { if (e.key === 'Enter') doAuth(); });
+
+// ─── XSS helper ───────────────────────────────────
+function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
 
 // ─── Fetch helper ──────────────────────────────────
 async function api(path) {
@@ -820,7 +827,7 @@ async function loadSystemTab() {
     if (drift.length) {
         dEl.innerHTML = `<table class="data-table"><thead><tr><th>Tip</th><th>Detay</th><th>Tarih</th></tr></thead><tbody>${drift.map(d => {
             const detail = d.details ? JSON.stringify(d.details).slice(0,80) : '—';
-            return `<tr><td><span class="badge-status badge-warn">${d.action.replace('drift_','')}</span></td><td class="mono" style="font-size:.72rem">${detail}</td><td class="mono">${d.created_at.slice(0,16)}</td></tr>`;
+            return `<tr><td><span class="badge-status badge-warn">${escapeHtml(d.action.replace('drift_',''))}</span></td><td class="mono" style="font-size:.72rem">${escapeHtml(detail)}</td><td class="mono">${d.created_at.slice(0,16)}</td></tr>`;
         }).join('')}</tbody></table>`;
     } else { dEl.innerHTML = emptyHTML('Drift uyarisi bulunamadi'); }
 }
@@ -835,7 +842,7 @@ async function loadJobHistory(page) {
         if (!data.jobs.length) { el.innerHTML = emptyHTML('Henuz is kaydi yok'); document.getElementById('job-pagination').innerHTML = ''; return; }
         el.innerHTML = `<table class="data-table"><thead><tr><th>ID</th><th>E-posta</th><th>Durum</th><th>Ilerleme</th><th>Olusturulma</th><th>Tamamlanma</th></tr></thead><tbody>${data.jobs.map(j => {
             const badge = j.status === 'completed' ? 'badge-ok' : j.status === 'failed' ? 'badge-err' : j.status === 'archived' ? 'badge-info' : 'badge-warn';
-            return `<tr><td class="mono">${j.id}</td><td>${j.email}</td><td><span class="badge-status ${badge}">${j.status}</span></td><td style="font-size:.72rem">${j.progress || '—'}</td><td class="mono" style="font-size:.7rem">${j.created_at.slice(0,23).replace('T',' ')}</td><td class="mono" style="font-size:.7rem">${j.completed_at ? j.completed_at.slice(0,23).replace('T',' ') : '—'}</td></tr>`;
+            return `<tr><td class="mono">${escapeHtml(j.id)}</td><td>${escapeHtml(j.email)}</td><td><span class="badge-status ${badge}">${escapeHtml(j.status)}</span></td><td style="font-size:.72rem">${escapeHtml(j.progress || '—')}</td><td class="mono" style="font-size:.7rem">${j.created_at.slice(0,23).replace('T',' ')}</td><td class="mono" style="font-size:.7rem">${j.completed_at ? j.completed_at.slice(0,23).replace('T',' ') : '—'}</td></tr>`;
         }).join('')}</tbody></table>`;
 
         // Pagination

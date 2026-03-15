@@ -269,7 +269,7 @@
 
     <script>
         // ── Config ──────────────────────────────────────────
-        let API_TOKEN = localStorage.getItem('dashboard_token') || '';
+        let API_TOKEN = sessionStorage.getItem('dashboard_token') || '';
         const POLL_INTERVAL_MS = 2000;
         const BUSY_CHECK_MS = 5000;
         let busyTimer = null;
@@ -284,12 +284,12 @@
             const v = document.getElementById('authInput').value.trim();
             if (!v) return;
             API_TOKEN = v;
-            localStorage.setItem('dashboard_token', v);
+            sessionStorage.setItem('dashboard_token', v);
             checkAuth();
         }
         function doLogout() {
             API_TOKEN = '';
-            localStorage.removeItem('dashboard_token');
+            sessionStorage.removeItem('dashboard_token');
             checkAuth();
         }
         document.getElementById('authInput').addEventListener('keydown', e => { if (e.key === 'Enter') doAuth(); });
