@@ -199,3 +199,223 @@ class TestEmailService:
 
         assert result is True
         mock_server.sendmail.assert_called_once()
+
+    @patch("energy_forecast.serving.services.email_service.smtplib.SMTP")
+    def test_send_prediction_result_generic_exception(
+        self,
+        mock_smtp: MagicMock,
+        email_service: EmailService,
+        sample_attachment: Path,
+    ) -> None:
+        """Generic exception in send wraps to EmailDeliveryError."""
+        mock_smtp.return_value.__enter__ = MagicMock(
+            side_effect=RuntimeError("unexpected")
+        )
+
+        with pytest.raises(EmailDeliveryError, match="Failed to send email"):
+            email_service.send_prediction_result(
+                to_email="user@test.com",
+                attachment_path=sample_attachment,
+                job_id="test123",
+                created_at="2025-01-01 10:00:00",
+            )
+
+    @patch("energy_forecast.serving.services.email_service.smtplib.SMTP")
+    def test_send_message_timeout_error(
+        self,
+        mock_smtp: MagicMock,
+        email_service: EmailService,
+        sample_attachment: Path,
+    ) -> None:
+        """TimeoutError raises EmailDeliveryError."""
+        mock_smtp.return_value.__enter__ = MagicMock(
+            side_effect=TimeoutError("connection timed out")
+        )
+
+        with pytest.raises(EmailDeliveryError, match="timeout"):
+            email_service.send_prediction_result(
+                to_email="user@test.com",
+                attachment_path=sample_attachment,
+                job_id="test123",
+                created_at="2025-01-01 10:00:00",
+            )
+
+    @patch("energy_forecast.serving.services.email_service.smtplib.SMTP")
+    def test_send_message_auth_error(
+        self,
+        mock_smtp: MagicMock,
+        email_service: EmailService,
+        sample_attachment: Path,
+    ) -> None:
+        """SMTPAuthenticationError raises EmailDeliveryError."""
+        import smtplib
+
+        mock_server = MagicMock()
+        mock_server.login.side_effect = smtplib.SMTPAuthenticationError(535, b"Auth failed")
+        mock_smtp.return_value.__enter__ = MagicMock(return_value=mock_server)
+        mock_smtp.return_value.__exit__ = MagicMock(return_value=False)
+
+        with pytest.raises(EmailDeliveryError, match="authentication"):
+            email_service.send_prediction_result(
+                to_email="user@test.com",
+                attachment_path=sample_attachment,
+                job_id="test123",
+                created_at="2025-01-01 10:00:00",
+            )
+
+    @patch("energy_forecast.serving.services.email_service.smtplib.SMTP")
+    def test_send_message_recipient_refused(
+        self,
+        mock_smtp: MagicMock,
+        email_service: EmailService,
+        sample_attachment: Path,
+    ) -> None:
+        """SMTPRecipientsRefused raises EmailDeliveryError."""
+        import smtplib
+
+        mock_server = MagicMock()
+        mock_server.sendmail.side_effect = smtplib.SMTPRecipientsRefused({"bad": (550, b"No")})
+        mock_smtp.return_value.__enter__ = MagicMock(return_value=mock_server)
+        mock_smtp.return_value.__exit__ = MagicMock(return_value=False)
+
+        with pytest.raises(EmailDeliveryError, match="Recipient refused"):
+            email_service.send_prediction_result(
+                to_email="bad@test.com",
+                attachment_path=sample_attachment,
+                job_id="test123",
+                created_at="2025-01-01 10:00:00",
+            )
+
+    def test_send_with_retry_disabled(
+        self,
+        disabled_email_config: EmailServiceConfig,
+        sample_attachment: Path,
+    ) -> None:
+        """send_with_retry returns failure when disabled."""
+        service = EmailService(disabled_email_config)
+        success, attempts, error_msg = service.send_with_retry(
+            to_email="user@test.com",
+            attachment_path=sample_attachment,
+            job_id="test123",
+            created_at="2025-01-01 10:00:00",
+        )
+        assert success is False
+        assert attempts == 0
+        assert "disabled" in error_msg.lower()
+
+    @patch("energy_forecast.serving.services.email_service.smtplib.SMTP")
+    def test_send_with_retry_success(
+        self,
+        mock_smtp: MagicMock,
+        email_service: EmailService,
+        sample_attachment: Path,
+    ) -> None:
+        """send_with_retry returns success on first try."""
+        mock_server = MagicMock()
+        mock_smtp.return_value.__enter__ = MagicMock(return_value=mock_server)
+        mock_smtp.return_value.__exit__ = MagicMock(return_value=False)
+
+        success, attempts, error_msg = email_service.send_with_retry(
+            to_email="user@test.com",
+            attachment_path=sample_attachment,
+            job_id="test123",
+            created_at="2025-01-01 10:00:00",
+        )
+        assert success is True
+        assert attempts == 1
+        assert error_msg is None
+
+    def test_send_error_notification_disabled(
+        self,
+        disabled_email_config: EmailServiceConfig,
+    ) -> None:
+        """send_error_notification returns False when disabled."""
+        service = EmailService(disabled_email_config)
+        result = service.send_error_notification(
+            to_email="user@test.com",
+            job_id="test123",
+            error_message="Something broke",
+        )
+        assert result is False
+
+    @patch("energy_forecast.serving.services.email_service.smtplib.SMTP")
+    def test_send_error_notification_exception(
+        self,
+        mock_smtp: MagicMock,
+        email_service: EmailService,
+    ) -> None:
+        """send_error_notification returns False on exception."""
+        mock_smtp.side_effect = OSError("Network unreachable")
+
+        result = email_service.send_error_notification(
+            to_email="user@test.com",
+            job_id="test123",
+            error_message="Something broke",
+        )
+        assert result is False
+
+    def test_send_drift_alert_disabled(
+        self,
+        disabled_email_config: EmailServiceConfig,
+    ) -> None:
+        """send_drift_alert returns False when disabled."""
+        from energy_forecast.monitoring.drift_detector import DriftAlert
+
+        service = EmailService(disabled_email_config)
+        alert = DriftAlert(
+            alert_type="mape_threshold",
+            severity="warning",
+            message="MAPE exceeded threshold",
+            current_value=8.0,
+            threshold=5.0,
+            window_days=7,
+        )
+        result = service.send_drift_alert("admin@test.com", alert)
+        assert result is False
+
+    @patch("energy_forecast.serving.services.email_service.smtplib.SMTP")
+    def test_send_drift_alert_success(
+        self,
+        mock_smtp: MagicMock,
+        email_service: EmailService,
+    ) -> None:
+        """send_drift_alert sends formatted email."""
+        from energy_forecast.monitoring.drift_detector import DriftAlert
+
+        mock_server = MagicMock()
+        mock_smtp.return_value.__enter__ = MagicMock(return_value=mock_server)
+        mock_smtp.return_value.__exit__ = MagicMock(return_value=False)
+
+        alert = DriftAlert(
+            alert_type="mape_threshold",
+            severity="critical",
+            message="MAPE exceeded threshold",
+            current_value=8.0,
+            threshold=5.0,
+            window_days=7,
+        )
+        result = email_service.send_drift_alert("admin@test.com", alert)
+        assert result is True
+        mock_server.sendmail.assert_called_once()
+
+    @patch("energy_forecast.serving.services.email_service.smtplib.SMTP")
+    def test_send_drift_alert_exception(
+        self,
+        mock_smtp: MagicMock,
+        email_service: EmailService,
+    ) -> None:
+        """send_drift_alert returns False on exception."""
+        from energy_forecast.monitoring.drift_detector import DriftAlert
+
+        mock_smtp.side_effect = OSError("Connection refused")
+
+        alert = DriftAlert(
+            alert_type="bias_shift",
+            severity="warning",
+            message="Bias shifted",
+            current_value=3.0,
+            threshold=2.0,
+            window_days=14,
+        )
+        result = email_service.send_drift_alert("admin@test.com", alert)
+        assert result is False

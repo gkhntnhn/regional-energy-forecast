@@ -166,6 +166,57 @@ class TestLoadExcel:
             loader.load_excel(path)
 
 
+    def test_above_max_consumption_raises(
+        self,
+        loader: DataLoader,
+        tmp_path: Path,
+    ) -> None:
+        """Consumption above maximum raises DataValidationError."""
+        df = pd.DataFrame(
+            {
+                "date": ["2024-01-01"],
+                "time": [0],
+                "consumption": [99999.0],  # above max_consumption (10000)
+            }
+        )
+        path = tmp_path / "over.xlsx"
+        df.to_excel(path, index=False, engine="openpyxl")
+
+        with pytest.raises(DataValidationError, match="above maximum"):
+            loader.load_excel(path)
+
+    def test_rename_columns_with_custom_names(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Loader renames custom column names to standard names."""
+        from energy_forecast.config import DataLoaderConfig
+        from energy_forecast.config.general import ExcelColumnsConfig
+
+        config = DataLoaderConfig(
+            excel=ExcelColumnsConfig(
+                date="tarih",
+                time="saat",
+                consumption="tuketim",
+            ),
+        )
+        loader = DataLoader(config)
+
+        df = pd.DataFrame(
+            {
+                "tarih": ["2024-01-01"] * 24,
+                "saat": list(range(24)),
+                "tuketim": [1000.0] * 24,
+            }
+        )
+        path = tmp_path / "custom.xlsx"
+        df.to_excel(path, index=False, engine="openpyxl")
+
+        result = loader.load_excel(path)
+        assert "consumption" in result.columns
+        assert len(result) == 24
+
+
 class TestExtendForForecast:
     """Tests for DataLoader.extend_for_forecast()."""
 

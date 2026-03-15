@@ -204,6 +204,11 @@ class TestFactory:
         with pytest.raises(ValueError, match="shuffle"):
             TimeSeriesSplitter.from_config(cv_config)
 
+    def test_from_config_wrong_type_raises(self) -> None:
+        """Passing wrong type to from_config raises TypeError."""
+        with pytest.raises(TypeError, match="Expected CrossValidationConfig"):
+            TimeSeriesSplitter.from_config({"n_splits": 5})  # type: ignore[arg-type]
+
 
 class TestIterSplits:
     """Test iter_splits method."""

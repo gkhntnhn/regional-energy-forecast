@@ -154,6 +154,79 @@ class TestJobRepository:
         assert stats["pending"] >= 1
 
 
+    @pytest.mark.asyncio
+    async def test_update_status_nonexistent_noop(self, db_session: AsyncSession) -> None:
+        """update_status on nonexistent job is a no-op."""
+        repo = JobRepository(db_session)
+        await repo.update_status("nonexistent_id", "completed")
+        # Should not raise
+
+    @pytest.mark.asyncio
+    async def test_update_progress_nonexistent_noop(self, db_session: AsyncSession) -> None:
+        """update_progress on nonexistent job is a no-op."""
+        repo = JobRepository(db_session)
+        await repo.update_progress("nonexistent_id", "Step 1")
+        # Should not raise
+
+    @pytest.mark.asyncio
+    async def test_update_metadata_nonexistent_noop(self, db_session: AsyncSession) -> None:
+        """update_metadata on nonexistent job is a no-op."""
+        repo = JobRepository(db_session)
+        await repo.update_metadata("nonexistent_id", {"metadata": {}})
+        # Should not raise
+
+    @pytest.mark.asyncio
+    async def test_update_email_status_nonexistent_noop(self, db_session: AsyncSession) -> None:
+        """update_email_status on nonexistent job is a no-op."""
+        repo = JobRepository(db_session)
+        await repo.update_email_status("nonexistent_id", "failed")
+        # Should not raise
+
+    @pytest.mark.asyncio
+    async def test_update_metadata_all_fields(
+        self, db_session: AsyncSession, _seed_job: JobModel,
+    ) -> None:
+        """update_metadata sets model_versions, epias_snapshot, paths, config."""
+        await db_session.flush()
+        repo = JobRepository(db_session)
+        await repo.update_metadata(
+            "repo_test_01",
+            {
+                "model_versions": {"catboost": "v1"},
+                "epias_snapshot": {"rtc": 1500},
+                "config_snapshot": {"n_trials": 50},
+                "historical_path": "/tmp/hist.parquet",
+                "forecast_path": "/tmp/fc.parquet",
+                "archive_path": "/tmp/archive/",
+                "feature_importance_top15": [{"feat": "hour", "imp": 0.1}],
+            },
+        )
+
+        job = await repo.get_by_id("repo_test_01")
+        assert job is not None
+        assert job.model_versions == {"catboost": "v1"}
+        assert job.epias_snapshot == {"rtc": 1500}
+        assert job.historical_path == "/tmp/hist.parquet"
+        assert job.forecast_path == "/tmp/fc.parquet"
+        assert job.archive_path == "/tmp/archive/"
+
+    @pytest.mark.asyncio
+    async def test_update_email_status_with_error(
+        self, db_session: AsyncSession, _seed_job: JobModel,
+    ) -> None:
+        """update_email_status stores error message."""
+        await db_session.flush()
+        repo = JobRepository(db_session)
+        await repo.update_email_status(
+            "repo_test_01", "failed", attempts=3, error="SMTP timeout",
+        )
+
+        job = await repo.get_by_id("repo_test_01")
+        assert job is not None
+        assert job.email_status == "failed"
+        assert job.email_error == "SMTP timeout"
+
+
 class TestPredictionRepository:
     """Tests for PredictionRepository."""
 

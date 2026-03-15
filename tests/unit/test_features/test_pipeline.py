@@ -114,3 +114,87 @@ class TestFeaturePipeline:
         result = pipe.run(sample_full_df)
         assert result.shape == sample_full_df.shape
         assert list(result.columns) == list(sample_full_df.columns)
+
+
+class TestValidateOutput:
+    """Tests for _validate_output error branches."""
+
+    def test_duplicate_columns_raises(self) -> None:
+        """Duplicate columns in output raise ValueError."""
+        settings = Settings(
+            region=_DEFAULT_REGION,
+            pipeline=PipelineConfig(
+                modules=[],
+                validate_output=True,
+                check_duplicate_columns=True,
+            ),
+        )
+        pipe = FeaturePipeline(settings)
+        # Create DataFrame with duplicate columns
+        idx = pd.date_range("2024-01-01", periods=3, freq="h")
+        df = pd.DataFrame({"a": [1, 2, 3], "b": [4, 5, 6]}, index=idx)
+        df = pd.concat([df, df[["a"]]], axis=1)  # duplicate 'a'
+
+        with pytest.raises(ValueError, match="Duplicate columns"):
+            pipe._validate_output(df)
+
+    def test_raw_epias_remaining_raises(self) -> None:
+        """Raw EPIAS columns still present raise ValueError."""
+        settings = get_default_config()
+        settings = settings.model_copy(
+            update={
+                "pipeline": PipelineConfig(
+                    modules=[],
+                    validate_output=True,
+                    drop_raw_epias=True,
+                    check_duplicate_columns=False,
+                ),
+            },
+        )
+        pipe = FeaturePipeline(settings)
+        idx = pd.date_range("2024-01-01", periods=3, freq="h")
+        # Include a raw EPIAS variable name
+        raw_var = settings.features.epias.variables[0]
+        df = pd.DataFrame({raw_var: [1, 2, 3]}, index=idx)
+
+        with pytest.raises(ValueError, match="Raw EPIAS columns not dropped"):
+            pipe._validate_output(df)
+
+    def test_raw_generation_remaining_raises(self) -> None:
+        """Raw generation columns still present raise ValueError."""
+        settings = get_default_config()
+        settings = settings.model_copy(
+            update={
+                "pipeline": PipelineConfig(
+                    modules=[],
+                    validate_output=True,
+                    drop_raw_epias=True,
+                    check_duplicate_columns=False,
+                ),
+            },
+        )
+        pipe = FeaturePipeline(settings)
+        idx = pd.date_range("2024-01-01", periods=3, freq="h")
+        # Include a raw generation variable name
+        gen_var = settings.features.epias.generation.variables[0]
+        df = pd.DataFrame({gen_var: [1, 2, 3]}, index=idx)
+
+        with pytest.raises(ValueError, match="Raw generation columns not dropped"):
+            pipe._validate_output(df)
+
+    def test_non_datetime_index_raises(self) -> None:
+        """Non-DatetimeIndex raises TypeError."""
+        settings = Settings(
+            region=_DEFAULT_REGION,
+            pipeline=PipelineConfig(
+                modules=[],
+                validate_output=True,
+                check_duplicate_columns=False,
+                drop_raw_epias=False,
+            ),
+        )
+        pipe = FeaturePipeline(settings)
+        df = pd.DataFrame({"a": [1, 2, 3]})  # RangeIndex
+
+        with pytest.raises(TypeError, match="DatetimeIndex"):
+            pipe._validate_output(df)

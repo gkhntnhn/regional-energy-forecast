@@ -18,8 +18,11 @@ from sqlalchemy.orm import Session, sessionmaker
 import energy_forecast.db.models  # noqa: F401
 from energy_forecast.db.base import Base
 from energy_forecast.db.models import (
+    EpiasGenerationModel,
     EpiasMarketModel,
+    ProfileCoefficientModel,
     TurkishHolidayModel,
+    WeatherCacheModel,
 )
 from energy_forecast.db.sync_repos import SyncDataAccess, _rows_to_df
 
@@ -147,6 +150,190 @@ class TestEpiasMarketRead:
 
 
 # ---------------------------------------------------------------------------
+# EPIAS Generation reads (SQLite)
+# ---------------------------------------------------------------------------
+
+
+class TestEpiasGenerationRead:
+    """Read operations for EPIAS generation — real SQLite engine."""
+
+    def _seed_generation(
+        self,
+        session: Session,
+        hours: int = 24,
+        start: str = "2024-01-01",
+    ) -> None:
+        """Insert sample generation rows."""
+        base = datetime.fromisoformat(start)
+        for h in range(hours):
+            dt = base + timedelta(hours=h)
+            session.add(
+                EpiasGenerationModel(
+                    dt=dt,
+                    gen_total=50000.0 + h * 100,
+                    gen_natural_gas=20000.0 + h * 50,
+                )
+            )
+        session.flush()
+
+    def test_get_range_empty(self, dao: SyncDataAccess) -> None:
+        """Empty DB returns empty DataFrame."""
+        df = dao.get_epias_generation_range(
+            datetime(2024, 1, 1),
+            datetime(2024, 1, 2),
+        )
+        assert df.empty
+
+    def test_get_range_with_data(
+        self,
+        sync_session: Session,
+        dao: SyncDataAccess,
+    ) -> None:
+        """Returns generation data within requested range."""
+        self._seed_generation(sync_session, hours=48)
+        df = dao.get_epias_generation_range(
+            datetime(2024, 1, 1, 0),
+            datetime(2024, 1, 1, 23),
+        )
+        assert len(df) == 24
+        assert "gen_total" in df.columns
+
+    def test_get_year_with_data(
+        self,
+        sync_session: Session,
+        dao: SyncDataAccess,
+    ) -> None:
+        """Year filter returns correct year data."""
+        self._seed_generation(sync_session, hours=48)
+        df = dao.get_epias_generation_year(2024)
+        assert len(df) == 48
+
+    def test_get_year_no_match(self, dao: SyncDataAccess) -> None:
+        """Nonexistent year returns empty DataFrame."""
+        df = dao.get_epias_generation_year(1999)
+        assert df.empty
+
+
+# ---------------------------------------------------------------------------
+# Weather Cache reads (SQLite)
+# ---------------------------------------------------------------------------
+
+
+class TestWeatherCacheRead:
+    """Read operations for weather cache — real SQLite engine."""
+
+    def _seed_weather(self, session: Session) -> None:
+        """Insert sample weather rows."""
+        base = datetime(2024, 1, 1, 0, 0)
+        for h in range(24):
+            dt = base + timedelta(hours=h)
+            session.add(
+                WeatherCacheModel(
+                    dt=dt,
+                    city="Bursa",
+                    source="historical",
+                    temperature_2m=5.0 + h * 0.5,
+                    fetched_at=datetime(2024, 1, 1, 0, 0),
+                )
+            )
+        session.flush()
+
+    def test_get_range_empty(self, dao: SyncDataAccess) -> None:
+        """Empty DB returns empty DataFrame."""
+        df = dao.get_weather_range(
+            datetime(2024, 1, 1),
+            datetime(2024, 1, 2),
+        )
+        assert df.empty
+
+    def test_get_range_with_data(
+        self,
+        sync_session: Session,
+        dao: SyncDataAccess,
+    ) -> None:
+        """Returns weather data within requested range."""
+        self._seed_weather(sync_session)
+        df = dao.get_weather_range(
+            datetime(2024, 1, 1, 0),
+            datetime(2024, 1, 1, 23),
+        )
+        assert len(df) == 24
+        assert "temperature_2m" in df.columns
+
+    def test_get_range_with_city_filter(
+        self,
+        sync_session: Session,
+        dao: SyncDataAccess,
+    ) -> None:
+        """City filter works correctly."""
+        self._seed_weather(sync_session)
+        df = dao.get_weather_range(
+            datetime(2024, 1, 1, 0),
+            datetime(2024, 1, 1, 23),
+            city="Bursa",
+        )
+        assert len(df) == 24
+
+    def test_get_range_with_source_filter(
+        self,
+        sync_session: Session,
+        dao: SyncDataAccess,
+    ) -> None:
+        """Source filter works correctly."""
+        self._seed_weather(sync_session)
+        df = dao.get_weather_range(
+            datetime(2024, 1, 1, 0),
+            datetime(2024, 1, 1, 23),
+            source="historical",
+        )
+        assert len(df) == 24
+
+
+# ---------------------------------------------------------------------------
+# Profile reads (SQLite)
+# ---------------------------------------------------------------------------
+
+
+class TestProfileRead:
+    """Read operations for profile coefficients — real SQLite engine."""
+
+    def _seed_profile(self, session: Session) -> None:
+        """Insert sample profile rows."""
+        base = datetime(2024, 6, 1, 0, 0)
+        for h in range(24):
+            dt = base + timedelta(hours=h)
+            session.add(
+                ProfileCoefficientModel(
+                    dt=dt,
+                    profile_residential_lv=1.0 + h * 0.01,
+                )
+            )
+        session.flush()
+
+    def test_get_range_empty(self, dao: SyncDataAccess) -> None:
+        """Empty DB returns empty DataFrame."""
+        df = dao.get_profile_range(
+            datetime(2024, 1, 1),
+            datetime(2024, 12, 31),
+        )
+        assert df.empty
+
+    def test_get_range_with_data(
+        self,
+        sync_session: Session,
+        dao: SyncDataAccess,
+    ) -> None:
+        """Returns profile data within requested range."""
+        self._seed_profile(sync_session)
+        df = dao.get_profile_range(
+            datetime(2024, 6, 1, 0),
+            datetime(2024, 6, 1, 23),
+        )
+        assert len(df) == 24
+        assert "profile_residential_lv" in df.columns
+
+
+# ---------------------------------------------------------------------------
 # Holiday reads (SQLite)
 # ---------------------------------------------------------------------------
 
@@ -222,6 +409,54 @@ class TestUpsertMocked:
     def test_upsert_weather_empty(self, dao: SyncDataAccess) -> None:
         """Empty rows list returns 0."""
         assert dao.upsert_weather([]) == 0
+
+    @patch("energy_forecast.db.sync_repos.pg_insert")
+    def test_upsert_generation_calls_execute(
+        self,
+        mock_pg: MagicMock,
+        dao: SyncDataAccess,
+    ) -> None:
+        """Non-empty generation rows trigger session.execute + flush."""
+        mock_stmt = MagicMock()
+        mock_pg.return_value = mock_stmt
+        mock_stmt.on_conflict_do_update.return_value = mock_stmt
+        mock_stmt.excluded = {
+            col: col
+            for col in ["gen_total", "gen_natural_gas", "fetched_at"]
+        }
+
+        dao._session = MagicMock()
+        rows: list[dict[str, Any]] = [{"datetime": datetime(2024, 1, 1), "gen_total": 50000.0}]
+        count = dao.upsert_epias_generation(rows)
+
+        assert count == 1
+        dao._session.execute.assert_called_once()
+        dao._session.flush.assert_called_once()
+
+    @patch("energy_forecast.db.sync_repos.pg_insert")
+    def test_upsert_weather_calls_execute(
+        self,
+        mock_pg: MagicMock,
+        dao: SyncDataAccess,
+    ) -> None:
+        """Non-empty weather rows trigger session.execute + flush."""
+        mock_stmt = MagicMock()
+        mock_pg.return_value = mock_stmt
+        mock_stmt.on_conflict_do_update.return_value = mock_stmt
+        mock_stmt.excluded = {
+            col: col
+            for col in ["temperature_2m", "fetched_at"]
+        }
+
+        dao._session = MagicMock()
+        rows: list[dict[str, Any]] = [
+            {"datetime": datetime(2024, 1, 1), "city": "Bursa", "source": "historical"},
+        ]
+        count = dao.upsert_weather(rows)
+
+        assert count == 1
+        dao._session.execute.assert_called_once()
+        dao._session.flush.assert_called_once()
 
     @patch("energy_forecast.db.sync_repos.pg_insert")
     def test_upsert_market_calls_execute(

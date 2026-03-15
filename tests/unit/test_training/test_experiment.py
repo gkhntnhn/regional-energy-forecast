@@ -5,6 +5,8 @@ from __future__ import annotations
 from typing import Any
 from unittest.mock import MagicMock, patch
 
+import numpy as np
+
 import pytest
 
 from energy_forecast.training.experiment import ExperimentTracker
@@ -51,6 +53,23 @@ def mock_mlflow() -> MagicMock:
     )
     mock.start_run.return_value.__exit__ = MagicMock(return_value=False)
     return mock
+
+
+class TestInit:
+    """Test ExperimentTracker initialization."""
+
+    @patch("energy_forecast.training.experiment.mlflow", create=True)
+    def test_init_enabled_calls_mlflow(self, mock_mlflow: MagicMock) -> None:
+        """Enabled tracker sets tracking URI and experiment."""
+        with patch.dict("sys.modules", {"mlflow": mock_mlflow}):
+            tracker = ExperimentTracker(
+                experiment_name="test-exp",
+                tracking_uri="http://test:5000",
+                enabled=True,
+            )
+        assert tracker._enabled is True
+        mock_mlflow.set_tracking_uri.assert_called_once_with("http://test:5000")
+        mock_mlflow.set_experiment.assert_called_once_with("test-exp")
 
 
 class TestEnabledTracker:
@@ -146,3 +165,72 @@ class TestEnabledTracker:
     def test_disabled_log_ensemble_weights(self) -> None:
         tracker = ExperimentTracker(enabled=False)
         tracker.log_ensemble_weights({"catboost": 0.5})
+
+    def test_log_training_meta_when_enabled(self, mock_mlflow: MagicMock) -> None:
+        """log_training_meta splits numeric vs non-numeric into metrics vs params."""
+        tracker = ExperimentTracker(enabled=False)
+        tracker._enabled = True
+        tracker._mlflow = mock_mlflow
+        meta: dict[str, Any] = {
+            "training_time_seconds": 123.4,
+            "data_rows": 48000,
+            "python_version": "3.11.14",
+        }
+        tracker.log_training_meta(meta)
+        # training_time_seconds -> metrics, rest -> params
+        mock_mlflow.log_metrics.assert_called_once()
+        mock_mlflow.log_params.assert_called_once()
+        logged_metrics = mock_mlflow.log_metrics.call_args[0][0]
+        assert "training_time_seconds" in logged_metrics
+        logged_params = mock_mlflow.log_params.call_args[0][0]
+        assert "data_rows" in logged_params
+
+    def test_log_config_snapshot_when_enabled(self, mock_mlflow: MagicMock) -> None:
+        """log_config_snapshot writes YAML and logs as artifact."""
+        tracker = ExperimentTracker(enabled=False)
+        tracker._enabled = True
+        tracker._mlflow = mock_mlflow
+        config_dict: dict[str, Any] = {"n_trials": 50, "model": "catboost"}
+        tracker.log_config_snapshot(config_dict)
+        mock_mlflow.log_artifact.assert_called_once()
+
+    def test_log_predictions_summary_when_enabled(self, mock_mlflow: MagicMock) -> None:
+        """log_predictions_summary logs residual statistics."""
+        import numpy as np
+
+        tracker = ExperimentTracker(enabled=False)
+        tracker._enabled = True
+        tracker._mlflow = mock_mlflow
+        y_true = np.array([100.0, 200.0, 300.0])
+        y_pred = np.array([110.0, 190.0, 310.0])
+        tracker.log_predictions_summary(y_true, y_pred, prefix="test")
+        mock_mlflow.log_metrics.assert_called_once()
+        logged = mock_mlflow.log_metrics.call_args[0][0]
+        assert "test_pred_mean" in logged
+        assert "test_residual_std" in logged
+
+    def test_log_artifact_when_enabled(self, mock_mlflow: MagicMock) -> None:
+        """log_artifact calls mlflow.log_artifact."""
+        tracker = ExperimentTracker(enabled=False)
+        tracker._enabled = True
+        tracker._mlflow = mock_mlflow
+        tracker.log_artifact("/tmp/file.txt", artifact_path="outputs")
+        mock_mlflow.log_artifact.assert_called_once_with("/tmp/file.txt", "outputs")
+
+    def test_disabled_log_training_meta(self) -> None:
+        tracker = ExperimentTracker(enabled=False)
+        tracker.log_training_meta({"data_rows": 48000})
+
+    def test_disabled_log_config_snapshot(self) -> None:
+        tracker = ExperimentTracker(enabled=False)
+        tracker.log_config_snapshot({"n_trials": 50})
+
+    def test_disabled_log_predictions_summary(self) -> None:
+        import numpy as np
+
+        tracker = ExperimentTracker(enabled=False)
+        tracker.log_predictions_summary(np.array([1.0]), np.array([1.0]))
+
+    def test_disabled_log_artifact(self) -> None:
+        tracker = ExperimentTracker(enabled=False)
+        tracker.log_artifact("/tmp/file.txt")

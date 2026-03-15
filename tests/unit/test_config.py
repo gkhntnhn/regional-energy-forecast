@@ -373,3 +373,37 @@ class TestCrossValidationConfig:
     def test_shuffle_always_false(self) -> None:
         cfg = CrossValidationConfig(shuffle=False)
         assert cfg.shuffle is False
+
+
+class TestEnsembleConfig:
+    """Tests for ensemble config validators."""
+
+    def test_weights_sum_exceeds_one_raises(self) -> None:
+        """Ensemble weights > 1.0 raises ValidationError."""
+        from energy_forecast.config import EnsembleWeightsConfig
+
+        with pytest.raises(ValidationError, match="exceed 1.0"):
+            EnsembleWeightsConfig(catboost=0.6, prophet=0.5, tft=0.0)
+
+    def test_weights_all_zero_normalizes(self) -> None:
+        """All-zero weights normalize to equal weights."""
+        from energy_forecast.config import EnsembleWeightsConfig
+
+        cfg = EnsembleWeightsConfig(catboost=0.0, prophet=0.0, tft=0.0)
+        normalized = cfg.get_normalized(["catboost", "prophet"])
+        assert abs(normalized["catboost"] - 0.5) < 1e-6
+        assert abs(normalized["prophet"] - 0.5) < 1e-6
+
+    def test_unknown_model_in_active_models_raises(self) -> None:
+        """Unknown model name in active_models raises ValidationError."""
+        from energy_forecast.config import EnsembleConfig
+
+        with pytest.raises(ValidationError, match="Unknown ensemble model"):
+            EnsembleConfig(active_models=["catboost", "xgboost"])
+
+    def test_empty_active_models_raises(self) -> None:
+        """Empty active_models raises ValidationError."""
+        from energy_forecast.config import EnsembleConfig
+
+        with pytest.raises(ValidationError, match="(?i)at least"):
+            EnsembleConfig(active_models=[])

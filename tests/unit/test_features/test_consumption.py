@@ -184,3 +184,30 @@ class TestNanAndCount:
         """
         new_cols = [c for c in result.columns if c != "consumption"]
         assert len(new_cols) >= 38, f"Expected >= 38 feature columns, got {len(new_cols)}"
+
+
+class TestDisabledFeatures:
+    """Tests for disabled feature branches."""
+
+    def test_no_trend_ratio_when_disabled(self, consumption_df: pd.DataFrame) -> None:
+        """Trend ratio is skipped when not in config."""
+        config = ConsumptionConfig()
+        cfg_dict = config.model_dump()
+        cfg_dict.pop("trend_ratio", None)
+        engineer = ConsumptionFeatureEngineer(cfg_dict)
+        result = engineer.fit_transform(consumption_df)
+        # No trend_ratio columns should appear
+        trend_cols = [c for c in result.columns if "trend_ratio" in c]
+        assert len(trend_cols) == 0
+
+    def test_target_encoding_disabled(self, consumption_df: pd.DataFrame) -> None:
+        """Target encoding is skipped when disabled."""
+        config = ConsumptionConfig()
+        cfg_dict = config.model_dump()
+        if "target_encoding" in cfg_dict:
+            cfg_dict["target_encoding"]["enabled"] = False
+        engineer = ConsumptionFeatureEngineer(cfg_dict)
+        result = engineer.fit_transform(consumption_df)
+        te_cols = [c for c in result.columns if "te_" in c]
+        assert len(te_cols) == 0
+

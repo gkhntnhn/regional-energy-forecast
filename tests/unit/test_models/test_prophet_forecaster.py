@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from energy_forecast.models.prophet import ProphetForecaster
+from energy_forecast.models.prophet import ModelIntegrityError, ProphetForecaster
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -201,6 +201,62 @@ class TestSaveLoad:
         """Test that loading nonexistent model raises FileNotFoundError."""
         with pytest.raises(FileNotFoundError):
             forecaster.load(tmp_path / "nonexistent")
+
+    def test_load_tampered_model_raises(
+        self, trained_forecaster: ProphetForecaster, tmp_path: Path
+    ) -> None:
+        """Test that tampered model file fails integrity check."""
+        save_path = tmp_path / "prophet_model"
+        trained_forecaster.save(save_path)
+
+        # Tamper with model file
+        model_file = save_path / "prophet_model.pkl"
+        model_file.write_bytes(b"tampered content")
+
+        new_forecaster = ProphetForecaster({})
+        with pytest.raises(ModelIntegrityError, match="integrity check failed"):
+            new_forecaster.load(save_path)
+
+    def test_load_no_metadata_raises(
+        self, trained_forecaster: ProphetForecaster, tmp_path: Path
+    ) -> None:
+        """Test that missing metadata.json raises FileNotFoundError."""
+        save_path = tmp_path / "prophet_model"
+        trained_forecaster.save(save_path)
+
+        # Delete metadata.json
+        (save_path / "metadata.json").unlink()
+
+        new_forecaster = ProphetForecaster({})
+        with pytest.raises(FileNotFoundError, match="metadata.json not found"):
+            new_forecaster.load(save_path)
+
+    def test_load_corrupted_pickle_raises(
+        self, trained_forecaster: ProphetForecaster, tmp_path: Path
+    ) -> None:
+        """Test that corrupted pickle raises RuntimeError."""
+        import hashlib
+        import json
+
+        save_path = tmp_path / "prophet_model"
+        trained_forecaster.save(save_path)
+
+        # Write corrupted pickle with matching hash in metadata
+        model_file = save_path / "prophet_model.pkl"
+        bad_content = b"not a valid pickle"
+        model_file.write_bytes(bad_content)
+
+        # Update metadata with correct hash so it passes integrity check
+        meta_path = save_path / "metadata.json"
+        with open(meta_path, encoding="utf-8") as f:
+            meta = json.load(f)
+        meta["model_hash"] = "sha256:" + hashlib.sha256(bad_content).hexdigest()
+        with open(meta_path, "w", encoding="utf-8") as f:
+            json.dump(meta, f)
+
+        new_forecaster = ProphetForecaster({})
+        with pytest.raises(RuntimeError, match="corrupted"):
+            new_forecaster.load(save_path)
 
 
 # ---------------------------------------------------------------------------

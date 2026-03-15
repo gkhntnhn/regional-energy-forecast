@@ -12,6 +12,7 @@ import pytest
 
 from energy_forecast.serving.exceptions import (
     FileTooLargeError,
+    FileUploadError,
     InvalidFileTypeError,
 )
 from energy_forecast.serving.services.file_service import FileService, FileServiceConfig
@@ -158,3 +159,86 @@ class TestFileService:
         # File is new, should not be removed
         assert removed == 0
         assert test_file.exists()
+
+    def test_save_upload_no_filename(
+        self,
+        file_service: FileService,
+    ) -> None:
+        """Test rejection when filename is None."""
+        mock = MagicMock()
+        mock.filename = None
+
+        with pytest.raises(FileUploadError, match="No filename"):
+            file_service.save_upload(mock)
+
+    def test_save_upload_non_xlsx_content(
+        self,
+        file_service: FileService,
+    ) -> None:
+        """Test rejection of file with wrong magic bytes."""
+        mock = MagicMock()
+        mock.filename = "test.xlsx"
+        mock.file = BytesIO(b"NOT_A_ZIP_FILE_CONTENT")
+
+        with pytest.raises(InvalidFileTypeError, match="does not match xlsx"):
+            file_service.save_upload(mock)
+
+    def test_save_upload_generic_exception(
+        self,
+        file_service: FileService,
+    ) -> None:
+        """Test generic exception wrapping in save_upload."""
+        mock = MagicMock()
+        mock.filename = "test.xlsx"
+        # After reading 4 bytes for magic check, raise on second read
+        mock.file.read.side_effect = [b"PK\x03\x04", OSError("disk full")]
+
+        with pytest.raises(FileUploadError, match="Failed to save"):
+            file_service.save_upload(mock)
+
+    def test_cleanup_old_files_removes_stale(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Test cleanup actually removes old files."""
+        import os
+        import time
+
+        config = FileServiceConfig(
+            upload_dir=tmp_path / "uploads",
+            output_dir=tmp_path / "outputs",
+            cleanup_after_hours=0,  # Everything is "old"
+        )
+        svc = FileService(config)
+
+        # Create a file
+        test_file = config.upload_dir / "old_file.txt"
+        test_file.write_text("test")
+        # Set mtime to 2 hours ago
+        old_time = time.time() - 7200
+        os.utime(test_file, (old_time, old_time))
+
+        removed = svc.cleanup_old_files()
+        assert removed >= 1
+        assert not test_file.exists()
+
+    def test_get_file_path_in_upload_dir(
+        self,
+        file_service: FileService,
+    ) -> None:
+        """Test get_file_path with output=False looks in upload dir."""
+        # Create a file in upload dir
+        test_file = file_service._config.upload_dir / "test_upload.xlsx"
+        test_file.write_text("test")
+
+        result = file_service.get_file_path("test_upload.xlsx", output=False)
+        assert result is not None
+        assert result == test_file
+
+    def test_get_file_path_not_found(
+        self,
+        file_service: FileService,
+    ) -> None:
+        """Test get_file_path returns None for missing file."""
+        result = file_service.get_file_path("nonexistent.xlsx", output=False)
+        assert result is None

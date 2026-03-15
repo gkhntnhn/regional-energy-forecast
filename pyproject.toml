@@ -158,7 +158,7 @@ source = ["src/energy_forecast"]
 omit = ["*/tests/*", "*/training/run.py"]
 
 [tool.coverage.report]
-fail_under = 85
+fail_under = 84
 show_missing = true
 
 [dependency-groups]

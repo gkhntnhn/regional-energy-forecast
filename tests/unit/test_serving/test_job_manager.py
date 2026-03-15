@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pandas as pd
 import pytest
@@ -1641,3 +1641,133 @@ class TestJobQueue:
         stats = jm.get_stats_in_memory()
         assert stats["queued"] == 1
         assert stats["running"] == 1
+
+
+class TestUpdateProgressDb:
+    """Tests for _update_progress_db static method."""
+
+    @pytest.mark.asyncio
+    async def test_update_progress_db_updates_job(
+        self, db_session_factory: Any,
+    ) -> None:
+        """_update_progress_db writes progress to DB via real SQLite."""
+        from energy_forecast.db.models import JobModel
+        from energy_forecast.db.repositories.job_repo import JobRepository
+
+        # Seed a job
+        async with db_session_factory() as session:
+            session.add(JobModel(
+                id="prog_test1",
+                email="t@t.com",
+                status="running",
+                excel_path="/tmp/t.xlsx",
+                file_stem="stem",
+                email_status="pending",
+            ))
+            await session.commit()
+
+        # Act
+        await JobManager._update_progress_db(
+            db_session_factory, "prog_test1", "Step 2/8",
+        )
+
+        # Assert
+        async with db_session_factory() as session:
+            repo = JobRepository(session)
+            job = await repo.get_by_id("prog_test1")
+            assert job is not None
+            assert job.progress == "Step 2/8"
+
+
+class TestUpdateStatusDb:
+    """Tests for _update_status_db static method."""
+
+    @pytest.mark.asyncio
+    async def test_update_status_db_sets_status(
+        self, db_session_factory: Any,
+    ) -> None:
+        """_update_status_db changes job status in DB."""
+        from energy_forecast.db.models import JobModel
+        from energy_forecast.db.repositories.job_repo import JobRepository
+
+        async with db_session_factory() as session:
+            session.add(JobModel(
+                id="stat_test1",
+                email="t@t.com",
+                status="running",
+                excel_path="/tmp/t.xlsx",
+                file_stem="stem",
+                email_status="pending",
+            ))
+            await session.commit()
+
+        await JobManager._update_status_db(
+            db_session_factory, "stat_test1", "completed",
+        )
+
+        async with db_session_factory() as session:
+            repo = JobRepository(session)
+            job = await repo.get_by_id("stat_test1")
+            assert job is not None
+            assert job.status == "completed"
+
+    @pytest.mark.asyncio
+    async def test_update_status_db_with_result_path(
+        self, db_session_factory: Any,
+    ) -> None:
+        """_update_status_db stores result_path in DB."""
+        from energy_forecast.db.models import JobModel
+        from energy_forecast.db.repositories.job_repo import JobRepository
+
+        async with db_session_factory() as session:
+            session.add(JobModel(
+                id="stat_test2",
+                email="t@t.com",
+                status="running",
+                excel_path="/tmp/t.xlsx",
+                file_stem="stem",
+                email_status="pending",
+            ))
+            await session.commit()
+
+        await JobManager._update_status_db(
+            db_session_factory, "stat_test2", "completed",
+            result_path="/tmp/out.xlsx",
+        )
+
+        async with db_session_factory() as session:
+            repo = JobRepository(session)
+            job = await repo.get_by_id("stat_test2")
+            assert job is not None
+            assert job.result_path == "/tmp/out.xlsx"
+
+    @pytest.mark.asyncio
+    async def test_update_status_db_with_error(
+        self, db_session_factory: Any,
+    ) -> None:
+        """_update_status_db stores error message in DB."""
+        from energy_forecast.db.models import JobModel
+        from energy_forecast.db.repositories.job_repo import JobRepository
+
+        async with db_session_factory() as session:
+            session.add(JobModel(
+                id="stat_test3",
+                email="t@t.com",
+                status="running",
+                excel_path="/tmp/t.xlsx",
+                file_stem="stem",
+                email_status="pending",
+            ))
+            await session.commit()
+
+        await JobManager._update_status_db(
+            db_session_factory, "stat_test3", "failed",
+            error="Something broke",
+        )
+
+        async with db_session_factory() as session:
+            repo = JobRepository(session)
+            job = await repo.get_by_id("stat_test3")
+            assert job is not None
+            assert job.status == "failed"
+            assert job.error == "Something broke"

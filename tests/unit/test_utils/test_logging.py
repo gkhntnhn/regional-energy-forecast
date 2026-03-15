@@ -23,6 +23,21 @@ class TestSetupLogger:
         for level in ("DEBUG", "INFO", "WARNING", "ERROR"):
             setup_logger(level=level)
 
+    def test_setup_logger_with_log_file(self, tmp_path) -> None:
+        """setup_logger with log_file creates file handler."""
+        log_file = str(tmp_path / "logs" / "test.log")
+        setup_logger(level="DEBUG", log_file=log_file)
+        # Should have 2 handlers: stderr + file
+        assert len(logger._core.handlers) == 2
+
+    def test_setup_logger_creates_parent_directory(self, tmp_path) -> None:
+        """setup_logger with log_file creates parent directories."""
+        from pathlib import Path
+
+        log_file = str(tmp_path / "nested" / "dir" / "test.log")
+        setup_logger(level="INFO", log_file=log_file)
+        assert Path(log_file).parent.exists()
+
 
 class TestSuppressTrainingNoise:
     """Tests for suppress_training_noise function."""

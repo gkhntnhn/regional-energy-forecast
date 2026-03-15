@@ -393,3 +393,48 @@ class TestWeatherGroup:
         )
         result = engineer.fit_transform(df)
         assert "weather_group" not in result.columns
+
+
+class TestDisabledWeatherFeatures:
+    """Tests for disabled weather feature branches."""
+
+    def test_weather_lags_disabled(self, weather_df: pd.DataFrame) -> None:
+        """Weather lags skipped when disabled."""
+        cfg = WeatherFeaturesConfig().model_dump()
+        cfg["weather_lags"]["enabled"] = False
+        engineer = WeatherFeatureEngineer(cfg)
+        result = engineer.fit_transform(weather_df)
+        lag_cols = [c for c in result.columns if "wlag_" in c]
+        assert len(lag_cols) == 0
+
+    def test_quadratic_temperature_disabled(self, weather_df: pd.DataFrame) -> None:
+        """Quadratic temperature skipped when disabled."""
+        cfg = WeatherFeaturesConfig().model_dump()
+        cfg["quadratic_temperature"] = {"enabled": False}
+        engineer = WeatherFeatureEngineer(cfg)
+        result = engineer.fit_transform(weather_df)
+        assert "wth_temperature_squared" not in result.columns
+
+    def test_severity_disabled(self, weather_df: pd.DataFrame) -> None:
+        """Severity features skipped when disabled."""
+        cfg = WeatherFeaturesConfig().model_dump()
+        cfg["severity"] = {"enabled": False}
+        engineer = WeatherFeatureEngineer(cfg)
+        result = engineer.fit_transform(weather_df)
+        assert "wth_severity" not in result.columns
+
+    def test_heat_index_disabled(self, weather_df: pd.DataFrame) -> None:
+        """Heat index features skipped when disabled."""
+        cfg = WeatherFeaturesConfig().model_dump()
+        cfg["heat_index"] = {"enabled": False}
+        engineer = WeatherFeatureEngineer(cfg)
+        result = engineer.fit_transform(weather_df)
+        assert "wth_heat_index" not in result.columns
+
+    def test_temp_deviation_disabled(self, weather_df: pd.DataFrame) -> None:
+        """Temperature deviation features skipped when disabled."""
+        cfg = WeatherFeaturesConfig().model_dump()
+        cfg["temp_deviation"] = {"enabled": False}
+        engineer = WeatherFeatureEngineer(cfg)
+        result = engineer.fit_transform(weather_df)
+        assert "wth_temp_deviation_seasonal" not in result.columns
