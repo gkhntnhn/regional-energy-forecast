@@ -24,6 +24,7 @@ jobs:
           restore-keys: uv-${{ runner.os }}-
       - run: uv sync --all-extras
       - run: uv run mypy src/
+      - run: uv run pip-audit --strict --desc
 
   test:
     runs-on: ubuntu-latest
