@@ -309,7 +309,7 @@ class TFTCovariatesConfig(BaseModel, frozen=True):
 class TFTOptimizationConfig(BaseModel, frozen=True):
     """TFT optimization settings."""
 
-    optuna_splits: int = Field(default=2, ge=1)
+    optuna_splits: int = Field(default=3, ge=1)
     n_jobs: int = Field(default=1, ge=1)  # Parallel Optuna trials (1=serial, 8=RunPod A100)
     val_size_hours: int = Field(default=720, ge=24)  # ~1 month (24 * 30)
 

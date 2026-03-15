@@ -676,7 +676,7 @@ async function loadModelsTab() {
     const cmpEl = document.getElementById('model-comparison-table');
     if (comparison.length) {
         cmpEl.innerHTML = `<table class="data-table"><thead><tr><th>Model</th><th>Ort. MAPE</th><th>Median</th><th>P95</th><th>Saat</th></tr></thead><tbody>${comparison.map(c =>
-            `<tr><td><span class="accent-dot" style="background:${COLORS[c.model_source]||COLORS.primary}"></span>${c.model_source}</td><td class="mono">${c.avg_mape.toFixed(2)}%</td><td class="mono">${c.median_mape.toFixed(2)}%</td><td class="mono">${c.p95_mape.toFixed(2)}%</td><td class="mono">${c.n_hours}</td></tr>`
+            `<tr><td><span class="accent-dot" style="background:${COLORS[c.model_source]||COLORS.primary}"></span>${escapeHtml(c.model_source)}</td><td class="mono">${c.avg_mape.toFixed(2)}%</td><td class="mono">${c.median_mape.toFixed(2)}%</td><td class="mono">${c.p95_mape.toFixed(2)}%</td><td class="mono">${c.n_hours}</td></tr>`
         ).join('')}</tbody></table>`;
     } else { cmpEl.innerHTML = emptyHTML(); }
 
@@ -765,7 +765,7 @@ async function loadTrainingTab() {
     const promEl = document.getElementById('promoted-table');
     if (promoted.length) {
         promEl.innerHTML = `<table class="data-table"><thead><tr><th>Model</th><th>Val MAPE</th><th>Test MAPE</th><th>Tarih</th></tr></thead><tbody>${promoted.map(p =>
-            `<tr><td><span class="badge-status badge-ok">${p.model_type}</span></td><td class="mono">${p.val_mape?.toFixed(2) || '—'}%</td><td class="mono">${p.test_mape?.toFixed(2) || '—'}%</td><td class="mono">${p.promoted_at ? p.promoted_at.slice(0,10) : '—'}</td></tr>`
+            `<tr><td><span class="badge-status badge-ok">${escapeHtml(p.model_type)}</span></td><td class="mono">${p.val_mape?.toFixed(2) || '—'}%</td><td class="mono">${p.test_mape?.toFixed(2) || '—'}%</td><td class="mono">${p.promoted_at ? p.promoted_at.slice(0,10) : '—'}</td></tr>`
         ).join('')}</tbody></table>`;
     } else { promEl.innerHTML = emptyHTML('Henuz promote edilmis model yok'); }
 
@@ -795,7 +795,7 @@ async function loadTrainingTab() {
         runsEl.innerHTML = `<table class="data-table"><thead><tr><th>ID</th><th>Model</th><th>Durum</th><th>Val MAPE</th><th>Test MAPE</th><th>Trial</th><th>Split</th><th>Sure</th><th>Tarih</th></tr></thead><tbody>${runs.map(r => {
             const badge = r.status === 'completed' ? 'badge-ok' : r.status === 'failed' ? 'badge-err' : 'badge-info';
             const dur = r.duration_seconds ? (r.duration_seconds < 3600 ? Math.round(r.duration_seconds/60) + 'm' : (r.duration_seconds/3600).toFixed(1) + 'h') : '—';
-            return `<tr><td class="mono">${r.id}</td><td>${r.model_type}</td><td><span class="badge-status ${badge}">${r.status}</span></td><td class="mono">${r.val_mape?.toFixed(2) || '—'}%</td><td class="mono">${r.test_mape?.toFixed(2) || '—'}%</td><td class="mono">${r.n_trials || '—'}</td><td class="mono">${r.n_splits || '—'}</td><td class="mono">${dur}</td><td class="mono">${r.started_at ? r.started_at.slice(0,10) : '—'}</td></tr>`;
+            return `<tr><td class="mono">${r.id}</td><td>${escapeHtml(r.model_type)}</td><td><span class="badge-status ${badge}">${escapeHtml(r.status)}</span></td><td class="mono">${r.val_mape?.toFixed(2) || '—'}%</td><td class="mono">${r.test_mape?.toFixed(2) || '—'}%</td><td class="mono">${r.n_trials || '—'}</td><td class="mono">${r.n_splits || '—'}</td><td class="mono">${dur}</td><td class="mono">${r.started_at ? r.started_at.slice(0,10) : '—'}</td></tr>`;
         }).join('')}</tbody></table>`;
     } else { runsEl.innerHTML = emptyHTML('Henuz egitim kaydi yok'); }
 }
@@ -813,7 +813,7 @@ async function loadSystemTab() {
     let modelInfo = '';
     if (health.model_info && health.model_info.active_models) {
         modelInfo = '<div style="margin-top:.75rem"><span class="kpi-label">Aktif Modeller</span><div style="margin-top:.25rem">' +
-            health.model_info.active_models.map(m => `<span class="badge-status badge-info" style="margin-right:.25rem">${m}</span>`).join('') + '</div></div>';
+            health.model_info.active_models.map(m => `<span class="badge-status badge-info" style="margin-right:.25rem">${escapeHtml(m)}</span>`).join('') + '</div></div>';
     }
     hEl.innerHTML = `
         <table class="data-table"><tbody>

@@ -21,7 +21,7 @@ from loguru import logger
 from energy_forecast.config import EnsembleConfig
 from energy_forecast.models.base import PREDICTION_COL, BaseForecaster
 from energy_forecast.models.tft import TFTForecaster
-from energy_forecast.training.ensemble_utils import build_context_features
+from energy_forecast.utils.ensemble_helpers import build_context_features
 from energy_forecast.utils.prophet_utils import to_prophet_format
 
 if TYPE_CHECKING:

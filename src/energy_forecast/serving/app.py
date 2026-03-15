@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import secrets
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -260,9 +261,11 @@ app = FastAPI(
 try:
     _cors_settings = load_config()
     _cors_origins = _cors_settings.api.cors_origins
+    _rate_limit = _cors_settings.api.rate_limit
 except Exception as e:
-    logger.warning("Failed to load CORS config, falling back to wildcard: {}", e)
+    logger.warning("Failed to load API config, falling back to safe defaults: {}", e)
     _cors_origins = ["http://localhost:8000", "http://127.0.0.1:8000"]
+    _rate_limit = "10/minute"
 
 # CORS spec: allow_credentials=True is incompatible with allow_origins=["*"]
 _allow_credentials = "*" not in _cors_origins
@@ -282,12 +285,25 @@ app.add_middleware(
 
 # Security headers middleware
 class _SecurityHeadersMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next: Any) -> Any:  # type: ignore[override]
+    async def dispatch(self, request: Request, call_next: Any) -> Any:
         response = await call_next(request)
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["X-XSS-Protection"] = "1; mode=block"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+            "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net "
+            "https://cdnjs.cloudflare.com https://fonts.googleapis.com; "
+            "font-src 'self' https://cdnjs.cloudflare.com https://fonts.gstatic.com; "
+            "img-src 'self' data:; "
+            "connect-src 'self'"
+        )
+        if os.environ.get("APP_ENV") == "production":
+            response.headers["Strict-Transport-Security"] = (
+                "max-age=31536000; includeSubDomains"
+            )
         return response
 
 
@@ -359,7 +375,7 @@ async def health() -> HealthResponse:
 
 
 @app.post("/predict", response_model=JobResponse)
-@limiter.limit("10/minute")
+@limiter.limit(_rate_limit)
 async def predict(
     request: Request,
     file: UploadFile,

@@ -132,6 +132,8 @@ class ApiConfig(BaseModel, frozen=True):
     host: str = "0.0.0.0"
     port: int = Field(default=8000, ge=1, le=65535)
     rate_limit: str = "10/minute"
-    cors_origins: list[str] = Field(default_factory=lambda: ["*"])
+    cors_origins: list[str] = Field(
+        default_factory=lambda: ["http://localhost:8000", "http://127.0.0.1:8000"],
+    )
     files: ApiFilesConfig = Field(default_factory=ApiFilesConfig)
     email: ApiEmailConfig = Field(default_factory=ApiEmailConfig)

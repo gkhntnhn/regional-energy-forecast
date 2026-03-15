@@ -278,6 +278,13 @@ class PredictionService:
             if len(forecast_features) == 0:
                 raise PredictionError("No forecast rows available after feature pipeline")
 
+            if len(forecast_features) != self._config.forecast_horizon:
+                logger.warning(
+                    "Expected {} forecast rows, got {}",
+                    self._config.forecast_horizon,
+                    len(forecast_features),
+                )
+
             # Step 7: Generate ensemble predictions
             update_progress("Generating ensemble predictions...")
             historical_features = features_df.loc[~forecast_mask].copy()

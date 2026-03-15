@@ -587,7 +587,10 @@ class EpiasClient:
             return pd.DataFrame(columns=list(_GENERATION_FUEL_MAP.values()))
 
         df = pd.DataFrame(rows)
-        df["datetime"] = pd.to_datetime(df["datetime"]).dt.tz_localize(None)
+        dt_parsed = pd.to_datetime(df["datetime"])
+        if dt_parsed.dt.tz is not None:
+            dt_parsed = dt_parsed.dt.tz_convert("Europe/Istanbul").dt.tz_localize(None)
+        df["datetime"] = dt_parsed
         df = df.set_index("datetime").sort_index()
         df = df[~df.index.duplicated(keep="first")]
         return df
@@ -728,7 +731,10 @@ class EpiasClient:
             return pd.DataFrame(columns=[column_name])
 
         df = pd.DataFrame(rows)
-        df["datetime"] = pd.to_datetime(df["datetime"]).dt.tz_localize(None)
+        dt_parsed = pd.to_datetime(df["datetime"])
+        if dt_parsed.dt.tz is not None:
+            dt_parsed = dt_parsed.dt.tz_convert("Europe/Istanbul").dt.tz_localize(None)
+        df["datetime"] = dt_parsed
         df = df.set_index("datetime").sort_index()
         df = df[~df.index.duplicated(keep="first")]
         return df
