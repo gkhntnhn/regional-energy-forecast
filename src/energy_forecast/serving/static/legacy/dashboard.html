@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enerji Tuketim Tahmin Platformu</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <style>
+        :root {
+            --primary: #4361ee;
+            --primary-light: #4895ef;
+            --secondary: #4cc9f0;
+            --accent: #f72585;
+            --success: #38b000;
+            --light-bg: #DDDAE2;
+            --card-bg: #ffffff;
+            --text-dark: #212529;
+            --text-muted: #6c757d;
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--light-bg);
+            color: var(--text-dark);
+            padding-top: 2rem;
+        }
+        .header-logo {
+            width: 50px;
+            height: 50px;
+            background: linear-gradient(135deg, var(--primary), var(--primary-light));
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 1.5rem;
+            box-shadow: 0 4px 12px rgba(67, 97, 238, 0.2);
+        }
+        .header-title {
+            font-size: 1.8rem;
+            font-weight: 700;
+            color: var(--primary);
+            margin-bottom: 0.2rem;
+            background: linear-gradient(135deg, var(--primary), var(--primary-light));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            display: inline-block;
+        }
+        .card-custom {
+            border: none;
+            border-radius: 16px;
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
+            margin-bottom: 1.5rem;
+            transition: transform 0.3s ease;
+            background-color: var(--card-bg);
+        }
+        .card-custom:hover {
+            transform: translateY(-5px);
+        }
+        .upload-area {
+            border: 2px dashed var(--primary);
+            border-radius: 16px;
+            padding: 2rem;
+            text-align: center;
+            background-color: rgba(67, 97, 238, 0.03);
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        .upload-area:hover {
+            background-color: rgba(67, 97, 238, 0.08);
+        }
+        .file-info {
+            border-left: 3px solid var(--primary);
+            padding-left: 1rem;
+            margin-bottom: 1rem;
+        }
+        .btn-primary-custom {
+            background: linear-gradient(135deg, var(--primary), var(--primary-light));
+            border: none;
+            padding: 0.5rem 1.5rem;
+            font-weight: 600;
+        }
+        .btn-primary-custom:disabled {
+            opacity: 0.6;
+        }
+        .result-card {
+            display: none;
+            margin-top: 1rem;
+        }
+        .result-card.show {
+            display: block;
+        }
+        .result-success {
+            background-color: #d4edda;
+            border-color: #c3e6cb;
+        }
+        .result-error {
+            background-color: #f8d7da;
+            border-color: #f5c6cb;
+        }
+        .result-running {
+            background-color: #fff3cd;
+            border-color: #ffeeba;
+        }
+        .progress-text {
+            font-size: 0.9rem;
+            color: var(--text-muted);
+        }
+        /* ── Auth gate ───────────────────────────── */
+        .auth-gate {
+            position: fixed;
+            inset: 0;
+            background: var(--light-bg);
+            z-index: 999;
+            display: grid;
+            place-items: center;
+        }
+        .auth-gate.hidden { display: none; }
+        .auth-box {
+            background: var(--card-bg);
+            border: 1px solid #dee2e6;
+            border-radius: 16px;
+            padding: 2.5rem;
+            width: min(400px, 90vw);
+            text-align: center;
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
+        }
+        .auth-box h2 {
+            font-size: 1.2rem;
+            font-weight: 700;
+            margin-bottom: .5rem;
+            color: var(--primary);
+        }
+        .auth-box p { color: var(--text-muted); font-size: .85rem; margin-bottom: 1.5rem; }
+        .auth-input {
+            width: 100%;
+            padding: .65rem 1rem;
+            background: var(--light-bg);
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            color: var(--text-dark);
+            font-family: 'Inter', sans-serif;
+            font-size: .85rem;
+            margin-bottom: 1rem;
+            outline: none;
+            transition: border-color .2s;
+        }
+        .auth-input:focus { border-color: var(--primary); }
+        .auth-btn {
+            width: 100%;
+            padding: .65rem;
+            background: linear-gradient(135deg, var(--primary), var(--primary-light));
+            border: none;
+            border-radius: 8px;
+            color: #fff;
+            font-weight: 600;
+            font-size: .9rem;
+            cursor: pointer;
+            transition: opacity .2s;
+        }
+        .auth-btn:hover { opacity: .9; }
+    </style>
+</head>
+<body>
+    <!-- Auth Gate -->
+    <div id="authGate" class="auth-gate">
+        <div class="auth-box">
+            <h2><i class="fas fa-lock me-2"></i>API Anahtari Gerekli</h2>
+            <p>Tahmin platformuna erismek icin API anahtarinizi girin.</p>
+            <input id="authInput" type="password" class="auth-input" placeholder="API Key">
+            <button onclick="doAuth()" class="auth-btn">Giris Yap</button>
+        </div>
+    </div>
+
+    <div class="container">
+        <!-- Header -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="d-flex align-items-center">
+                    <div class="header-logo me-3">
+                        <i class="fas fa-chart-line"></i>
+                    </div>
+                    <div>
+                        <h1 class="header-title">Enerji Tuketim Tahmin Platformu</h1>
+                        <small class="text-muted">Yapay zeka destekli enerji tuketim tahmini</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Upload & Predict Section -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card card-custom">
+                    <div class="card-body">
+                        <h5 class="card-title mb-4">
+                            <i class="fas fa-cloud-upload-alt me-2"></i>Veri Yukleme & Tahmin
+                        </h5>
+                        <div id="queueNotice" class="alert alert-info d-none mb-3" role="alert">
+                            <i class="fas fa-layer-group me-2"></i>
+                            <span id="queueMessage"></span>
+                        </div>
+                        <div id="queueFullNotice" class="alert alert-warning d-none mb-3" role="alert">
+                            <i class="fas fa-ban me-2"></i>
+                            <strong>Kuyruk dolu.</strong> Maksimum is sayisina ulasildi. Lutfen bekleyin.
+                        </div>
+                        <form id="uploadForm" enctype="multipart/form-data">
+                            <div id="dropZone" class="upload-area mb-3">
+                                <i class="fas fa-file-excel fa-3x mb-3" style="color: var(--primary);"></i>
+                                <h5 class="mb-2">Dosyanizi surukleyip birakin veya secin</h5>
+                                <p class="text-muted mb-3">.xlsx formatinda</p>
+                                <input type="file" id="fileInput" name="file" class="d-none" accept=".xlsx" required>
+                                <button type="button" class="btn btn-primary-custom text-white" onclick="fileInput.click()">
+                                    <i class="fas fa-folder-open me-2"></i>Dosya Sec
+                                </button>
+                            </div>
+                            <div id="fileInfo" class="file-info d-none">
+                                <div class="d-flex align-items-center">
+                                    <i class="fas fa-file-excel fa-2x me-3" style="color: var(--primary);"></i>
+                                    <div>
+                                        <h6 id="fileName" class="mb-0">dosya.xlsx</h6>
+                                        <small class="text-muted" id="fileSize">0 MB</small>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <label for="emailInput" class="form-label">E-posta Adresi:</label>
+                                <input type="email" id="emailInput" name="email" class="form-control"
+                                       placeholder="example@domain.com" required>
+                            </div>
+                            <button type="submit" class="btn btn-primary-custom text-white w-100 py-2" id="submitBtn">
+                                <i class="fas fa-rocket me-2"></i>
+                                <span id="btnText">Tahmini Baslat</span>
+                                <i id="btnSpinner" class="fas fa-spinner fa-spin ms-2" style="display:none;"></i>
+                            </button>
+                        </form>
+
+                        <!-- Active Jobs List -->
+                        <div id="activeJobsList" class="mt-3"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- API Info -->
+        <div class="row">
+            <div class="col-12">
+                <div class="card card-custom">
+                    <div class="card-body">
+                        <h5 class="card-title mb-3">
+                            <i class="fas fa-code me-2"></i>API Dokumantasyonu
+                        </h5>
+                        <p class="text-muted">
+                            API dokumantasyonuna erisim icin:
+                            <a href="/docs" target="_blank" class="ms-2">
+                                <i class="fas fa-external-link-alt me-1"></i>Swagger UI
+                            </a>
+                            <a href="/redoc" target="_blank" class="ms-2">
+                                <i class="fas fa-external-link-alt me-1"></i>ReDoc
+                            </a>
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ── Config ──────────────────────────────────────────
+        let API_TOKEN = sessionStorage.getItem('dashboard_token') || '';
+        const POLL_INTERVAL_MS = 2000;
+        const BUSY_CHECK_MS = 5000;
+        let busyTimer = null;
+
+        // ── Auth ──────────────────────────────────────────
+        function checkAuth() {
+            const gate = document.getElementById('authGate');
+            if (API_TOKEN) { gate.classList.add('hidden'); checkBusyState(); }
+            else gate.classList.remove('hidden');
+        }
+        function doAuth() {
+            const v = document.getElementById('authInput').value.trim();
+            if (!v) return;
+            API_TOKEN = v;
+            sessionStorage.setItem('dashboard_token', v);
+            checkAuth();
+        }
+        function doLogout() {
+            API_TOKEN = '';
+            sessionStorage.removeItem('dashboard_token');
+            checkAuth();
+        }
+        document.getElementById('authInput').addEventListener('keydown', e => { if (e.key === 'Enter') doAuth(); });
+
+        // ── XSS helper ────────────────────────────────────
+        function escapeHtml(str) {
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        }
+
+        // ── Queue-aware state check ───────────────────────
+        async function checkBusyState() {
+            try {
+                const res = await fetch('/status/active', { headers: authHeaders() });
+                const data = await res.json();
+                const queueNotice = document.getElementById('queueNotice');
+                const queueMessage = document.getElementById('queueMessage');
+                const queueFullNotice = document.getElementById('queueFullNotice');
+                const submitBtn = document.getElementById('submitBtn');
+
+                if (data.queue_full) {
+                    // Queue full — block submission
+                    submitBtn.disabled = true;
+                    queueFullNotice.classList.remove('d-none');
+                    queueNotice.classList.add('d-none');
+                } else if (data.busy) {
+                    // Jobs running but queue has space — allow submission
+                    submitBtn.disabled = false;
+                    queueFullNotice.classList.add('d-none');
+                    queueNotice.classList.remove('d-none');
+                    const used = data.queue_size + 1; // +1 for the running job
+                    const max = data.max_queue_size + 1;
+                    queueMessage.textContent =
+                        'Sirada ' + used + '/' + max + ' is var. Yeni tahmin gonderebilirsiniz.';
+                } else {
+                    // Idle — all clear
+                    submitBtn.disabled = false;
+                    queueNotice.classList.add('d-none');
+                    queueFullNotice.classList.add('d-none');
+                }
+
+                // Keep polling while any activity
+                if (data.busy || data.queue_size > 0) {
+                    if (!busyTimer) busyTimer = setInterval(checkBusyState, BUSY_CHECK_MS);
+                } else {
+                    if (busyTimer) { clearInterval(busyTimer); busyTimer = null; }
+                }
+            } catch (e) {
+                // Network error — don't block the form
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', checkAuth);
+
+        // ── DOM refs ────────────────────────────────────────
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+        const fileInfo = document.getElementById('fileInfo');
+        const fileNameEl = document.getElementById('fileName');
+        const fileSizeEl = document.getElementById('fileSize');
+        const uploadForm = document.getElementById('uploadForm');
+        const submitBtn = document.getElementById('submitBtn');
+        const btnText = document.getElementById('btnText');
+        const btnSpinner = document.getElementById('btnSpinner');
+        const activeJobsList = document.getElementById('activeJobsList');
+
+        // ── Drag & Drop ─────────────────────────────────────
+        ['dragenter', 'dragover'].forEach(evt => {
+            dropZone.addEventListener(evt, e => {
+                e.preventDefault();
+                dropZone.style.borderColor = 'var(--accent)';
+                dropZone.style.backgroundColor = 'rgba(247, 37, 133, 0.05)';
+            });
+        });
+        ['dragleave', 'drop'].forEach(evt => {
+            dropZone.addEventListener(evt, e => {
+                e.preventDefault();
+                dropZone.style.borderColor = 'var(--primary)';
+                dropZone.style.backgroundColor = 'rgba(67, 97, 238, 0.03)';
+            });
+        });
+        dropZone.addEventListener('drop', e => {
+            fileInput.files = e.dataTransfer.files;
+            updateFileInfo();
+        });
+        fileInput.addEventListener('change', updateFileInfo);
+
+        function updateFileInfo() {
+            if (fileInput.files.length) {
+                const file = fileInput.files[0];
+                fileNameEl.textContent = file.name;
+                fileSizeEl.textContent = (file.size / 1048576).toFixed(1) + ' MB';
+                fileInfo.classList.remove('d-none');
+            }
+        }
+
+        // ── Progress mapping ──────────────────────────────────
+        const PROGRESS_MAP = {
+            'Veri analizi yapiliyor...':        { pct: 15, text: 'Veri analizi yapiliyor...' },
+            'Tahmin sonuclari kaydedildi':      { pct: 55, text: 'Tahmin sonuclari kaydediliyor...' },
+            'Rapor dosyasi olusturuluyor...':   { pct: 70, text: 'Rapor dosyasi hazirlaniyor...' },
+            'E-posta gonderiliyor...':          { pct: 85, text: 'E-posta gonderiliyor...' },
+            'Sonuclar gonderildi':              { pct: 95, text: 'Tamamlaniyor...' },
+        };
+
+        function resolveProgress(progressStr) {
+            if (!progressStr) return { pct: 10, text: 'Islem baslatiliyor...' };
+            const mapped = PROGRESS_MAP[progressStr];
+            if (mapped) return mapped;
+            return { pct: 30, text: progressStr };
+        }
+
+        // ── Multi-job tracking ─────────────────────────────
+        const trackedJobs = new Map(); // jobId -> { email, status, progress, error }
+
+        function renderJobs() {
+            if (trackedJobs.size === 0) {
+                activeJobsList.innerHTML = '';
+                return;
+            }
+            let html = '';
+            for (const [jobId, job] of trackedJobs) {
+                const shortId = jobId.substring(0, 8);
+                if (job.status === 'completed') {
+                    html += `<div class="alert alert-success py-2 mb-2">
+                        <i class="fas fa-check-circle me-2"></i>
+                        <strong>${shortId}</strong> — Tahmin tamamlandi! Sonuclar ${job.email} adresine gonderildi.
+                    </div>`;
+                } else if (job.status === 'failed') {
+                    html += `<div class="alert alert-danger py-2 mb-2">
+                        <i class="fas fa-times-circle me-2"></i>
+                        <strong>${shortId}</strong> — Hata: ${escapeHtml(job.error || 'Bilinmeyen hata')}
+                    </div>`;
+                } else {
+                    const prog = resolveProgress(job.progress);
+                    const label = job.status === 'queued' ? 'Sirada bekliyor' : prog.text;
+                    const pct = job.status === 'queued' ? 0 : prog.pct;
+                    html += `<div class="alert alert-info py-2 mb-2">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <span><i class="fas fa-spinner fa-spin me-2"></i><strong>${shortId}</strong> — ${label}</span>
+                        </div>
+                        <div class="progress" style="height: 4px;">
+                            <div class="progress-bar bg-primary" style="width: ${pct}%"></div>
+                        </div>
+                    </div>`;
+                }
+            }
+            activeJobsList.innerHTML = html;
+        }
+
+        // Poll all active tracked jobs
+        let jobPollTimer = null;
+
+        function startJobPolling() {
+            if (jobPollTimer) return;
+            jobPollTimer = setInterval(async () => {
+                let anyActive = false;
+                for (const [jobId, job] of trackedJobs) {
+                    if (job.status === 'completed' || job.status === 'failed') continue;
+                    anyActive = true;
+                    try {
+                        const resp = await fetch('/status/' + jobId, { headers: authHeaders() });
+                        if (!resp.ok) continue;
+                        const data = await resp.json();
+                        job.status = data.status;
+                        job.progress = data.progress || null;
+                        job.error = data.error || null;
+                    } catch (e) { /* skip this cycle */ }
+                }
+                renderJobs();
+                checkBusyState(); // refresh queue status
+                if (!anyActive) {
+                    clearInterval(jobPollTimer);
+                    jobPollTimer = null;
+                    // Clean completed/failed after 30 seconds
+                    setTimeout(() => {
+                        for (const [id, j] of trackedJobs) {
+                            if (j.status === 'completed' || j.status === 'failed') trackedJobs.delete(id);
+                        }
+                        renderJobs();
+                    }, 30000);
+                }
+            }, POLL_INTERVAL_MS);
+        }
+
+        // ── API calls ───────────────────────────────────────
+        function authHeaders() {
+            return { 'Authorization': 'Bearer ' + API_TOKEN };
+        }
+
+        async function submitPrediction(formData) {
+            const resp = await fetch('/predict', {
+                method: 'POST',
+                headers: authHeaders(),
+                body: formData
+            });
+
+            if (resp.status === 401) {
+                doLogout();
+                throw new Error('Yetkisiz erisim. Lutfen gecerli bir API anahtari girin.');
+            }
+
+            if (resp.status === 429) {
+                const data = await resp.json();
+                throw new Error(data.detail || 'Kuyruk dolu. Lutfen bekleyin.');
+            }
+
+            if (!resp.ok) {
+                const data = await resp.json().catch(() => ({}));
+                throw new Error(data.detail || 'Tahmin olusturma hatasi (HTTP ' + resp.status + ')');
+            }
+
+            return await resp.json();
+        }
+
+        // ── Main flow ───────────────────────────────────────
+        uploadForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
+
+            if (!fileInput.files.length) return;
+
+            // Briefly disable button during upload
+            submitBtn.disabled = true;
+            btnSpinner.style.display = 'inline-block';
+            btnText.textContent = 'Gonderiliyor...';
+
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+            formData.append('email', document.getElementById('emailInput').value);
+
+            try {
+                const job = await submitPrediction(formData);
+                const email = document.getElementById('emailInput').value;
+
+                // Track the new job
+                trackedJobs.set(job.job_id, {
+                    email: email,
+                    status: job.status || 'pending',
+                    progress: null,
+                    error: null,
+                });
+                renderJobs();
+                startJobPolling();
+
+                // Reset form for next submission
+                fileInput.value = '';
+                fileInfo.classList.add('d-none');
+                checkBusyState();
+
+            } catch (err) {
+                // Show inline error
+                activeJobsList.innerHTML =
+                    `<div class="alert alert-danger py-2 mb-2">
+                        <i class="fas fa-exclamation-triangle me-2"></i>${escapeHtml(err.message)}
+                    </div>` + activeJobsList.innerHTML;
+            } finally {
+                submitBtn.disabled = false;
+                btnSpinner.style.display = 'none';
+                btnText.textContent = 'Tahmini Baslat';
+            }
+        });
+    </script>
+</body>
+</html>
