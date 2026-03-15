@@ -1,5 +1,5 @@
 import { api } from "./client";
-import type { Job, JobResult } from "./types";
+import type { Job, Prediction } from "./types";
 
 export async function createPrediction(
   file: File,
@@ -15,8 +15,31 @@ export async function getJobStatus(jobId: string): Promise<Job> {
   return api.get<Job>(`/status/${jobId}`);
 }
 
-export async function getJobResult(jobId: string): Promise<JobResult> {
-  return api.get<JobResult>(`/status/${jobId}`);
+interface JobDetailsResponse {
+  id: string;
+  status: string;
+  predictions: Array<{
+    forecast_dt: string;
+    consumption_mwh: number;
+    period: string;
+    model_source: string;
+  }>;
+  metadata: Record<string, unknown> | null;
+}
+
+export async function getJobPredictions(jobId: string): Promise<Prediction[]> {
+  const details = await api.get<JobDetailsResponse>(
+    `/admin/jobs/${jobId}/details`,
+  );
+
+  // Filter to ensemble predictions only (main output)
+  return details.predictions
+    .filter((p) => p.model_source === "ensemble")
+    .map((p) => ({
+      datetime: p.forecast_dt,
+      consumption_mwh: p.consumption_mwh,
+      period: p.period as "intraday" | "day_ahead",
+    }));
 }
 
 export async function cancelJob(jobId: string): Promise<void> {

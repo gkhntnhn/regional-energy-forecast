@@ -4,18 +4,31 @@ import { JobQueue } from "@/components/predict/JobQueue";
 import { ResultTable } from "@/components/predict/ResultTable";
 import { ResultChart } from "@/components/predict/ResultChart";
 import { useJobStore } from "@/stores/jobs";
-import { getJobResult } from "@/api/predict";
+import { getJobPredictions } from "@/api/predict";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { useMemo } from "react";
 
 export function DashboardPage() {
   const lastResult = useJobStore((s) => s.lastResult);
   const jobId = lastResult?.job_id;
 
-  const { data: result, isLoading } = useQuery({
-    queryKey: ["job-result", jobId],
-    queryFn: () => getJobResult(jobId!),
+  const { data: predictions, isLoading } = useQuery({
+    queryKey: ["job-predictions", jobId],
+    queryFn: () => getJobPredictions(jobId!),
     enabled: !!jobId && lastResult?.status === "completed",
   });
+
+  const stats = useMemo(() => {
+    if (!predictions || predictions.length === 0) return undefined;
+    const values = predictions.map((p) => p.consumption_mwh);
+    const sum = values.reduce((a, b) => a + b, 0);
+    return {
+      count: values.length,
+      mean: sum / values.length,
+      min: Math.min(...values),
+      max: Math.max(...values),
+    };
+  }, [predictions]);
 
   return (
     <div className="space-y-6">
@@ -39,13 +52,12 @@ export function DashboardPage() {
         </div>
       )}
 
-      {result?.predictions && result.predictions.length > 0 && (
+      {predictions && predictions.length > 0 && (
         <div className="space-y-6">
-          <ResultChart predictions={result.predictions} />
+          <ResultChart predictions={predictions} />
           <ResultTable
-            predictions={result.predictions}
-            downloadUrl={result.download_url}
-            stats={result.statistics}
+            predictions={predictions}
+            stats={stats}
           />
         </div>
       )}
