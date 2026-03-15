@@ -337,15 +337,27 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 
-# Admin dashboard HTML — served without auth (JS handles its own token auth)
+# SPA frontend — serve index.html for all non-API routes
+_spa_dist = Path(__file__).parent / "static" / "dist"
+_spa_index = _spa_dist / "index.html"
+
+
+def _serve_spa() -> FileResponse:
+    """Serve SPA index.html, fallback to legacy admin.html."""
+    if _spa_index.exists():
+        return FileResponse(_spa_index, headers={"Cache-Control": "no-cache"})
+    # Fallback to legacy HTML
+    return FileResponse(
+        Path(__file__).parent / "static" / "legacy" / "admin.html",
+        headers={"Cache-Control": "no-cache"},
+    )
+
+
 @app.get("/admin", include_in_schema=False)
 @app.get("/admin/", include_in_schema=False)
 async def admin_dashboard() -> FileResponse:
-    """Serve the admin dashboard HTML (no auth — JS manages API key)."""
-    return FileResponse(
-        Path(__file__).parent / "static" / "admin.html",
-        headers={"Cache-Control": "no-cache"},
-    )
+    """Serve the SPA for admin route."""
+    return _serve_spa()
 
 
 # Admin API router (analytics endpoints) — auth required
@@ -353,7 +365,9 @@ from energy_forecast.serving.routers.admin import admin_router  # noqa: E402
 
 app.include_router(admin_router, dependencies=[Depends(verify_api_key)])
 
-# Static files for dashboard
+# Static files — SPA build assets first, then legacy static
+if _spa_dist.exists():
+    app.mount("/assets", StaticFiles(directory=_spa_dist / "assets"), name="spa-assets")
 _static_dir = Path(__file__).parent / "static"
 if _static_dir.exists():
     app.mount("/static", StaticFiles(directory=_static_dir), name="static")
@@ -702,8 +716,18 @@ async def list_jobs(
 
 @app.get("/", include_in_schema=False)
 async def root() -> FileResponse:
-    """Serve the dashboard."""
+    """Serve the SPA or legacy dashboard."""
+    if _spa_index.exists():
+        return FileResponse(_spa_index, headers={"Cache-Control": "no-cache"})
     return FileResponse(
-        Path(__file__).parent / "static" / "dashboard.html",
+        Path(__file__).parent / "static" / "legacy" / "dashboard.html",
         headers={"Cache-Control": "no-cache"},
     )
+
+
+# SPA catch-all: serve index.html for client-side routes (/login, /history, etc.)
+@app.get("/login", include_in_schema=False)
+@app.get("/history", include_in_schema=False)
+async def spa_routes() -> FileResponse:
+    """Serve SPA index.html for client-side routes."""
+    return _serve_spa()

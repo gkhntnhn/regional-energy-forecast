@@ -1,11 +1,18 @@
+import { lazy, Suspense } from "react";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Layout } from "@/components/layout/Layout";
 import { LoginPage } from "@/pages/LoginPage";
 import { DashboardPage } from "@/pages/DashboardPage";
-import { HistoryPage } from "@/pages/HistoryPage";
-import { AdminPage } from "@/pages/AdminPage";
 import { NotFoundPage } from "@/pages/NotFoundPage";
+import { Skeleton } from "@/components/ui/Skeleton";
+
+const HistoryPage = lazy(() =>
+  import("@/pages/HistoryPage").then((m) => ({ default: m.HistoryPage })),
+);
+const AdminPage = lazy(() =>
+  import("@/pages/AdminPage").then((m) => ({ default: m.AdminPage })),
+);
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -16,6 +23,15 @@ const queryClient = new QueryClient({
   },
 });
 
+function PageLoader() {
+  return (
+    <div className="space-y-4 p-6">
+      <Skeleton className="h-8 w-48" />
+      <Skeleton className="h-64 w-full" />
+    </div>
+  );
+}
+
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
@@ -24,8 +40,22 @@ export default function App() {
           <Route path="/login" element={<LoginPage />} />
           <Route element={<Layout />}>
             <Route index element={<DashboardPage />} />
-            <Route path="history" element={<HistoryPage />} />
-            <Route path="admin" element={<AdminPage />} />
+            <Route
+              path="history"
+              element={
+                <Suspense fallback={<PageLoader />}>
+                  <HistoryPage />
+                </Suspense>
+              }
+            />
+            <Route
+              path="admin"
+              element={
+                <Suspense fallback={<PageLoader />}>
+                  <AdminPage />
+                </Suspense>
+              }
+            />
           </Route>
           <Route path="*" element={<NotFoundPage />} />
         </Routes>

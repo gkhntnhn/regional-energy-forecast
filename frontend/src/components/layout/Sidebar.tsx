@@ -1,7 +1,6 @@
 import { NavLink } from "react-router-dom";
 import { cn } from "@/lib/utils";
-import { BarChart3, Upload, Clock, Settings, ChevronLeft, ChevronRight, Zap } from "lucide-react";
-import { useState } from "react";
+import { BarChart3, Upload, Clock, ChevronLeft, ChevronRight, Zap, X } from "lucide-react";
 
 const navItems = [
   { to: "/", icon: Upload, label: "Dashboard" },
@@ -9,61 +8,80 @@ const navItems = [
   { to: "/admin", icon: BarChart3, label: "Admin" },
 ];
 
-export function Sidebar() {
-  const [collapsed, setCollapsed] = useState(false);
+interface SidebarProps {
+  collapsed: boolean;
+  onToggle: () => void;
+  mobileOpen: boolean;
+  onMobileClose: () => void;
+}
 
+export function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose }: SidebarProps) {
   return (
-    <aside
-      className={cn(
-        "flex flex-col bg-slate-900 text-white transition-[width] duration-200 h-screen sticky top-0",
-        collapsed ? "w-14" : "w-60",
+    <>
+      {/* Mobile overlay */}
+      {mobileOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+          onClick={onMobileClose}
+        />
       )}
-    >
-      <div className="flex items-center gap-3 px-4 h-14 border-b border-slate-800">
-        <Zap size={20} className="text-emerald-500 shrink-0" />
-        {!collapsed && (
-          <span className="text-sm font-semibold tracking-tight truncate">
-            Energy Forecast
-          </span>
+
+      <aside
+        className={cn(
+          "flex flex-col bg-slate-900 text-white h-screen z-50",
+          // Desktop
+          "hidden lg:flex lg:sticky lg:top-0 transition-[width] duration-200",
+          collapsed ? "lg:w-14" : "lg:w-60",
+          // Mobile
+          mobileOpen && "!flex fixed inset-y-0 left-0 w-60",
         )}
-      </div>
-
-      <nav className="flex-1 py-3">
-        {navItems.map((item) => (
-          <NavLink
-            key={item.to}
-            to={item.to}
-            className={({ isActive }) =>
-              cn(
-                "flex items-center gap-3 px-4 py-2.5 text-sm transition-colors duration-150",
-                isActive
-                  ? "bg-slate-800 text-white border-r-2 border-emerald-500"
-                  : "text-slate-400 hover:text-white hover:bg-slate-800/50",
-              )
-            }
-          >
-            <item.icon size={18} className="shrink-0" />
-            {!collapsed && <span>{item.label}</span>}
-          </NavLink>
-        ))}
-      </nav>
-
-      <div className="border-t border-slate-800">
-        <NavLink
-          to="/admin"
-          className="flex items-center gap-3 px-4 py-2.5 text-sm text-slate-400 hover:text-white hover:bg-slate-800/50 transition-colors"
-        >
-          <Settings size={18} className="shrink-0" />
-          {!collapsed && <span>Ayarlar</span>}
-        </NavLink>
-      </div>
-
-      <button
-        onClick={() => setCollapsed(!collapsed)}
-        className="flex items-center justify-center h-10 border-t border-slate-800 text-slate-500 hover:text-white transition-colors cursor-pointer"
       >
-        {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
-      </button>
-    </aside>
+        <div className="flex items-center justify-between px-4 h-14 border-b border-slate-800">
+          <div className="flex items-center gap-3">
+            <Zap size={20} className="text-emerald-500 shrink-0" />
+            {(!collapsed || mobileOpen) && (
+              <span className="text-sm font-semibold tracking-tight truncate">
+                Energy Forecast
+              </span>
+            )}
+          </div>
+          {/* Mobile close */}
+          {mobileOpen && (
+            <button onClick={onMobileClose} className="lg:hidden text-slate-400 hover:text-white cursor-pointer">
+              <X size={18} />
+            </button>
+          )}
+        </div>
+
+        <nav className="flex-1 py-3">
+          {navItems.map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              onClick={onMobileClose}
+              className={({ isActive }) =>
+                cn(
+                  "flex items-center gap-3 px-4 py-2.5 text-sm transition-colors duration-150",
+                  isActive
+                    ? "bg-slate-800 text-white border-r-2 border-emerald-500"
+                    : "text-slate-400 hover:text-white hover:bg-slate-800/50",
+                )
+              }
+            >
+              <item.icon size={18} className="shrink-0" />
+              {(!collapsed || mobileOpen) && <span>{item.label}</span>}
+            </NavLink>
+          ))}
+        </nav>
+
+        {/* Collapse toggle — desktop only */}
+        <button
+          onClick={onToggle}
+          className="hidden lg:flex items-center justify-center h-10 border-t border-slate-800 text-slate-500 hover:text-white transition-colors cursor-pointer"
+        >
+          {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+        </button>
+      </aside>
+    </>
   );
 }
