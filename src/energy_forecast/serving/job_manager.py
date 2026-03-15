@@ -654,6 +654,43 @@ class JobManager:
             logger.warning("Artifact archival failed (non-fatal): {}", e)
 
     # ------------------------------------------------------------------
+    # DB checkpoint helpers (DRY — eliminates repeated session boilerplate)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    async def _update_progress_db(
+        session_factory: async_sessionmaker[AsyncSession],
+        job_id: str,
+        message: str,
+    ) -> None:
+        """Update job progress message via a short-lived DB session."""
+        from energy_forecast.db.repositories.job_repo import JobRepository
+
+        async with session_factory() as session:
+            repo = JobRepository(session)
+            await repo.update_progress(job_id, message)
+            await session.commit()
+
+    @staticmethod
+    async def _update_status_db(
+        session_factory: async_sessionmaker[AsyncSession],
+        job_id: str,
+        status: str,
+        *,
+        result_path: str | None = None,
+        error: str | None = None,
+    ) -> None:
+        """Update job status via a short-lived DB session."""
+        from energy_forecast.db.repositories.job_repo import JobRepository
+
+        async with session_factory() as session:
+            repo = JobRepository(session)
+            await repo.update_status(
+                job_id, status, result_path=result_path, error=error,
+            )
+            await session.commit()
+
+    # ------------------------------------------------------------------
     # Process job (DB mode) — orchestrator
     # ------------------------------------------------------------------
 
@@ -674,20 +711,12 @@ class JobManager:
         Each checkpoint uses a separate session to avoid holding connections.
         Steps are delegated to private methods for clarity.
         """
-        from energy_forecast.db.repositories.job_repo import JobRepository
-
         # Mark running (no lock needed — worker loop guarantees sequential)
-        async with session_factory() as session:
-            repo = JobRepository(session)
-            await repo.update_status(job_id, "running")
-            await session.commit()
+        await self._update_status_db(session_factory, job_id, "running")
 
         try:
             # Progress: data analysis
-            async with session_factory() as session:
-                repo = JobRepository(session)
-                await repo.update_progress(job_id, "Veri analizi yapiliyor...")
-                await session.commit()
+            await self._update_progress_db(session_factory, job_id, "Veri analizi yapiliyor...")
 
             # Step 1: Match previous predictions with actuals
             logger.info("[Job {}] Step 1/8: Matching previous predictions", job_id)
@@ -733,10 +762,9 @@ class JobManager:
 
             # Step 6: Create output file
             logger.info("[Job {}] Step 6/8: Creating output file", job_id)
-            async with session_factory() as session:
-                repo = JobRepository(session)
-                await repo.update_progress(job_id, "Rapor dosyasi olusturuluyor...")
-                await session.commit()
+            await self._update_progress_db(
+                session_factory, job_id, "Rapor dosyasi olusturuluyor...",
+            )
 
             output_path = await self._create_output_step(
                 predictions,
@@ -746,10 +774,7 @@ class JobManager:
 
             # Step 7: Send email (NON-FATAL — prediction succeeded)
             logger.info("[Job {}] Step 7/8: Sending email", job_id)
-            async with session_factory() as session:
-                repo = JobRepository(session)
-                await repo.update_progress(job_id, "E-posta gonderiliyor...")
-                await session.commit()
+            await self._update_progress_db(session_factory, job_id, "E-posta gonderiliyor...")
 
             await self._send_email_step(
                 job_id,
@@ -773,10 +798,9 @@ class JobManager:
             )
 
             # Mark complete
-            async with session_factory() as session:
-                repo = JobRepository(session)
-                await repo.update_status(job_id, "completed", result_path=str(output_path))
-                await session.commit()
+            await self._update_status_db(
+                session_factory, job_id, "completed", result_path=str(output_path),
+            )
 
             logger.info("[Job {}] Completed successfully", job_id)
 
@@ -800,10 +824,9 @@ class JobManager:
         except Exception as e:
             error_msg = str(e)
             logger.opt(exception=True).error("Job {} failed: {}", job_id, error_msg)
-            async with session_factory() as session:
-                repo = JobRepository(session)
-                await repo.update_status(job_id, "failed", error=error_msg)
-                await session.commit()
+            await self._update_status_db(
+                session_factory, job_id, "failed", error=error_msg,
+            )
 
             # Audit: job_failed (non-fatal)
             try:
