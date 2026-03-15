@@ -26,7 +26,8 @@ _WEATHER_COLS: list[str] = [
     "weather_code",
 ]
 
-# HDD/CDD base temperature (same as weather feature engineer)
+# HDD/CDD base temperature — MUST match WeatherThresholdsConfig defaults
+# Source of truth: configs/features/weather.yaml (hdd_base, cdd_base)
 _HDD_BASE = 18.0
 _CDD_BASE = 24.0
 

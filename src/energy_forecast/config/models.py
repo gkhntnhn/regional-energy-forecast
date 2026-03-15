@@ -57,6 +57,7 @@ class CatBoostTrainingConfig(BaseModel, frozen=True):
     loss_function: str = "RMSE"
     eval_metric: str = "MAPE"
     early_stopping_rounds: int = Field(default=100, ge=1)
+    bootstrap_type: str | None = None
     has_time: bool = True
     random_seed: int = 42
     verbose: int = 500

@@ -28,7 +28,7 @@ disabled_features: []
 lead:
   # Solar lead/lag features (NOT leakage — deterministic astronomical calculation)
   enabled: true
-  hours: [1, 3, 6, 12, 24, 48]
+  hours: [1, 3, 6, 12, 24]  # 48 removed: shift(-48) produces all-NaN in forecast rows
   lag_range:
     min: -10
     max: 10
