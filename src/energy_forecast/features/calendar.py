@@ -117,80 +117,16 @@ class CalendarFeatureEngineer(BaseFeatureEngineer):
     def _add_holiday_features(self, df: pd.DataFrame) -> pd.DataFrame:
         """Add holiday, Ramadan, bridge day, interaction, and proximity features."""
         h_cfg: dict[str, Any] = self.config.get("holidays", {})
-
-        # Use injected holidays (from DB) if available, else parquet fallback
-        holidays_df: pd.DataFrame | None
-        if self._holidays_df is not None and len(self._holidays_df) > 0:
-            holidays_df = self._holidays_df
-            logger.info("[DB READ] Holidays from DB ({} entries)", len(holidays_df))
-        else:
-            h_path = h_cfg.get("path", "data/static/turkish_holidays.parquet")
-            holidays_df = self._load_holidays(h_path)
-            if holidays_df is not None:
-                logger.info("[PARQUET READ] Holidays from {}", h_path)
+        holidays_df = self._resolve_holidays_source(h_cfg)
 
         if holidays_df is not None and len(holidays_df) > 0:
-            # Ensure 'date' is a column (DB path returns it as index)
             if "date" not in holidays_df.columns and holidays_df.index.name == "date":
                 holidays_df = holidays_df.reset_index()
             holiday_dates = set(pd.to_datetime(holidays_df["date"]).dt.date)
             date_series = pd.Series(cast(pd.DatetimeIndex, df.index).date, index=df.index)
-            df["is_holiday"] = date_series.isin(holiday_dates).astype(int)
 
-            # Ramadan
-            if h_cfg.get("include_ramadan", True) and "is_ramadan" in holidays_df.columns:
-                ram_dates = set(
-                    holidays_df.loc[holidays_df["is_ramadan"] == 1, "date"]
-                    .pipe(pd.to_datetime)
-                    .dt.date
-                )
-                df["is_ramadan"] = date_series.isin(ram_dates).astype(int)
-            else:
-                df["is_ramadan"] = 0
-
-            # Bayram day number (1-3 Ramazan, 1-4 Kurban, 0 otherwise)
-            if "bayram_gun_no" in holidays_df.columns:
-                bayram_map = dict(
-                    zip(
-                        pd.to_datetime(holidays_df["date"]).dt.date,
-                        holidays_df["bayram_gun_no"],
-                        strict=False,
-                    )
-                )
-                df["bayram_gun_no"] = date_series.map(bayram_map).fillna(0).astype(int)
-            else:
-                df["bayram_gun_no"] = 0
-
-            # Countdown to next bayram (computed for ALL dates, not just holidays)
-            if "bayram_gun_no" in holidays_df.columns:
-                bayram_dates = sorted(
-                    pd.to_datetime(
-                        holidays_df.loc[holidays_df["bayram_gun_no"] == 1, "date"]
-                    ).dt.date
-                )
-            else:
-                bayram_dates = []
-            if bayram_dates:
-                df = self._add_bayram_countdown(df, bayram_dates)
-            else:
-                df["bayrama_kalan_gun"] = -1
-
-            # Holiday type classification: dini / resmi / none
-            df = self._add_holiday_type(df, holidays_df, date_series)
-
-            # Holiday x hour interaction (captures different hourly patterns)
-            idx = cast(pd.DatetimeIndex, df.index)
-            df["is_holiday_x_hour"] = df["is_holiday"] * idx.hour
-
-            # Ramadan x hour interaction (captures shifted eating/activity patterns)
-            df["is_ramadan_x_hour"] = df["is_ramadan"] * idx.hour
-
-            # Bridge days (extended detection for holiday+weekend adjacency)
-            if h_cfg.get("bridge_days", True):
-                df = self._detect_bridge_days(df)
-
-            # Proximity
-            df = self._add_holiday_proximity(df, holiday_dates)
+            df = self._add_base_holiday_flags(df, h_cfg, holidays_df, date_series, holiday_dates)
+            df = self._add_holiday_interactions(df, h_cfg, holiday_dates)
         else:
             df["is_holiday"] = 0
             df["is_ramadan"] = 0
@@ -203,6 +139,85 @@ class CalendarFeatureEngineer(BaseFeatureEngineer):
             df["days_until_holiday"] = -1
             df["days_since_holiday"] = -1
 
+        return df
+
+    def _resolve_holidays_source(
+        self, h_cfg: dict[str, Any]
+    ) -> pd.DataFrame | None:
+        """Load holidays from DB (injected) or parquet fallback."""
+        if self._holidays_df is not None and len(self._holidays_df) > 0:
+            logger.info("[DB READ] Holidays from DB ({} entries)", len(self._holidays_df))
+            return self._holidays_df
+        h_path = h_cfg.get("path", "data/static/turkish_holidays.parquet")
+        holidays_df = self._load_holidays(h_path)
+        if holidays_df is not None:
+            logger.info("[PARQUET READ] Holidays from {}", h_path)
+        return holidays_df
+
+    def _add_base_holiday_flags(
+        self,
+        df: pd.DataFrame,
+        h_cfg: dict[str, Any],
+        holidays_df: pd.DataFrame,
+        date_series: pd.Series[Any],
+        holiday_dates: set[Any],
+    ) -> pd.DataFrame:
+        """Add is_holiday, is_ramadan, bayram_gun_no, bayram countdown, and tatil_tipi."""
+        df["is_holiday"] = date_series.isin(holiday_dates).astype(int)
+
+        # Ramadan
+        if h_cfg.get("include_ramadan", True) and "is_ramadan" in holidays_df.columns:
+            ram_dates = set(
+                holidays_df.loc[holidays_df["is_ramadan"] == 1, "date"]
+                .pipe(pd.to_datetime)
+                .dt.date
+            )
+            df["is_ramadan"] = date_series.isin(ram_dates).astype(int)
+        else:
+            df["is_ramadan"] = 0
+
+        # Bayram day number
+        if "bayram_gun_no" in holidays_df.columns:
+            bayram_map = dict(
+                zip(
+                    pd.to_datetime(holidays_df["date"]).dt.date,
+                    holidays_df["bayram_gun_no"],
+                    strict=False,
+                )
+            )
+            df["bayram_gun_no"] = date_series.map(bayram_map).fillna(0).astype(int)
+            bayram_dates = sorted(
+                pd.to_datetime(
+                    holidays_df.loc[holidays_df["bayram_gun_no"] == 1, "date"]
+                ).dt.date
+            )
+        else:
+            df["bayram_gun_no"] = 0
+            bayram_dates = []
+
+        if bayram_dates:
+            df = self._add_bayram_countdown(df, bayram_dates)
+        else:
+            df["bayrama_kalan_gun"] = -1
+
+        df = self._add_holiday_type(df, holidays_df, date_series)
+        return df
+
+    def _add_holiday_interactions(
+        self,
+        df: pd.DataFrame,
+        h_cfg: dict[str, Any],
+        holiday_dates: set[Any],
+    ) -> pd.DataFrame:
+        """Add hour interactions, bridge days, and holiday proximity."""
+        idx = cast(pd.DatetimeIndex, df.index)
+        df["is_holiday_x_hour"] = df["is_holiday"] * idx.hour
+        df["is_ramadan_x_hour"] = df["is_ramadan"] * idx.hour
+
+        if h_cfg.get("bridge_days", True):
+            df = self._detect_bridge_days(df)
+
+        df = self._add_holiday_proximity(df, holiday_dates)
         return df
 
     @staticmethod
