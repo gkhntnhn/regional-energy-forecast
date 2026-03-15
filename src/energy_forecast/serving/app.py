@@ -566,6 +566,46 @@ async def get_status(
         raise HTTPException(status_code=500, detail="Internal server error") from e
 
 
+@app.delete("/status/{job_id}")
+async def delete_job(
+    request: Request,
+    job_id: str,
+    _auth: HTTPAuthorizationCredentials = Depends(verify_api_key),  # noqa: B008
+) -> dict[str, str]:
+    """Delete or cancel a job by ID."""
+    job_manager: JobManager = request.app.state.job_manager
+    use_db: bool = getattr(request.app.state, "use_db", False)
+
+    try:
+        if use_db:
+            from energy_forecast.db.repositories.job_repo import JobRepository
+
+            session_factory = request.app.state.session_factory
+            async with session_factory() as session:
+                repo = JobRepository(session)
+                job = await repo.get_by_id(job_id)
+                if job is None:
+                    raise JobNotFoundError(f"Job not found: {job_id}")
+                if job.status in ("running",):
+                    raise HTTPException(
+                        status_code=409, detail="Cannot delete a running job"
+                    )
+                await repo.update_status(job_id, "archived")
+                await session.commit()
+            return {"detail": f"Job {job_id} archived"}
+
+        job_mem = job_manager.get_job_in_memory(job_id)
+        if job_mem.status == JobStatus.RUNNING:
+            raise HTTPException(
+                status_code=409, detail="Cannot delete a running job"
+            )
+        job_mem.status = JobStatus.FAILED
+        job_mem.error = "Cancelled by user"
+        return {"detail": f"Job {job_id} cancelled"}
+    except JobNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
 @app.get("/models")
 async def get_models(
     request: Request,

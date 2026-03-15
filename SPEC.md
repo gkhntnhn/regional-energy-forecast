@@ -459,9 +459,9 @@ uv run python -m energy_forecast.training.run --model catboost --no-mlflow
 | GET | `/health` | Hayır | Sağlık kontrolü |
 | GET | `/models` | Evet | Aktif model bilgileri |
 | POST | `/predict` | Evet | Yeni tahmin job'ı oluştur |
-| GET | `/jobs/{job_id}` | Evet | Job durumunu sorgula |
-| GET | `/jobs/{job_id}/result` | Evet | Tamamlanan job sonucunu al |
-| DELETE | `/jobs/{job_id}` | Evet | Job'ı iptal et |
+| GET | `/status/{job_id}` | Evet | Job durumunu sorgula |
+| GET | `/status/{job_id}` | Evet | Tamamlanan job sonucunu al (result_path dahil) |
+| DELETE | `/status/{job_id}` | Evet | Job'ı iptal et / sil |
 | GET | `/docs` | Hayır | OpenAPI dokümantasyonu |
 
 ### 7.4 Job Oluşturma
@@ -486,7 +486,7 @@ file: consumption.xlsx
 ### 7.5 Job Status
 
 ```
-GET /jobs/{job_id}
+GET /status/{job_id}
 Authorization: Bearer {API_KEY}
 ```
 
@@ -504,7 +504,7 @@ Authorization: Bearer {API_KEY}
 ### 7.6 Job Result
 
 ```
-GET /jobs/{job_id}/result
+GET /status/{job_id}
 Authorization: Bearer {API_KEY}
 ```
 
@@ -687,7 +687,7 @@ Commit format: `feat(scope): description` / `fix(scope): description`
 ### 11.2 Güvenilirlik
 
 - Graceful degradation: Ensemble'da bir model fail ederse kalanlarla devam
-- API rate limiting: Aynı kullanıcıdan 1 talep/dakika
+- API rate limiting: Aynı kullanıcıdan 10 talep/dakika
 - Input validation: Pandera schema ile Excel doğrulama (ConsumptionSchema, EpiasSchema, WeatherSchema)
 - Error handling: Structured error responses (JSON), JobNotFoundError → 404, Exception → 500
 - Model integrity: Prophet pickle SHA256 hash verification
