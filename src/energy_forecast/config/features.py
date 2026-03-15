@@ -206,7 +206,10 @@ class TrendRatioConfig(BaseModel, frozen=True):
     """Trend ratio feature parameters."""
 
     pairs: list[TrendRatioPairConfig] = Field(
-        default_factory=lambda: [TrendRatioPairConfig(numerator_lag=168, denominator_lag=336)]
+        default_factory=lambda: [
+            TrendRatioPairConfig(numerator_lag=168, denominator_lag=336),
+            TrendRatioPairConfig(numerator_lag=48, denominator_lag=168),
+        ]
     )
 
 
@@ -279,9 +282,15 @@ class WeatherLagsConfig(BaseModel, frozen=True):
     """Weather lag feature settings."""
 
     enabled: bool = True
-    hours: list[int] = Field(default_factory=lambda: [6, 12, 18, 24, 30, 36, 42, 48])
+    hours: list[int] = Field(default_factory=lambda: [6, 12, 24, 48])
     columns: list[str] = Field(
-        default_factory=lambda: ["temperature_2m", "relative_humidity_2m", "wind_speed_10m"]
+        default_factory=lambda: [
+            "temperature_2m",
+            "relative_humidity_2m",
+            "apparent_temperature",
+            "wind_speed_10m",
+            "dew_point_2m",
+        ]
     )
 
 
@@ -362,7 +371,7 @@ class SolarLeadConfig(BaseModel, frozen=True):
     """Solar lead feature settings."""
 
     enabled: bool = True
-    hours: list[int] = Field(default_factory=lambda: [1, 2, 3])
+    hours: list[int] = Field(default_factory=lambda: [1, 3, 6, 12, 24, 48])
     lag_range: SolarLagRangeConfig = Field(default_factory=SolarLagRangeConfig)
     lag_columns: list[str] = Field(default_factory=lambda: ["sol_ghi", "sol_dni", "sol_dhi"])
 
@@ -429,7 +438,7 @@ class EpiasExpandingConfig(BaseModel, frozen=True):
     """EPIAS expanding window parameters."""
 
     min_periods: int = Field(default=48, ge=48)
-    functions: list[str] = Field(default_factory=lambda: ["mean"])
+    functions: list[str] = Field(default_factory=lambda: ["mean", "std"])
 
     @field_validator("min_periods")
     @classmethod
@@ -444,7 +453,7 @@ class GenerationLagConfig(BaseModel, frozen=True):
     """Generation lag feature parameters. min_lag >= 48 enforced."""
 
     min_lag: int = Field(default=48, ge=48)
-    values: list[int] = Field(default_factory=lambda: [48, 168])
+    values: list[int] = Field(default_factory=lambda: [48, 72, 168])
 
     @field_validator("values")
     @classmethod
@@ -459,15 +468,15 @@ class GenerationLagConfig(BaseModel, frozen=True):
 class GenerationRollingConfig(BaseModel, frozen=True):
     """Generation rolling window parameters."""
 
-    windows: list[int] = Field(default_factory=lambda: [24, 168])
-    functions: list[str] = Field(default_factory=lambda: ["mean"])
+    windows: list[int] = Field(default_factory=lambda: [24, 48, 168])
+    functions: list[str] = Field(default_factory=lambda: ["mean", "std"])
 
 
 class GenerationExpandingConfig(BaseModel, frozen=True):
     """Generation expanding window parameters."""
 
     min_periods: int = Field(default=48, ge=48)
-    functions: list[str] = Field(default_factory=lambda: ["mean"])
+    functions: list[str] = Field(default_factory=lambda: ["mean", "std"])
 
     @field_validator("min_periods")
     @classmethod
@@ -482,11 +491,9 @@ class GenerationCompositesConfig(BaseModel, frozen=True):
     """Generation composite ratio feature settings."""
 
     enabled: bool = True
-    renewable_vars: list[str] = Field(
-        default_factory=lambda: ["gen_wind", "gen_sun", "gen_river", "gen_dammed_hydro"]
-    )
+    renewable_vars: list[str] = Field(default_factory=list)
     thermal_vars: list[str] = Field(
-        default_factory=lambda: ["gen_natural_gas", "gen_lignite", "gen_import_coal"]
+        default_factory=lambda: ["gen_natural_gas"]
     )
     total_var: str = "gen_total"
     lag: int = Field(default=48, ge=48)

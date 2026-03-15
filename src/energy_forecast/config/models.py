@@ -227,7 +227,7 @@ class ProphetConfig(BaseModel, frozen=True):
 class TFTArchitectureConfig(BaseModel, frozen=True):
     """TFT network architecture (NeuralForecast API)."""
 
-    hidden_size: int = Field(default=64, ge=1)
+    hidden_size: int = Field(default=128, ge=1)
     n_head: int = Field(default=2, ge=1)
     n_rnn_layers: int = Field(default=1, ge=1)
     dropout: float = Field(default=0.1, ge=0.0, lt=1.0)
@@ -238,8 +238,8 @@ class TFTTrainingConfig(BaseModel, frozen=True):
 
     encoder_length: int = Field(default=168, ge=1)
     prediction_length: int = Field(default=48, ge=1)
-    max_steps: int = Field(default=2000, ge=1)
-    windows_batch_size: int = Field(default=1024, ge=1)
+    max_steps: int = Field(default=10000, ge=1)
+    windows_batch_size: int = Field(default=2048, ge=1)
     learning_rate: float = Field(default=0.001, gt=0.0)
     early_stop_patience_steps: int = Field(default=200, ge=-1)  # -1 disables
     val_check_steps: int = Field(default=50, ge=1)
@@ -381,9 +381,9 @@ class EnsembleWeightsConfig(BaseModel, frozen=True):
 class EnsembleWeightBoundsConfig(BaseModel, frozen=True):
     """Per-model weight bounds for optimization."""
 
-    catboost: tuple[float, float] = (0.1, 0.8)
-    prophet: tuple[float, float] = (0.1, 0.6)
-    tft: tuple[float, float] = (0.1, 0.6)
+    catboost: tuple[float, float] = (0.2, 0.7)
+    prophet: tuple[float, float] = (0.1, 0.5)
+    tft: tuple[float, float] = (0.1, 0.5)
 
 
 class EnsembleOptimizationConfig(BaseModel, frozen=True):
