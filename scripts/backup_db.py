@@ -59,14 +59,24 @@ def backup_database(output_dir: Path | None = None) -> Path | None:
         "-d", os.environ.get("POSTGRES_DB", "energy_forecast"),
         "--no-owner", "--no-acl",
     ]
+    # Parse DB URL to avoid exposing password in ps aux
+    from urllib.parse import urlparse
+
+    parsed = urlparse(db_url)
+    local_env = os.environ.copy()
+    local_env["PGPASSWORD"] = parsed.password or ""
     local_cmd = [
-        "pg_dump", db_url,
+        "pg_dump",
+        "-h", parsed.hostname or "localhost",
+        "-p", str(parsed.port or 5432),
+        "-U", parsed.username or "forecast_user",
+        "-d", parsed.path.lstrip("/") or "energy_forecast",
         "--no-owner", "--no-acl",
     ]
 
-    for cmd in [docker_cmd, local_cmd]:
+    for cmd, env in [(docker_cmd, None), (local_cmd, local_env)]:
         result = subprocess.run(
-            cmd, capture_output=True, timeout=300,
+            cmd, capture_output=True, timeout=300, env=env,
         )
         if result.returncode == 0:
             dump_file.write_bytes(result.stdout)

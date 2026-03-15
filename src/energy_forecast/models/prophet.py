@@ -174,7 +174,8 @@ class ProphetForecaster(BaseForecaster):
             else:
                 logger.warning("No model_hash in metadata — skipping integrity check")
         else:
-            logger.warning("No metadata.json found — skipping integrity check for {}", path)
+            msg = f"metadata.json not found at {metadata_path} — refusing to load unverified pickle"
+            raise FileNotFoundError(msg)
 
         try:
             with open(model_path, "rb") as f:
