@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Query, Request
 from loguru import logger
 
 from energy_forecast.db.repositories.analytics_repo import AnalyticsRepository
@@ -36,7 +36,9 @@ def _get_session_factory(request: Request) -> Any:
 
 
 @admin_router.get("/analytics/mape/daily")
-async def get_daily_mape(request: Request, days: int = 30) -> list[dict[str, Any]]:
+async def get_daily_mape(
+    request: Request, days: int = Query(default=30, ge=1, le=365)
+) -> list[dict[str, Any]]:
     """Daily production MAPE trend."""
     sf = _get_session_factory(request)
     if sf is None:
@@ -47,7 +49,9 @@ async def get_daily_mape(request: Request, days: int = 30) -> list[dict[str, Any
 
 
 @admin_router.get("/analytics/mape/weekly")
-async def get_weekly_mape(request: Request, weeks: int = 12) -> list[dict[str, Any]]:
+async def get_weekly_mape(
+    request: Request, weeks: int = Query(default=12, ge=1, le=52)
+) -> list[dict[str, Any]]:
     """Weekly MAPE trend with T vs T+1 breakdown."""
     sf = _get_session_factory(request)
     if sf is None:
@@ -74,7 +78,9 @@ async def get_hourly_mape(request: Request) -> list[dict[str, Any]]:
 
 
 @admin_router.get("/analytics/models/mape")
-async def get_per_model_mape(request: Request, days: int = 30) -> list[dict[str, Any]]:
+async def get_per_model_mape(
+    request: Request, days: int = Query(default=30, ge=1, le=365)
+) -> list[dict[str, Any]]:
     """Per-model production MAPE comparison."""
     sf = _get_session_factory(request)
     if sf is None:
@@ -98,7 +104,9 @@ async def get_hourly_model_performance(
 
 
 @admin_router.get("/analytics/models/comparison")
-async def get_model_comparison(request: Request, days: int = 30) -> list[dict[str, Any]]:
+async def get_model_comparison(
+    request: Request, days: int = Query(default=30, ge=1, le=365)
+) -> list[dict[str, Any]]:
     """Ensemble vs individual model stats."""
     sf = _get_session_factory(request)
     if sf is None:
@@ -114,7 +122,9 @@ async def get_model_comparison(request: Request, days: int = 30) -> list[dict[st
 
 
 @admin_router.get("/analytics/weather/horizon")
-async def get_weather_horizon(request: Request, weeks: int = 8) -> list[dict[str, Any]]:
+async def get_weather_horizon(
+    request: Request, weeks: int = Query(default=8, ge=1, le=52)
+) -> list[dict[str, Any]]:
     """T vs T+1 weather forecast accuracy."""
     sf = _get_session_factory(request)
     if sf is None:
@@ -143,7 +153,9 @@ async def get_weather_variables(
 
 
 @admin_router.get("/analytics/features/trend")
-async def get_feature_trend(request: Request, days: int = 30) -> list[dict[str, Any]]:
+async def get_feature_trend(
+    request: Request, days: int = Query(default=30, ge=1, le=365)
+) -> list[dict[str, Any]]:
     """Feature importance change over time."""
     sf = _get_session_factory(request)
     if sf is None:
@@ -159,7 +171,9 @@ async def get_feature_trend(request: Request, days: int = 30) -> list[dict[str, 
 
 
 @admin_router.get("/analytics/epias/accuracy")
-async def get_epias_accuracy(request: Request, days: int = 30) -> list[dict[str, Any]]:
+async def get_epias_accuracy(
+    request: Request, days: int = Query(default=30, ge=1, le=365)
+) -> list[dict[str, Any]]:
     """EPIAS Load_Forecast vs Real_Time_Consumption accuracy."""
     sf = _get_session_factory(request)
     if sf is None:
@@ -175,7 +189,11 @@ async def get_epias_accuracy(request: Request, days: int = 30) -> list[dict[str,
 
 
 @admin_router.get("/jobs/history")
-async def get_job_history(request: Request, page: int = 1, size: int = 20) -> dict[str, Any]:
+async def get_job_history(
+    request: Request,
+    page: int = Query(default=1, ge=1),
+    size: int = Query(default=20, ge=1, le=100),
+) -> dict[str, Any]:
     """Paginated job history."""
     sf = _get_session_factory(request)
     if sf is None:
