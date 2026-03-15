@@ -29,7 +29,7 @@ def upgrade() -> None:
         sa.Column("val_rmse", sa.Float, nullable=True),
         sa.Column("test_rmse", sa.Float, nullable=True),
         # Config snapshot
-        sa.Column("hyperparameters", sa.dialects.postgresql.JSONB, nullable=True),
+        sa.Column("hyperparameters", sa.JSON, nullable=True),
         sa.Column("n_trials", sa.Integer, nullable=True),
         sa.Column("n_splits", sa.Integer, nullable=True),
         sa.Column("feature_count", sa.Integer, nullable=True),
