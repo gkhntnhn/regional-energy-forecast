@@ -73,6 +73,8 @@ class JobManager:
     via a background worker loop. Replaces the old Lock + reject pattern.
     """
 
+    _MAX_WORKER_RESTARTS = 3
+
     def __init__(self, max_queue_size: int = 5) -> None:
         self._jobs: dict[str, Job] = {}
         self._active_job_id: str | None = None
@@ -80,6 +82,7 @@ class JobManager:
         self._max_queue_size = max_queue_size
         self._enqueue_lock = asyncio.Lock()
         self._worker_task: asyncio.Task[None] | None = None
+        self._worker_restart_count = 0
 
     # ------------------------------------------------------------------
     # Worker lifecycle
@@ -90,10 +93,33 @@ class JobManager:
         if self._worker_task is not None:
             return
         self._worker_task = asyncio.create_task(self._worker_loop())
+        self._worker_task.add_done_callback(self._on_worker_done)
         logger.info(
             "Job queue worker started (max_queue_size={})",
             self._max_queue_size,
         )
+
+    def _on_worker_done(self, task: asyncio.Task[None]) -> None:
+        """Auto-restart worker if it crashes unexpectedly (max 3 restarts)."""
+        if task.cancelled():
+            return  # graceful shutdown via stop_worker()
+        exc = task.exception()
+        if exc is not None:
+            self._worker_restart_count += 1
+            if self._worker_restart_count <= self._MAX_WORKER_RESTARTS:
+                logger.error(
+                    "Worker loop crashed (restart {}/{}): {}",
+                    self._worker_restart_count,
+                    self._MAX_WORKER_RESTARTS,
+                    exc,
+                )
+                self._worker_task = None
+                self.start_worker()
+            else:
+                logger.critical(
+                    "Worker loop crashed {} times — NOT restarting. Manual intervention required.",
+                    self._worker_restart_count,
+                )
 
     async def stop_worker(self) -> None:
         """Stop the background worker loop. Call from lifespan shutdown."""

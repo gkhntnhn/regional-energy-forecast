@@ -462,8 +462,11 @@ async def predict(
 
 
 @app.get("/status/active")
-async def get_active_status(request: Request) -> dict[str, object]:
-    """Check if a prediction job is currently running (no auth required).
+async def get_active_status(
+    request: Request,
+    _auth: HTTPAuthorizationCredentials = Depends(verify_api_key),  # noqa: B008
+) -> dict[str, object]:
+    """Check if a prediction job is currently running.
 
     Used by the frontend to disable the form when a job is in progress.
     Returns real queue_size from the asyncio.Queue.
