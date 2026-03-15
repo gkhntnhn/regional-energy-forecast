@@ -59,13 +59,20 @@ class _JSONBCompat(TypeDecorator[Any]):
 
 
 class JobModel(Base):
-    """Prediction job record."""
+    """Prediction job record.
+
+    NOTE: PK uses String(12), not Integer/BigInteger. Other tables use Integer
+    PK which maps to int4 in PG — migration uses BigInteger (int8) but both
+    work fine. No migration needed (#36 WONTFIX).
+    """
 
     __tablename__ = "jobs"
 
     id: Mapped[str] = mapped_column(String(12), primary_key=True)
     email: Mapped[str] = mapped_column(String(255), nullable=False)
-    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="pending", server_default="pending"
+    )
     progress: Mapped[str | None] = mapped_column(Text, nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     excel_path: Mapped[str] = mapped_column(Text, nullable=False)
@@ -97,10 +104,14 @@ class JobModel(Base):
     archive_path: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Email tracking
-    email_status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    email_status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="pending", server_default="pending"
+    )
     email_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     email_error: Mapped[str | None] = mapped_column(Text, nullable=True)
-    email_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    email_attempts: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
 
     # Relationships
     predictions: Mapped[list[PredictionModel]] = relationship(

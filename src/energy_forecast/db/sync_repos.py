@@ -97,7 +97,12 @@ class SyncDataAccess:
         return _rows_to_df(result)
 
     def get_epias_market_year(self, year: int) -> pd.DataFrame:
-        """Get market data for a specific year."""
+        """Get market data for a specific year.
+
+        NOTE: extract("year", ...) works on both PG and SQLite via SQLAlchemy
+        translation (strftime on SQLite). Date range WHERE would be more
+        idiomatic but functionally equivalent (#38 WONTFIX).
+        """
         stmt = (
             select(EpiasMarketModel)
             .where(extract("year", EpiasMarketModel.dt) == year)
