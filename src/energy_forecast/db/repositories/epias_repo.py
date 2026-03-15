@@ -11,28 +11,12 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from energy_forecast.db.models import EpiasGenerationModel, EpiasMarketModel
-
-_MARKET_UPDATE_COLS = ["fdpp", "rtc", "dam_purchase", "bilateral", "load_forecast", "fetched_at"]
-_GENERATION_UPDATE_COLS = [
-    "gen_asphaltite_coal",
-    "gen_biomass",
-    "gen_black_coal",
-    "gen_dammed_hydro",
-    "gen_fueloil",
-    "gen_geothermal",
-    "gen_import_coal",
-    "gen_import_export",
-    "gen_lignite",
-    "gen_lng",
-    "gen_naphta",
-    "gen_natural_gas",
-    "gen_river",
-    "gen_sun",
-    "gen_total",
-    "gen_wasteheat",
-    "gen_wind",
-    "fetched_at",
-]
+from energy_forecast.db.upsert_columns import (
+    GENERATION_UPDATE_COLS as _GENERATION_UPDATE_COLS,
+)
+from energy_forecast.db.upsert_columns import (
+    MARKET_UPDATE_COLS as _MARKET_UPDATE_COLS,
+)
 
 
 class EpiasRepository:

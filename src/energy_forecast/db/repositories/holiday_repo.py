@@ -11,14 +11,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from energy_forecast.db.models import TurkishHolidayModel
-
-_HOLIDAY_UPDATE_COLS = [
-    "holiday_name",
-    "raw_holiday_name",
-    "is_ramadan",
-    "bayram_gun_no",
-    "bayrama_kalan_gun",
-]
+from energy_forecast.db.upsert_columns import HOLIDAY_UPDATE_COLS as _HOLIDAY_UPDATE_COLS
 
 
 class HolidayRepository:

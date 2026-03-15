@@ -483,6 +483,23 @@ def _get_n_trials(settings: Settings, model: str) -> int:
     return trial_map.get(model, 0)
 
 
+def _get_db_session() -> (
+    tuple[Any, Any] | tuple[None, None]
+):
+    """Get a sync DB session factory and engine, or (None, None) if DB not configured."""
+    db_url = os.environ.get("DATABASE_URL_SYNC", "")
+    if not db_url:
+        return None, None
+    from energy_forecast.db.engine import (
+        create_sync_engine,
+        create_sync_session_factory,
+    )
+
+    engine = create_sync_engine(db_url)
+    factory = create_sync_session_factory(engine)
+    return engine, factory
+
+
 def _start_model_run(
     model_type: str,
     *,
@@ -491,18 +508,12 @@ def _start_model_run(
     feature_count: int,
 ) -> int | None:
     """Record training start in DB (non-fatal, returns run ID or None)."""
-    db_url = os.environ.get("DATABASE_URL_SYNC", "")
-    if not db_url:
+    engine, factory = _get_db_session()
+    if engine is None or factory is None:
         return None
     try:
-        from energy_forecast.db.engine import (
-            create_sync_engine,
-            create_sync_session_factory,
-        )
         from energy_forecast.db.repositories.model_repo import ModelRunRepository
 
-        engine = create_sync_engine(db_url)
-        factory = create_sync_session_factory(engine)
         with factory() as session:
             repo = ModelRunRepository(session)
             run = repo.create_run(
@@ -514,11 +525,12 @@ def _start_model_run(
             session.commit()
             run_id: int = run.id
             logger.info("Model run #{} started ({})", run_id, model_type)
-        engine.dispose()
         return run_id
     except Exception as e:
         logger.warning("Failed to record model run start (non-fatal): {}", e)
         return None
+    finally:
+        engine.dispose()
 
 
 def _complete_model_run(
@@ -532,18 +544,12 @@ def _complete_model_run(
     """Record training completion in DB (non-fatal)."""
     if run_id is None:
         return
-    db_url = os.environ.get("DATABASE_URL_SYNC", "")
-    if not db_url:
+    engine, factory = _get_db_session()
+    if engine is None or factory is None:
         return
     try:
-        from energy_forecast.db.engine import (
-            create_sync_engine,
-            create_sync_session_factory,
-        )
         from energy_forecast.db.repositories.model_repo import ModelRunRepository
 
-        engine = create_sync_engine(db_url)
-        factory = create_sync_session_factory(engine)
         with factory() as session:
             repo = ModelRunRepository(session)
             repo.complete_run(
@@ -555,37 +561,33 @@ def _complete_model_run(
             )
             session.commit()
             logger.info("Model run #{} completed ({}s)", run_id, duration)
-        engine.dispose()
     except Exception as e:
         logger.warning("Failed to record model run completion (non-fatal): {}", e)
+    finally:
+        engine.dispose()
 
 
 def _fail_model_run(run_id: int | None, *, duration: int) -> None:
     """Record training failure in DB (non-fatal)."""
     if run_id is None:
         return
-    db_url = os.environ.get("DATABASE_URL_SYNC", "")
-    if not db_url:
+    engine, factory = _get_db_session()
+    if engine is None or factory is None:
         return
     try:
         import traceback
 
-        from energy_forecast.db.engine import (
-            create_sync_engine,
-            create_sync_session_factory,
-        )
         from energy_forecast.db.repositories.model_repo import ModelRunRepository
 
-        engine = create_sync_engine(db_url)
-        factory = create_sync_session_factory(engine)
         with factory() as session:
             repo = ModelRunRepository(session)
             repo.fail_run(run_id, traceback.format_exc())
             session.commit()
             logger.info("Model run #{} failed ({}s)", run_id, duration)
-        engine.dispose()
     except Exception as e:
         logger.warning("Failed to record model run failure (non-fatal): {}", e)
+    finally:
+        engine.dispose()
 
 
 if __name__ == "__main__":

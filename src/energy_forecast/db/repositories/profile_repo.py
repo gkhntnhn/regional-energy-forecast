@@ -11,24 +11,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from energy_forecast.db.models import ProfileCoefficientModel
-
-_PROFILE_UPDATE_COLS = [
-    "profile_residential_lv",
-    "profile_residential_mv",
-    "profile_industrial_lv",
-    "profile_industrial_mv",
-    "profile_commercial_lv",
-    "profile_commercial_mv",
-    "profile_agricultural_irrigation_lv",
-    "profile_agricultural_irrigation_mv",
-    "profile_lighting",
-    "profile_government",
-    "profile_residential",
-    "profile_industrial",
-    "profile_commercial",
-    "profile_agricultural_irrigation",
-    "fetched_at",
-]
+from energy_forecast.db.upsert_columns import PROFILE_UPDATE_COLS as _PROFILE_UPDATE_COLS
 
 
 class ProfileRepository:

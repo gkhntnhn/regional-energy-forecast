@@ -11,21 +11,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from energy_forecast.db.models import WeatherCacheModel
-
-_WEATHER_UPDATE_COLS = [
-    "temperature_2m",
-    "apparent_temperature",
-    "relative_humidity_2m",
-    "dew_point_2m",
-    "precipitation",
-    "snow_depth",
-    "surface_pressure",
-    "wind_speed_10m",
-    "wind_direction_10m",
-    "shortwave_radiation",
-    "weather_code",
-    "fetched_at",
-]
+from energy_forecast.db.upsert_columns import WEATHER_UPDATE_COLS as _WEATHER_UPDATE_COLS
 
 
 class WeatherCacheRepository:
