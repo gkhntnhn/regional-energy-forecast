@@ -38,7 +38,8 @@ def mock_upload_file() -> MagicMock:
     """Create mock UploadFile."""
     mock = MagicMock()
     mock.filename = "test.xlsx"
-    mock.file = BytesIO(b"test content")
+    # xlsx files are ZIP format — must start with PK\x03\x04 magic bytes
+    mock.file = BytesIO(b"PK\x03\x04" + b"test content")
     return mock
 
 
@@ -102,7 +103,7 @@ class TestFileService:
     ) -> None:
         """Test rejection of oversized file."""
         # Create content larger than 1MB limit
-        mock_upload_file.file = BytesIO(b"x" * (2 * 1024 * 1024))
+        mock_upload_file.file = BytesIO(b"PK\x03\x04" + b"x" * (2 * 1024 * 1024))
 
         with pytest.raises(FileTooLargeError):
             file_service.save_upload(mock_upload_file)

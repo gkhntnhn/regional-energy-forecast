@@ -85,6 +85,12 @@ class FileService:
         save_path = self._config.upload_dir / safe_filename
 
         try:
+            # Verify xlsx magic bytes (ZIP format: PK\x03\x04)
+            content_start = file.file.read(4)
+            file.file.seek(0)
+            if content_start[:4] != b"PK\x03\x04":
+                raise InvalidFileTypeError("File content does not match xlsx format")
+
             # Read and check size
             content = file.file.read()
             size_mb = len(content) / (1024 * 1024)

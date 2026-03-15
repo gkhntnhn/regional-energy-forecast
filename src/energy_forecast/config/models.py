@@ -222,6 +222,9 @@ class ProphetConfig(BaseModel, frozen=True):
 
 # ---------------------------------------------------------------------------
 # TFT
+# NOTE: Pydantic defaults below represent PRODUCTION values (e.g. max_steps=10000).
+# YAML files (configs/models/tft.yaml, hyperparameters.yaml) contain LOCAL/SMOKE
+# TEST overrides that take effect at runtime. This is intentional — see CLAUDE.md.
 # ---------------------------------------------------------------------------
 
 
@@ -418,6 +421,12 @@ class StackingConfig(BaseModel, frozen=True):
     """Stacking ensemble configuration."""
 
     meta_learner: StackingMetaLearnerConfig = Field(default_factory=StackingMetaLearnerConfig)
+    val_ratio: float = Field(
+        default=0.2,
+        ge=0.05,
+        le=0.5,
+        description="Fraction of OOF data used for meta-learner validation (temporal split).",
+    )
     context_features: list[str] = Field(
         default_factory=lambda: [
             "hour",

@@ -484,8 +484,8 @@ class EnsembleTrainer:
         oof_df: pd.DataFrame,
     ) -> tuple[CatBoostRegressor, float]:
         """Delegate to ``ensemble_stacking.train_meta_learner``."""
-        meta_config = self._ensemble_config.stacking.meta_learner
-        return train_meta_learner(oof_df, meta_config)
+        stacking = self._ensemble_config.stacking
+        return train_meta_learner(oof_df, stacking.meta_learner, stacking.val_ratio)
 
     def _compute_stacking_test_mape(
         self,

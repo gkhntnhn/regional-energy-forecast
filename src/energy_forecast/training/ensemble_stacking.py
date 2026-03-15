@@ -88,14 +88,16 @@ def build_oof_dataframe(
 def train_meta_learner(
     oof_df: pd.DataFrame,
     meta_learner_config: StackingMetaLearnerConfig,
+    val_ratio: float = 0.2,
 ) -> tuple[CatBoostRegressor, float]:
     """Train CatBoost meta-learner on OOF predictions.
 
-    Uses temporal 80/20 split for validation (no shuffle).
+    Uses temporal train/val split for validation (no shuffle).
 
     Args:
         oof_df: OOF DataFrame with ``pred_*``, context, and ``y_true`` columns.
         meta_learner_config: Meta-learner hyper-parameter configuration.
+        val_ratio: Fraction of data for validation (default 0.2).
 
     Returns:
         Tuple of (trained meta-learner, validation MAPE).
@@ -112,8 +114,8 @@ def train_meta_learner(
         x_meta[col] = x_meta[col].astype(str)
     cat_indices = [feature_cols.index(c) for c in cat_cols]
 
-    # Temporal 80/20 split (no shuffle — time series)
-    split_point = int(len(x_meta) * 0.8)
+    # Temporal split (no shuffle — time series)
+    split_point = int(len(x_meta) * (1.0 - val_ratio))
     x_train, x_val = x_meta.iloc[:split_point], x_meta.iloc[split_point:]
     y_train, y_val = y_meta.iloc[:split_point], y_meta.iloc[split_point:]
 

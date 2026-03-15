@@ -55,8 +55,8 @@ generation:
     - gen_import_coal
     - gen_import_export
     - gen_lignite
-    - gen_lng
-    - gen_naphta
+    # gen_lng: PRUNED — constant (nunique=1, std=0) across 2020-2025
+    # gen_naphta: PRUNED — constant (nunique=1, std=0) across 2020-2025
     - gen_river
     - gen_wasteheat
   lags:

@@ -12,6 +12,7 @@ Optionally uploads to Google Drive if GDRIVE_CREDENTIALS_PATH is set.
 
 from __future__ import annotations
 
+import argparse
 import gzip
 import os
 import shutil
@@ -26,11 +27,15 @@ from loguru import logger
 _TZ_ISTANBUL = ZoneInfo("Europe/Istanbul")
 
 
-def backup_database(output_dir: Path | None = None) -> Path | None:
+def backup_database(
+    output_dir: Path | None = None,
+    skip_gdrive: bool = False,
+) -> Path | None:
     """Create a gzipped pg_dump of the database.
 
     Args:
-        output_dir: Directory for the dump file. Defaults to /tmp or data/backups/.
+        output_dir: Directory for the dump file. Defaults to data/backups/.
+        skip_gdrive: If True, skip Google Drive upload even if configured.
 
     Returns:
         Path to the gzipped dump file.
@@ -97,7 +102,9 @@ def backup_database(output_dir: Path | None = None) -> Path | None:
     # Upload to Google Drive if credentials are available
     creds_path = os.environ.get("GDRIVE_CREDENTIALS_PATH")
     folder_id = os.environ.get("GDRIVE_BACKUP_FOLDER_ID")
-    if creds_path and folder_id:
+    if skip_gdrive:
+        logger.info("GDrive upload skipped (--skip-gdrive)")
+    elif creds_path and folder_id:
         try:
             from energy_forecast.storage.gdrive import GoogleDriveStorage
 
@@ -114,8 +121,26 @@ def backup_database(output_dir: Path | None = None) -> Path | None:
     return gz_file
 
 
+def _parse_args() -> argparse.Namespace:
+    """Parse command-line arguments for backup script."""
+    parser = argparse.ArgumentParser(description="Backup PostgreSQL database to gzipped SQL dump.")
+    parser.add_argument(
+        "--output-dir",
+        type=str,
+        default="data/backups",
+        help="Output directory for the dump file (default: data/backups).",
+    )
+    parser.add_argument(
+        "--skip-gdrive",
+        action="store_true",
+        help="Skip Google Drive upload even if credentials are configured.",
+    )
+    return parser.parse_args()
+
+
 if __name__ == "__main__":
     from dotenv import load_dotenv
 
     load_dotenv()
-    backup_database()
+    args = _parse_args()
+    backup_database(output_dir=Path(args.output_dir), skip_gdrive=args.skip_gdrive)

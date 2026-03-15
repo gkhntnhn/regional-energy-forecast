@@ -513,8 +513,8 @@ class GenerationConfig(BaseModel, frozen=True):
             "gen_import_coal",
             "gen_import_export",
             "gen_lignite",
-            "gen_lng",
-            "gen_naphta",
+            # gen_lng: pruned — constant across 2020-2025
+            # gen_naphta: pruned — constant across 2020-2025
             "gen_natural_gas",
             "gen_river",
             "gen_sun",

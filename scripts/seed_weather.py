@@ -262,7 +262,7 @@ def main() -> int:
                     region=settings.region,
                     timezone=settings.project.timezone,
                 ) as client:
-                    city_dfs = client._fetch_all_cities(
+                    city_dfs = client.fetch_all_cities(
                         url=settings.openmeteo.api.base_url_historical,
                         start_date=chunk_start,
                         end_date=chunk_end,

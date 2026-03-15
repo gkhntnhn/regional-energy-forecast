@@ -9,6 +9,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Any
+from urllib.parse import urlparse, urlunparse
 
 from fastapi import Depends, FastAPI, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -200,7 +201,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.db_engine = engine
         app.state.session_factory = session_factory
         app.state.use_db = True
-        masked_url = settings.env.database_url[:50] + "..."
+        parsed = urlparse(settings.env.database_url)
+        masked_url = urlunparse(
+            parsed._replace(
+                netloc=f"{parsed.username}:***@{parsed.hostname}:{parsed.port}"
+            )
+        )
         logger.info("Database connected: {}", masked_url)
     else:
         app.state.db_engine = None

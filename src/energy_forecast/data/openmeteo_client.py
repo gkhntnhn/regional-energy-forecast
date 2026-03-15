@@ -241,6 +241,34 @@ class OpenMeteoClient:
             "elevation": float(hit.get("elevation", 0.0)),
         }
 
+    def fetch_all_cities(
+        self,
+        url: str,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        forecast_days: int | None = None,
+    ) -> list[tuple[CityConfig, pd.DataFrame]]:
+        """Fetch weather for all configured cities from API.
+
+        Public wrapper around ``_fetch_all_cities`` for use by scripts
+        (e.g. seed_weather.py) that need per-city data without weighted averaging.
+
+        Args:
+            url: API endpoint URL.
+            start_date: Start date (YYYY-MM-DD) for historical endpoints.
+            end_date: End date (YYYY-MM-DD) for historical endpoints.
+            forecast_days: Number of forecast days for forecast endpoint.
+
+        Returns:
+            List of (CityConfig, DataFrame) pairs, one per city.
+        """
+        return self._fetch_all_cities(
+            url=url,
+            start_date=start_date,
+            end_date=end_date,
+            forecast_days=forecast_days,
+        )
+
     # ------------------------------------------------------------------
     # Internal: DB + multi-city helpers
     # ------------------------------------------------------------------
