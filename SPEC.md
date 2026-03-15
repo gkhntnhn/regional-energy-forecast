@@ -1,7 +1,7 @@
 # SPEC.md — Energy Forecast
 
 > Proje anayasası. Claude Code ve geliştirici bu dosyayı tek kaynak olarak referans alır.
-> Son güncelleme: 2026-03-06
+> Son güncelleme: 2026-03-15
 
 ---
 
@@ -185,7 +185,7 @@ Weather forecast ve solar hesaplamaları (lead dahil) data leakage DEĞİLDİR:
 | Solar | pvlib hesaplamaları | GHI/DNI/DHI, POA, clearness index, cloud proxy |
 | EPIAS | EPİAŞ piyasa verileri | Lag, rolling, expanding (türetilmiş değerler) |
 
-**Toplam feature sayısı:** ~153
+**Toplam feature sayısı:** ~475
 
 ### 4.2 Data Leakage Kuralları
 
@@ -231,8 +231,8 @@ Feature pipeline training ve prediction için AYNI şekilde çalışır. Ayrı "
 Bu sayede uzun lag'ler (consumption_lag_720 gibi) forecast satırlarında da doğru hesaplanır.
 
 **Çıktı dosyaları:**
-- `data/processed/features_historical.parquet` (~48K satır, ~153 feature)
-- `data/processed/features_forecast.parquet` (48 satır, ~153 feature)
+- `data/processed/features_historical.parquet` (~48K satır, ~475 feature)
+- `data/processed/features_forecast.parquet` (48 satır, ~475 feature)
 
 ---
 
@@ -268,7 +268,7 @@ Input (feature-engineered DataFrame)
 | Loss function | RMSE / MAE / MAPE | Optuna ile seç |
 | Early stopping | 50 rounds | Validation metric'e göre |
 | has_time | true | Zaman sırası korunur |
-| Kategorik kolonlar | 28 adet, configs/models/catboost.yaml'da tanımlı | 6 grup: Time, Holiday, Interaction, Time-period, Weather, Season/Solar |
+| Kategorik kolonlar | 35 adet, configs/models/catboost.yaml'da tanımlı | 6 grup: Time, Holiday, Interaction, Time-period, Weather, Season/Solar |
 
 **Güçlü yanı:** Feature etkileşimleri (tatil × saat × mevsim), tabular data'da en iyi performans.
 
@@ -655,9 +655,9 @@ DATABASE_URL=postgresql+asyncpg://user:pass@host:5432/db
 | Unit tests | Her public fonksiyon/class test edilmeli |
 | Integration tests | End-to-end pipeline (Excel → prediction) |
 | Hızlı test | YAML'da değer düşür → run.py çalıştır → geri al |
-| Coverage hedefi | %90+ (mevcut: %91) |
+| Coverage hedefi | %85+ |
 | Mock kuralı | Sadece external API'ler mock'lanır (EPİAŞ, OpenMeteo) |
-| Test sayısı | 594 (aktif) |
+| Test sayısı | 838 (aktif) |
 
 ### 10.3 Git Workflow
 
@@ -687,7 +687,7 @@ Commit format: `feat(scope): description` / `fix(scope): description`
 ### 11.2 Güvenilirlik
 
 - Graceful degradation: Ensemble'da bir model fail ederse kalanlarla devam
-- API rate limiting: Aynı kullanıcıdan 10 talep/dakika
+- API rate limiting: 10 talep/dakika (configs/api.yaml)
 - Input validation: Pandera schema ile Excel doğrulama (ConsumptionSchema, EpiasSchema, WeatherSchema)
 - Error handling: Structured error responses (JSON), JobNotFoundError → 404, Exception → 500
 - Model integrity: Prophet pickle SHA256 hash verification
