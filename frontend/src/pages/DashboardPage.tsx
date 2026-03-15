@@ -1,7 +1,22 @@
-import { Card, CardContent, CardHeader } from "@/components/ui/Card";
-import { Zap } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { UploadForm } from "@/components/predict/UploadForm";
+import { JobQueue } from "@/components/predict/JobQueue";
+import { ResultTable } from "@/components/predict/ResultTable";
+import { ResultChart } from "@/components/predict/ResultChart";
+import { useJobStore } from "@/stores/jobs";
+import { getJobResult } from "@/api/predict";
+import { Skeleton } from "@/components/ui/Skeleton";
 
 export function DashboardPage() {
+  const lastResult = useJobStore((s) => s.lastResult);
+  const jobId = lastResult?.job_id;
+
+  const { data: result, isLoading } = useQuery({
+    queryKey: ["job-result", jobId],
+    queryFn: () => getJobResult(jobId!),
+    enabled: !!jobId && lastResult?.status === "completed",
+  });
+
   return (
     <div className="space-y-6">
       <div>
@@ -10,42 +25,30 @@ export function DashboardPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Card accent className="lg:col-span-2">
-          <CardHeader>
-            <h3 className="text-sm font-semibold text-slate-900 flex items-center gap-2">
-              <Zap size={16} className="text-emerald-500" />
-              Tahmin Olustur
-            </h3>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-slate-500">
-              Faz 2'de upload formu burada olacak.
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <h3 className="text-sm font-semibold text-slate-900">Aktif Isler</h3>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-slate-500">
-              Faz 2'de job queue burada olacak.
-            </p>
-          </CardContent>
-        </Card>
+        <div className="lg:col-span-2">
+          <UploadForm />
+        </div>
+        <JobQueue />
       </div>
 
-      <Card>
-        <CardHeader>
-          <h3 className="text-sm font-semibold text-slate-900">Son Tahmin</h3>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-slate-500">
-            Faz 2'de sonuc tablosu ve grafik burada olacak.
-          </p>
-        </CardContent>
-      </Card>
+      {/* Result section */}
+      {isLoading && (
+        <div className="space-y-4">
+          <Skeleton className="h-72 w-full" />
+          <Skeleton className="h-96 w-full" />
+        </div>
+      )}
+
+      {result?.predictions && result.predictions.length > 0 && (
+        <div className="space-y-6">
+          <ResultChart predictions={result.predictions} />
+          <ResultTable
+            predictions={result.predictions}
+            downloadUrl={result.download_url}
+            stats={result.statistics}
+          />
+        </div>
+      )}
     </div>
   );
 }
