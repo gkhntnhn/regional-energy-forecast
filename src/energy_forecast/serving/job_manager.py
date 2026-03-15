@@ -121,15 +121,33 @@ class JobManager:
                     self._worker_restart_count,
                 )
 
-    async def stop_worker(self) -> None:
-        """Stop the background worker loop. Call from lifespan shutdown."""
+    async def stop_worker(self, drain_timeout: float = 30.0) -> None:
+        """Stop worker with graceful drain — waits for current job to finish.
+
+        Args:
+            drain_timeout: Max seconds to wait for queue drain before cancelling.
+        """
         if self._worker_task is None:
             return
+        # Wait for current job to finish (don't accept new ones)
+        if not self._queue.empty():
+            logger.info(
+                "Draining queue ({} items, timeout={}s)...",
+                self._queue.qsize(),
+                drain_timeout,
+            )
+            try:
+                await asyncio.wait_for(self._queue.join(), timeout=drain_timeout)
+            except TimeoutError:
+                logger.warning(
+                    "Queue drain timeout after {}s — cancelling worker",
+                    drain_timeout,
+                )
         self._worker_task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await self._worker_task
         self._worker_task = None
-        logger.info("Job queue worker stopped")
+        logger.info("Job queue worker stopped (remaining: {})", self._queue.qsize())
 
     async def _worker_loop(self) -> None:
         """Background loop: dequeue jobs and process them sequentially."""

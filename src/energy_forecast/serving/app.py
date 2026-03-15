@@ -217,7 +217,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
         from energy_forecast.jobs.weather_actuals import run_scheduler
 
+        def _on_scheduler_done(task: asyncio.Task[None]) -> None:
+            if task.cancelled():
+                return
+            exc = task.exception()
+            if exc is not None:
+                logger.error("Weather scheduler crashed (NOT restarting): {}", exc)
+
         _scheduler_task = asyncio.create_task(run_scheduler(app.state.session_factory, settings))
+        _scheduler_task.add_done_callback(_on_scheduler_done)
         logger.info("Weather actuals scheduler started (daily at 04:00)")
 
     logger.info("Energy Forecast API started successfully")
@@ -254,7 +262,7 @@ try:
     _cors_origins = _cors_settings.api.cors_origins
 except Exception as e:
     logger.warning("Failed to load CORS config, falling back to wildcard: {}", e)
-    _cors_origins = ["*"]
+    _cors_origins = ["http://localhost:8000", "http://127.0.0.1:8000"]
 
 # CORS spec: allow_credentials=True is incompatible with allow_origins=["*"]
 _allow_credentials = "*" not in _cors_origins
