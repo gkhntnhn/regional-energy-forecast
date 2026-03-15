@@ -13,7 +13,8 @@ api:
   port: 8000
   rate_limit: "10/minute"
   cors_origins:
-    - "*"
+    - "http://localhost:8000"
+    - "http://127.0.0.1:8000"
 
 files:
   upload_dir: "data/uploads"
