@@ -429,16 +429,20 @@ class TestPredictionServiceFetchHelpers:
 class TestPrepareOutput:
     """Tests for _prepare_output method."""
 
-    def test_output_filters_to_t_plus_1(self, service: PredictionService) -> None:
-        """Output should only contain T+1 day rows."""
+    def test_output_returns_48_rows_with_period(self, service: PredictionService) -> None:
+        """Output should contain all 48 rows with period labels."""
         # last_data_point = T-1 23:00 (Dec 30 23:00)
-        # T+1 starts at Jan 1 00:00
+        # T = Dec 31 (intraday), T+1 = Jan 1 (day_ahead)
         last_data_point = pd.Timestamp("2025-12-30 23:00", tz="Europe/Istanbul")
         idx = pd.date_range("2025-12-31", periods=48, freq="h", tz="Europe/Istanbul")
         predictions = pd.DataFrame({"consumption_mwh": [1000.0] * 48}, index=idx)
 
         result = service._prepare_output(predictions, last_data_point)
 
-        # Only T+1 day (Jan 1 00:00-23:00) = 24 rows
-        assert len(result) == 24
-        assert result.index.min() == pd.Timestamp("2026-01-01 00:00", tz="Europe/Istanbul")
+        # All 48 rows with period column
+        assert len(result) == 48
+        assert "period" in result.columns
+        assert set(result["period"].unique()) == {"intraday", "day_ahead"}
+        # First 24 = intraday (T), last 24 = day_ahead (T+1)
+        assert (result.iloc[:24]["period"] == "intraday").all()
+        assert (result.iloc[24:]["period"] == "day_ahead").all()

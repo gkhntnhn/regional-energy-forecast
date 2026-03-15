@@ -148,9 +148,10 @@ class TestPredictionServiceE2E:
         ):
             result = svc.run_prediction(excel_path)
 
-        # T+1 output: 24 rows (GOP)
-        assert len(result) == 24
+        # Full 48h output: T (intraday) + T+1 (day_ahead)
+        assert len(result) == 48
         assert PREDICTION_COL in result.columns
+        assert "period" in result.columns
         assert result[PREDICTION_COL].isna().sum() == 0
         assert (result[PREDICTION_COL] > 0).all()
 
@@ -186,7 +187,7 @@ class TestPredictionServiceE2E:
         ):
             result = svc.run_prediction(excel_path)
 
-        assert len(result) == 24
+        assert len(result) == 48
         assert PREDICTION_COL in result.columns
         assert result[PREDICTION_COL].isna().sum() == 0
         # Weighted average of 1200 and 1100 with 0.6/0.4
