@@ -1,11 +1,11 @@
-export type JobStatus = "pending" | "processing" | "completed" | "failed" | "cancelled";
+export type JobStatus = "pending" | "processing" | "completed" | "failed" | "cancelled" | "running";
 
 export interface Job {
   job_id: string;
   status: JobStatus;
   created_at: string;
   completed_at?: string;
-  progress?: number;
+  progress?: number | string;
   error?: string;
 }
 
@@ -58,21 +58,38 @@ export interface ModelMape {
   rmse: number;
 }
 
+// Matches actual backend response
 export interface JobHistoryItem {
-  job_id: string;
+  id: string;
+  email?: string;
   status: JobStatus;
+  progress?: string;
   created_at: string;
   completed_at?: string;
-  mape?: number;
-  excel_file?: string;
 }
 
+export interface JobHistoryResponse {
+  total: number;
+  page: number;
+  size: number;
+  pages: number;
+  jobs: JobHistoryItem[];
+}
+
+// Matches actual backend response
 export interface TrainingRun {
-  run_id: string;
-  model: string;
+  id: number;
+  model_type: string;
+  status: string;
+  val_mape: number | null;
+  test_mape: number | null;
+  n_trials: number;
+  n_splits: number;
+  feature_count: number;
+  is_promoted: boolean;
   started_at: string;
-  mape: number;
-  params: Record<string, unknown>;
+  completed_at: string | null;
+  duration_seconds: number | null;
 }
 
 export interface DriftInfo {
@@ -82,12 +99,16 @@ export interface DriftInfo {
   timestamp: string;
 }
 
+// Matches actual backend response
 export interface SystemHealthInfo {
-  status: string;
-  uptime_seconds: number;
-  queue_size: number;
-  db_connected: boolean;
-  models_loaded: string[];
+  database: string;
+  models_loaded: boolean;
+  model_info: {
+    loaded: boolean;
+    active_models: string[];
+    weights: Record<string, number>;
+    forecast_horizon: number;
+  };
 }
 
 export type ForecastType = "day_ahead" | "full";

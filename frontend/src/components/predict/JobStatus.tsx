@@ -7,7 +7,7 @@ interface JobStatusProps {
 }
 
 export function JobStatusBar({ job }: JobStatusProps) {
-  const progress = job.progress ?? 0;
+  const progress = typeof job.progress === "number" ? job.progress : 0;
   const isActive = job.status === "processing" || job.status === "pending";
 
   return (

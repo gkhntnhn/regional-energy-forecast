@@ -19,7 +19,10 @@ export default defineConfig({
       "/models": "http://localhost:8000",
       "/jobs": "http://localhost:8000",
       "/files": "http://localhost:8000",
-      "/admin": "http://localhost:8000",
+      "/admin/analytics": "http://localhost:8000",
+      "/admin/jobs": "http://localhost:8000",
+      "/admin/models": "http://localhost:8000",
+      "/admin/system": "http://localhost:8000",
     },
   },
   build: {

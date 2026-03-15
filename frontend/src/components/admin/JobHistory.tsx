@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/Card";
 import { StatusBadge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Skeleton } from "@/components/ui/Skeleton";
-import { formatDateTime, formatMape } from "@/lib/utils";
+import { formatDateTime } from "@/lib/utils";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useState } from "react";
 
@@ -19,7 +19,7 @@ export function JobHistory() {
     placeholderData: keepPreviousData,
   });
 
-  const totalPages = data ? Math.ceil(data.total / PER_PAGE) : 0;
+  const totalPages = data?.pages ?? 0;
 
   return (
     <Card>
@@ -44,7 +44,7 @@ export function JobHistory() {
 
         {error && <p className="p-5 text-sm text-rose-500">Veri yuklenemedi</p>}
 
-        {data && data.items.length > 0 && (
+        {data && data.jobs.length > 0 && (
           <>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -53,17 +53,17 @@ export function JobHistory() {
                     <th className="text-left px-5 py-2 text-xs font-medium text-slate-500">Job ID</th>
                     <th className="text-left px-5 py-2 text-xs font-medium text-slate-500">Tarih</th>
                     <th className="text-center px-5 py-2 text-xs font-medium text-slate-500">Durum</th>
-                    <th className="text-right px-5 py-2 text-xs font-medium text-slate-500">MAPE</th>
+                    <th className="text-left px-5 py-2 text-xs font-medium text-slate-500">Ilerleme</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {data.items.map((job) => (
+                  {data.jobs.map((job) => (
                     <tr
-                      key={job.job_id}
+                      key={job.id}
                       className="border-b border-slate-100 hover:bg-slate-50 transition-colors duration-150"
                     >
                       <td className="px-5 py-2 font-mono text-xs text-slate-600">
-                        {job.job_id.slice(0, 8)}
+                        {job.id.slice(0, 8)}
                       </td>
                       <td className="px-5 py-2 text-xs text-slate-600">
                         {formatDateTime(job.created_at)}
@@ -71,8 +71,8 @@ export function JobHistory() {
                       <td className="px-5 py-2 text-center">
                         <StatusBadge status={job.status} />
                       </td>
-                      <td className="px-5 py-2 text-right font-mono text-xs">
-                        {job.mape != null ? formatMape(job.mape) : "-"}
+                      <td className="px-5 py-2 text-xs text-slate-500">
+                        {job.progress ?? "-"}
                       </td>
                     </tr>
                   ))}
@@ -109,7 +109,7 @@ export function JobHistory() {
           </>
         )}
 
-        {data && data.items.length === 0 && (
+        {data && data.jobs.length === 0 && (
           <p className="p-5 text-sm text-slate-400">Henuz job gecmisi yok</p>
         )}
       </CardContent>

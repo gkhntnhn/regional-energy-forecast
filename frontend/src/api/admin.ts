@@ -3,7 +3,7 @@ import type {
   MapeDataPoint,
   HourlyMape,
   ModelMape,
-  JobHistoryItem,
+  JobHistoryResponse,
   TrainingRun,
   DriftInfo,
   SystemHealthInfo,
@@ -33,7 +33,7 @@ export async function getModelComparison(): Promise<Record<string, unknown>[]> {
 export async function getJobHistory(
   page = 1,
   perPage = 20,
-): Promise<{ items: JobHistoryItem[]; total: number }> {
+): Promise<JobHistoryResponse> {
   return api.get(`/admin/jobs/history?page=${page}&per_page=${perPage}`);
 }
 
