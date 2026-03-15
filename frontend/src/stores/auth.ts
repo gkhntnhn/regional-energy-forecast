@@ -8,7 +8,9 @@ interface AuthState {
   logout: () => void;
 }
 
-const stored = sessionStorage.getItem(AUTH_STORAGE_KEY);
+const stored =
+  localStorage.getItem(AUTH_STORAGE_KEY) ??
+  sessionStorage.getItem(AUTH_STORAGE_KEY);
 
 export const useAuthStore = create<AuthState>((set) => ({
   token: stored,
@@ -16,12 +18,15 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   login: (token: string, remember: boolean) => {
     if (remember) {
+      localStorage.setItem(AUTH_STORAGE_KEY, token);
+    } else {
       sessionStorage.setItem(AUTH_STORAGE_KEY, token);
     }
     set({ token, isAuthenticated: true });
   },
 
   logout: () => {
+    localStorage.removeItem(AUTH_STORAGE_KEY);
     sessionStorage.removeItem(AUTH_STORAGE_KEY);
     set({ token: null, isAuthenticated: false });
   },

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 from sqlalchemy import case, cast, func, select
@@ -685,6 +686,9 @@ class AnalyticsRepository:
                     "progress": j.progress,
                     "created_at": j.created_at.isoformat(),
                     "completed_at": (j.completed_at.isoformat() if j.completed_at else None),
+                    "result_file": (
+                        Path(j.result_path).name if j.result_path else None
+                    ),
                 }
                 for j in jobs
             ],

@@ -214,6 +214,33 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.use_db = False
         logger.warning("DATABASE_URL not set — using in-memory job storage (dev mode)")
 
+    # Startup cleanup: mark stuck running/queued jobs as failed
+    if app.state.use_db:
+        try:
+            async with session_factory() as session:
+                from energy_forecast.db.models import JobModel
+
+                from sqlalchemy import update
+
+                stmt = (
+                    update(JobModel)
+                    .where(JobModel.status.in_(["running", "queued"]))
+                    .values(
+                        status="failed",
+                        progress="Server restart — isleniyor durumundan cikarildi",
+                        error="Job interrupted by server restart",
+                    )
+                )
+                res = await session.execute(stmt)
+                await session.commit()
+                count = getattr(res, "rowcount", 0) or 0
+                if count > 0:
+                    logger.info(
+                        "Startup cleanup: marked {} stuck jobs as failed", count,
+                    )
+        except Exception as e:
+            logger.warning("Startup cleanup failed: {}", e)
+
     # Start weather actuals scheduler (DB mode only)
     _scheduler_task = None
     if app.state.use_db:
@@ -721,6 +748,26 @@ async def root() -> FileResponse:
         return FileResponse(_spa_index, headers={"Cache-Control": "no-cache"})
     return FileResponse(
         Path(__file__).parent / "static" / "legacy" / "dashboard.html",
+        headers={"Cache-Control": "no-cache"},
+    )
+
+
+# File download endpoint — serves output Excel files
+@app.get("/files/{filename}")
+async def download_file(
+    filename: str,
+    _auth: HTTPAuthorizationCredentials = Depends(verify_api_key),  # noqa: B008
+) -> FileResponse:
+    """Download output file by filename."""
+    # Sanitize: only allow filenames, no path traversal
+    safe_name = Path(filename).name
+    file_path = Path("data/outputs") / safe_name
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="File not found")
+    return FileResponse(
+        file_path,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        filename=safe_name,
         headers={"Cache-Control": "no-cache"},
     )
 

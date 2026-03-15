@@ -129,4 +129,5 @@ scripts/backtest_daily.py
 # Frontend
 frontend/node_modules/
 frontend/dist/
+frontend/data/
 src/energy_forecast/serving/static/dist/

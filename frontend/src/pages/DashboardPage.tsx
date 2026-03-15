@@ -7,8 +7,10 @@ import { useJobStore } from "@/stores/jobs";
 import { getJobPredictions } from "@/api/predict";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { useMemo } from "react";
+import { useActiveJobs } from "@/hooks/useActiveJobs";
 
 export function DashboardPage() {
+  useActiveJobs();
   const lastResult = useJobStore((s) => s.lastResult);
   const jobId = lastResult?.job_id;
 

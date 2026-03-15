@@ -48,10 +48,14 @@ export function UploadForm() {
       setEmail("");
       if (fileRef.current) fileRef.current.value = "";
     } catch (err) {
-      toast(
-        err instanceof Error ? err.message : "Tahmin olusturulamadi",
-        "error",
-      );
+      const apiErr = err as { status?: number };
+      const message =
+        apiErr.status === 429
+          ? "Kuyruk dolu. Lutfen mevcut islemlerin tamamlanmasini bekleyin."
+          : apiErr.status === 401
+            ? "Oturum suresi doldu. Lutfen tekrar giris yapin."
+            : "Tahmin olusturulamadi. Lutfen tekrar deneyin.";
+      toast(message, "error");
     } finally {
       setLoading(false);
     }

@@ -8,6 +8,7 @@ const statusConfig: Record<JobStatus, { dot: string; text: string; label: string
   failed: { dot: "bg-rose-500", text: "text-rose-700", label: "Basarisiz" },
   cancelled: { dot: "bg-slate-400", text: "text-slate-600", label: "Iptal" },
   running: { dot: "bg-emerald-500 animate-pulse", text: "text-emerald-700", label: "Calisiyor" },
+  queued: { dot: "bg-amber-500", text: "text-amber-700", label: "Kuyrukta" },
 };
 
 interface BadgeProps {
