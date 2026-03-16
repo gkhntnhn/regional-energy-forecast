@@ -67,7 +67,7 @@ if ! command -v uv &> /dev/null; then
 fi
 echo "  Running uv sync..."
 cd "$PROJECT_DIR"
-uv sync --link-mode=copy
+uv sync --all-extras --link-mode=copy
 echo "  Dependencies installed."
 echo ""
 
