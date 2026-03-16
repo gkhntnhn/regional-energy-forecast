@@ -5,12 +5,9 @@
 target_col: consumption
 
 catboost:
-  n_trials: 1            # LOCAL SMOKE TEST (prod: 30)
+  n_trials: 30             # Production HPO
   search_space:
-    iterations:
-      type: int
-      low: 100
-      high: 100            # Quick test (prod: 3000-5000, early stopping decides)
+    # iterations: fixed at 10000 in catboost.yaml (early stopping decides)
     learning_rate:
       type: float
       low: 0.05
@@ -37,7 +34,7 @@ catboost:
       choices: ["RMSE"]   # Fixed — RMSE beat MAE by 0.16% (2.42% vs 2.58%)
 
 prophet:
-  n_trials: 1            # SMOKE TEST (prod: 30)
+  n_trials: 30             # Production HPO
   search_space:
     changepoint_prior_scale:
       type: float
@@ -63,13 +60,13 @@ prophet:
     # Fixed in configs/models/prophet.yaml → seasonality.mode: "multiplicative"
 
 tft:
-  n_trials: 1              # SMOKE TEST (prod: 15)
+  n_trials: 15             # Production HPO
   search_space:
     # hidden_size: fixed at 128 in tft.yaml (H200 validated)
     # windows_batch_size: fixed at 2048 in tft.yaml (H200 sweet spot)
     n_head:
       type: categorical
-      choices: [1, 2, 4]  # Explore multi-head attention (NF: n_head)
+      choices: [2, 4]     # 1 too weak for hidden=128, 2-4 optimal
     dropout:
       type: float
       low: 0.05
@@ -84,7 +81,7 @@ tft:
       log: true
 
 cross_validation:
-  n_splits: 2             # Smoke: 2-fold TSCV (prod: 12)
+  n_splits: 12             # Production: 12-fold TSCV
   val_months: 1
   test_months: 1
   gap_hours: 0

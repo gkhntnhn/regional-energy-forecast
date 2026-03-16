@@ -4,7 +4,7 @@ selected_features_path: "configs/models/catboost_selected_features.json"
 
 training:
   task_type: "CPU"
-  iterations: 5000
+  iterations: 10000
   learning_rate: 0.05
   depth: 6
   loss_function: "RMSE"       # R1: RMSE beat MAE by 0.16% (2.42% vs 2.58%)

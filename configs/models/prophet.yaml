@@ -2,7 +2,7 @@
 seasonality:
   mode: "multiplicative"
   daily:
-    fourier_order: 15
+    fourier_order: 10
   weekly:
     fourier_order: 8
   yearly:

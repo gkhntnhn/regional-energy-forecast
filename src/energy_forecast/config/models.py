@@ -141,7 +141,7 @@ class ProphetSeasonalityConfig(BaseModel, frozen=True):
 
     mode: Literal["additive", "multiplicative"] = "multiplicative"
     daily: SeasonalityPeriodConfig = Field(
-        default_factory=lambda: SeasonalityPeriodConfig(fourier_order=15),
+        default_factory=lambda: SeasonalityPeriodConfig(fourier_order=10),
     )
     weekly: SeasonalityPeriodConfig = Field(
         default_factory=lambda: SeasonalityPeriodConfig(fourier_order=8),
