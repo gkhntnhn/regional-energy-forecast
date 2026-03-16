@@ -73,6 +73,10 @@ class CatBoostConfig(BaseModel, frozen=True):
     """CatBoost model configuration."""
 
     training: CatBoostTrainingConfig = Field(default_factory=CatBoostTrainingConfig)
+    selected_features_path: str | None = Field(
+        default=None,
+        description="Path to JSON file with selected feature names. None = use all.",
+    )
     categorical_features: list[str] = Field(
         default_factory=lambda: [
             # Time
@@ -293,7 +297,6 @@ class TFTCovariatesConfig(BaseModel, frozen=True):
             "consumption_lag_48",
             "consumption_lag_168",
             "consumption_lag_336",
-            "consumption_lag_720",
             "consumption_week_ratio",
             "consumption_momentum_168",
             "consumption_pct_change_168",

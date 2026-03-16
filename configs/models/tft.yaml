@@ -69,7 +69,7 @@ covariates:
     - consumption_lag_48          # 6.09%
     - consumption_lag_168         # 27.04% — strongest single feature
     - consumption_lag_336         # 9.24%
-    - consumption_lag_720         # long-term baseline
+    # consumption_lag_720 removed: CatBoost importance 0.004% (pruned), causes 30d NaN loss
     # Consumption derived (momentum, ratios, profile — 22.7% total)
     - consumption_week_ratio      # 8.02%
     # - consumption_hourly_profile  # 5.59%

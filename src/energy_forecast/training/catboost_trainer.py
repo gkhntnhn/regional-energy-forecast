@@ -82,6 +82,23 @@ class CatBoostTrainer:
         self._splitter = TimeSeriesSplitter.from_config(settings.hyperparameters.cross_validation)
         self._target_col = settings.hyperparameters.target_col
         self._skip_validation = settings.hyperparameters.skip_validation_after_optuna
+        self._selected_features = self._load_selected_features()
+
+    # -- Feature selection --
+
+    def _load_selected_features(self) -> list[str] | None:
+        """Load selected feature list from JSON if configured."""
+        path_str = self._cb_config.selected_features_path
+        if path_str is None:
+            return None
+        path = Path(path_str)
+        if not path.exists():
+            logger.warning("Selected features file not found: {}", path)
+            return None
+        data = json.loads(path.read_text(encoding="utf-8"))
+        features: list[str] = data["features"]
+        logger.info("Loaded {} selected features from {}", len(features), path)
+        return features
 
     # -- Optuna storage --
 
@@ -96,9 +113,12 @@ class CatBoostTrainer:
     # -- X/y split (resolves M4 leakage audit warning) --
 
     def _split_xy(self, df: pd.DataFrame) -> tuple[pd.DataFrame, pd.Series[Any]]:
-        """Separate target column from features."""
+        """Separate target column from features, applying selection if configured."""
         y: pd.Series[Any] = df[self._target_col]
         x = df.drop(columns=[self._target_col])
+        if self._selected_features is not None:
+            keep = [c for c in self._selected_features if c in x.columns]
+            x = x[keep]
         return x, y
 
     # -- Categorical preparation --

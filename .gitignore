@@ -35,6 +35,7 @@ data/external/**
 !data/external/
 !data/external/*/
 !data/external/**/.gitkeep
+data/analysis/
 data/uploads/
 data/outputs/
 data/predictions/

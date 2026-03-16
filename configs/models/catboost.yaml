@@ -1,4 +1,7 @@
 # CatBoost model configuration
+# Feature selection: 229/451 features kept (12-fold importance, max < 0.05% pruned)
+selected_features_path: "configs/models/catboost_selected_features.json"
+
 training:
   task_type: "CPU"
   iterations: 5000
