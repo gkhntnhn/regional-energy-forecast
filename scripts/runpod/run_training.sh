@@ -1,30 +1,37 @@
 #!/usr/bin/env bash
-# run_training.sh — Run all model trainings sequentially inside tmux
-# Run from project root: bash scripts/runpod/run_training.sh
-# This script launches tmux and runs all 4 trainings in sequence.
+# run_training.sh — R3 Full training: CB + Prophet parallel → TFT → Ensemble
+# Kullanım: RunPod terminalinde çalıştır
+#   bash scripts/runpod/run_training.sh
+#
+# tmux kullanır — SSH kopsa bile training devam eder
+#   tmux attach -t training     → bağlan
+#   Ctrl+B, 0                   → CatBoost/TFT/Ensemble window
+#   Ctrl+B, 1                   → Prophet window
+#   Ctrl+B, D                   → ayır (training devam eder)
 set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$PROJECT_ROOT"
 
-SESSION_NAME="hpo-training"
+SESSION_NAME="training"
+SENTINEL_DIR="/tmp/training_$$"
 
 echo "============================================"
-echo "  Production HPO Training Runner"
+echo "  R3 Production Training"
+echo "  CB(30t) + Prophet(30t) parallel → TFT(15t) → Ensemble"
+echo "  CV: 12-fold TSCV"
 echo "============================================"
 echo ""
 
-# Show current config
-echo "Current HPO config:"
-echo "  CatBoost trials: $(grep 'n_trials:' configs/models/hyperparameters.yaml | head -1 | awk '{print $2}')"
-echo "  Prophet trials:  $(grep 'n_trials:' configs/models/hyperparameters.yaml | sed -n '2p' | awk '{print $2}')"
-echo "  TFT trials:      $(grep 'n_trials:' configs/models/hyperparameters.yaml | sed -n '3p' | awk '{print $2}')"
-echo "  CV splits:       $(grep 'n_splits:' configs/models/hyperparameters.yaml | awk '{print $2}')"
-echo "  CatBoost GPU:    $(grep 'task_type:' configs/models/catboost.yaml | awk '{print $2}')"
-echo "  TFT epochs:      $(grep 'max_epochs:' configs/models/tft.yaml | awk '{print $2}')"
+# Show config
+echo "Config:"
+echo "  CatBoost:  30 trials, 12-fold, 229 features, 10000 iter (early stop)"
+echo "  Prophet:   30 trials, 12-fold, 14 regressors, daily Fourier=10"
+echo "  TFT:       15 trials, 12-fold, hidden=128, max_steps=10000, bf16"
+echo "  Ensemble:  stacking meta-learner (depth=2)"
 echo ""
 
-# Check if tmux session already exists
+# Check tmux
 if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
     echo "[WARNING] tmux session '$SESSION_NAME' already exists."
     echo "  Attach: tmux attach -t $SESSION_NAME"
@@ -32,115 +39,161 @@ if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
     exit 1
 fi
 
-# Create training script that runs inside tmux
-# Use unquoted heredoc so $PROJECT_ROOT is expanded at write-time.
-# All other $ expressions are escaped to defer to runtime.
-TRAIN_SCRIPT=$(mktemp /tmp/train_all_XXXXXX.sh)
-cat > "$TRAIN_SCRIPT" << TRAINEOF
+mkdir -p "$SENTINEL_DIR"
+
+# --- Main window: CatBoost → wait Prophet → TFT → Ensemble ---
+MAIN_SCRIPT=$(mktemp /tmp/main_XXXXXX.sh)
+cat > "$MAIN_SCRIPT" << MAINEOF
 #!/usr/bin/env bash
 set -euo pipefail
-
 cd "$PROJECT_ROOT"
+
+SENTINEL_DIR="$SENTINEL_DIR"
+TOTAL_START=\$(date +%s)
 
 echo ""
 echo "========================================"
-echo "  [1/4] CatBoost Training (GPU)"
-echo "  Expected: ~30-60 min"
+echo "  [1/4] CatBoost Training (CPU)"
+echo "  30 trials × 12-fold, 229 features"
 echo "========================================"
 echo ""
 START=\$(date +%s)
 
-uv run python -m energy_forecast.training.run \\
-    --model catboost \\
-    --no-mlflow \\
+uv run python -m energy_forecast.training.run \
+    --model catboost \
+    --no-mlflow \
     2>&1 | tee catboost_training.log
 
 CB_TIME=\$(( \$(date +%s) - START ))
 echo ""
-echo "[DONE] CatBoost completed in \$(( CB_TIME / 60 ))m \$(( CB_TIME % 60 ))s"
-echo ""
+echo "[DONE] CatBoost: \$(( CB_TIME / 60 ))m \$(( CB_TIME % 60 ))s"
+touch "\$SENTINEL_DIR/catboost_done"
 
-echo "========================================"
-echo "  [2/4] Prophet Training (CPU)"
-echo "  Expected: ~45-90 min"
-echo "========================================"
-echo ""
-START=\$(date +%s)
-
-uv run python -m energy_forecast.training.run \\
-    --model prophet \\
-    --no-mlflow \\
-    2>&1 | tee prophet_training.log
-
-P_TIME=\$(( \$(date +%s) - START ))
-echo ""
-echo "[DONE] Prophet completed in \$(( P_TIME / 60 ))m \$(( P_TIME % 60 ))s"
+# Wait for Prophet
+if [ ! -f "\$SENTINEL_DIR/prophet_done" ]; then
+    echo "[WAITING] Prophet still running... (Ctrl+B, 1 to check)"
+    while [ ! -f "\$SENTINEL_DIR/prophet_done" ]; do
+        sleep 10
+    done
+fi
+echo "[OK] Prophet done. Starting TFT."
 echo ""
 
 echo "========================================"
 echo "  [3/4] TFT Training (GPU)"
-echo "  Expected: ~60-120 min"
+echo "  15 trials × 12-fold, hidden=128, bf16"
 echo "========================================"
 echo ""
 START=\$(date +%s)
 
-uv run python -m energy_forecast.training.run \\
-    --model tft \\
-    --no-mlflow \\
+uv run python -m energy_forecast.training.run \
+    --model tft \
+    --no-mlflow \
     2>&1 | tee tft_training.log
 
 TFT_TIME=\$(( \$(date +%s) - START ))
 echo ""
-echo "[DONE] TFT completed in \$(( TFT_TIME / 60 ))m \$(( TFT_TIME % 60 ))s"
+echo "[DONE] TFT: \$(( TFT_TIME / 60 ))m \$(( TFT_TIME % 60 ))s"
 echo ""
 
 echo "========================================"
-echo "  [4/4] Ensemble Training (CPU)"
-echo "  Expected: ~10-15 min"
+echo "  [4/4] Ensemble Training"
+echo "  Stacking meta-learner (depth=2)"
 echo "========================================"
 echo ""
 START=\$(date +%s)
 
-uv run python -m energy_forecast.training.run \\
-    --model ensemble \\
-    --no-mlflow \\
+uv run python -m energy_forecast.training.run \
+    --model ensemble \
+    --no-mlflow \
     2>&1 | tee ensemble_training.log
 
 E_TIME=\$(( \$(date +%s) - START ))
-echo ""
-echo "[DONE] Ensemble completed in \$(( E_TIME / 60 ))m \$(( E_TIME % 60 ))s"
-echo ""
 
-TOTAL_TIME=\$(( CB_TIME + P_TIME + TFT_TIME + E_TIME ))
+P_TIME=0
+if [ -f "\$SENTINEL_DIR/prophet_time" ]; then
+    P_TIME=\$(cat "\$SENTINEL_DIR/prophet_time")
+fi
+
+TOTAL_TIME=\$(( \$(date +%s) - TOTAL_START ))
+
+echo ""
 echo "============================================"
-echo "  ALL TRAINING COMPLETE!"
+echo "  R3 TRAINING COMPLETE!"
 echo "============================================"
 echo ""
 echo "  CatBoost: \$(( CB_TIME / 60 ))m \$(( CB_TIME % 60 ))s"
-echo "  Prophet:  \$(( P_TIME / 60 ))m \$(( P_TIME % 60 ))s"
+echo "  Prophet:  \$(( P_TIME / 60 ))m \$(( P_TIME % 60 ))s (parallel)"
 echo "  TFT:      \$(( TFT_TIME / 60 ))m \$(( TFT_TIME % 60 ))s"
 echo "  Ensemble: \$(( E_TIME / 60 ))m \$(( E_TIME % 60 ))s"
 echo "  ----------------------------"
-echo "  Total:    \$(( TOTAL_TIME / 60 ))m \$(( TOTAL_TIME % 60 ))s"
+echo "  Wall clock: \$(( TOTAL_TIME / 60 ))m \$(( TOTAL_TIME % 60 ))s"
 echo ""
-echo "Next: bash scripts/runpod/pack_results.sh"
+
+# Pack results
+echo "Packing results..."
+bash scripts/runpod/pack_results.sh
+
 echo ""
-echo "REMINDER: Stop the pod after downloading results!"
-TRAINEOF
+echo "Models in: models/ and final_models/"
+echo "Download via Jupyter file browser or:"
+echo "  scp -P PORT root@IP:/workspace/trained_models.tar.gz ~/Desktop/"
+echo ""
+echo "REMINDER: Stop the pod!"
 
-chmod +x "$TRAIN_SCRIPT"
+rm -rf "\$SENTINEL_DIR"
+MAINEOF
+chmod +x "$MAIN_SCRIPT"
 
-# Launch in tmux
+# --- Prophet window ---
+PROPHET_SCRIPT=$(mktemp /tmp/prophet_XXXXXX.sh)
+cat > "$PROPHET_SCRIPT" << PROPEOF
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$PROJECT_ROOT"
+
+SENTINEL_DIR="$SENTINEL_DIR"
+
+echo ""
+echo "========================================"
+echo "  [2/4] Prophet Training (CPU, parallel)"
+echo "  30 trials × 12-fold, 14 regressors"
+echo "========================================"
+echo ""
+START=\$(date +%s)
+
+uv run python -m energy_forecast.training.run \
+    --model prophet \
+    --no-mlflow \
+    2>&1 | tee prophet_training.log
+
+P_TIME=\$(( \$(date +%s) - START ))
+echo ""
+echo "[DONE] Prophet: \$(( P_TIME / 60 ))m \$(( P_TIME % 60 ))s"
+echo "\$P_TIME" > "\$SENTINEL_DIR/prophet_time"
+touch "\$SENTINEL_DIR/prophet_done"
+echo ""
+echo "Window 0 will detect this and start TFT."
+echo "Switch: Ctrl+B, 0"
+PROPEOF
+chmod +x "$PROPHET_SCRIPT"
+
+# --- Launch tmux ---
 echo "Starting training in tmux session: $SESSION_NAME"
 echo ""
-tmux new-session -d -s "$SESSION_NAME" "bash $TRAIN_SCRIPT"
 
-echo "Training started in background tmux session."
+tmux new-session -d -s "$SESSION_NAME" -n "main" "bash $MAIN_SCRIPT"
+tmux new-window -t "$SESSION_NAME" -n "prophet" "bash $PROPHET_SCRIPT"
+tmux select-window -t "$SESSION_NAME:0"
+
+echo "Training started!"
+echo ""
+echo "  Window 0 (main):    CatBoost → TFT → Ensemble"
+echo "  Window 1 (prophet): Prophet (parallel)"
 echo ""
 echo "Commands:"
-echo "  Attach (watch live):  tmux attach -t $SESSION_NAME"
-echo "  Detach (back to SSH): Ctrl+B then D"
-echo "  Check if running:     tmux ls"
+echo "  tmux attach -t $SESSION_NAME    → bağlan"
+echo "  Ctrl+B, 0/1                     → window değiştir"
+echo "  Ctrl+B, D                       → ayır (devam eder)"
 echo ""
-echo "You can safely disconnect SSH — training continues in tmux."
-echo "Reconnect and attach to check progress."
+echo "SSH kopsa bile training devam eder."
