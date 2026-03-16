@@ -13,6 +13,7 @@ Uses the same shared infrastructure as CatBoostTrainer and ProphetTrainer:
 from __future__ import annotations
 
 import gc
+import os
 import sys
 import threading
 import time
@@ -29,6 +30,9 @@ from loguru import logger
 from optuna import Study, Trial, TrialPruned, create_study
 from optuna.pruners import MedianPruner
 from optuna.samplers import TPESampler
+
+# Reduce GPU memory fragmentation (safe no-op if no CUDA)
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
 from energy_forecast.config import Settings
 from energy_forecast.models.tft import TFTForecaster

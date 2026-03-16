@@ -24,7 +24,7 @@ import optuna
 import pandas as pd
 from loguru import logger
 from optuna import Study, Trial, TrialPruned, create_study
-from optuna.pruners import MedianPruner
+from optuna.pruners import MedianPruner, PatientPruner
 from optuna.samplers import TPESampler
 from prophet import Prophet
 
@@ -416,7 +416,10 @@ class ProphetTrainer:
             storage=storage,
             load_if_exists=True,
             sampler=TPESampler(seed=self._prophet_config.optimization.random_seed),
-            pruner=MedianPruner(n_startup_trials=3, n_warmup_steps=2),
+            pruner=PatientPruner(
+                MedianPruner(n_startup_trials=5, n_warmup_steps=3),
+                patience=5,
+            ),
         )
 
         objective, trial_results = self._create_objective(df)

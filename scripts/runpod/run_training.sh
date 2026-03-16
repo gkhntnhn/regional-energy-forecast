@@ -13,6 +13,9 @@ set -euo pipefail
 PROJECT_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$PROJECT_ROOT"
 
+# GPU memory fragmentation fix
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+
 SESSION_NAME="training"
 SENTINEL_DIR="/tmp/training_$$"
 

@@ -83,8 +83,14 @@ else:
 "
 echo ""
 
-# --- Step 6: Verify dataset ---
-echo "[6/6] Verifying dataset..."
+# --- Step 6: Generate static data ---
+echo "[6/7] Generating holidays..."
+uv run python scripts/generate_holidays.py
+echo "  Done."
+echo ""
+
+# --- Step 7: Verify dataset ---
+echo "[7/7] Verifying dataset..."
 uv run python -c "
 import pandas as pd
 h = pd.read_parquet('data/processed/features_historical.parquet')
