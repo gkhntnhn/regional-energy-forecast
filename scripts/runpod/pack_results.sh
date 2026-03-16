@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# pack_results.sh — Package training results on RunPod pod for download
-# Run from project root on the pod: bash scripts/runpod/pack_results.sh
+# pack_results.sh — Package training results for download
+# Otomatik olarak run_training.sh sonunda çağrılır
 set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -32,16 +32,6 @@ else
     echo "[INFO] No training log files found."
 fi
 
-# --- Production configs (with optimized values) ---
-echo ""
-echo "Packaging production configs..."
-tar -czf /workspace/prod_configs.tar.gz \
-    configs/models/hyperparameters.yaml \
-    configs/models/catboost.yaml \
-    configs/models/tft.yaml \
-    configs/models/ensemble.yaml
-echo "[OK] /workspace/prod_configs.tar.gz"
-
 # --- Optuna studies (if SQLite) ---
 echo ""
 if [ -d "models/optuna_studies" ] && ls models/optuna_studies/*.db >/dev/null 2>&1; then
@@ -52,14 +42,27 @@ else
     echo "[INFO] No Optuna SQLite studies found."
 fi
 
+# --- All-in-one package ---
+echo ""
+echo "Creating all-in-one package..."
+tar -czf /workspace/r3_results.tar.gz \
+    models/ \
+    final_models/ \
+    *_training.log \
+    configs/models/ \
+    2>/dev/null || true
+echo "[OK] /workspace/r3_results.tar.gz ($(du -h /workspace/r3_results.tar.gz | cut -f1))"
+
 # --- Summary ---
 echo ""
 echo "============================================"
-echo "  Files ready for download in /workspace/"
+echo "  Files ready in /workspace/"
 echo "============================================"
 ls -lh /workspace/*.tar.gz 2>/dev/null
 echo ""
-echo "Download from local machine:"
-echo "  scp -P <PORT> -i ~/.ssh/id_ed25519 root@<POD_IP>:/workspace/*.tar.gz ~/Desktop/"
+echo "Download options:"
+echo "  1. Jupyter file browser: /workspace/*.tar.gz"
+echo "  2. Local terminal:"
+echo "     scp -P PORT -i ~/.ssh/id_ed25519 root@IP:/workspace/r3_results.tar.gz ~/Desktop/runpod/"
 echo ""
-echo "IMPORTANT: Stop the pod after downloading to stop billing!"
+echo "IMPORTANT: Stop the pod after downloading!"
