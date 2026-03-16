@@ -33,8 +33,7 @@ echo ""
 # --- Step 2: Download & copy parquet files ---
 echo "[2/7] Setting up data files..."
 mkdir -p "$PROJECT_DIR/data/processed"
-GDRIVE_HIST="1h09eFHyegLHZILU5N4KCGNVzN75tIgLi"
-GDRIVE_FCST="1RuBln8mWvIkKOgSe0ef9Ik_LNneEp-r5"
+GDRIVE_FOLDER="https://drive.google.com/drive/folders/1WWgT4PU60wUYUoj40K6xO91gT6UUrbbZ"
 HIST_PATH="$PROJECT_DIR/data/processed/features_historical.parquet"
 FCST_PATH="$PROJECT_DIR/data/processed/features_forecast.parquet"
 if [ -f "$HIST_PATH" ] && [ -f "$FCST_PATH" ]; then
@@ -44,10 +43,9 @@ elif [ -f "$WORKSPACE/features_historical.parquet" ]; then
     cp "$WORKSPACE/features_forecast.parquet" "$FCST_PATH"
     echo "  Parquet files copied from /workspace/."
 else
-    echo "  Downloading data from Google Drive..."
+    echo "  Downloading data from Google Drive folder..."
     pip install -q gdown
-    gdown "https://drive.google.com/uc?id=$GDRIVE_HIST" -O "$HIST_PATH"
-    gdown "https://drive.google.com/uc?id=$GDRIVE_FCST" -O "$FCST_PATH"
+    gdown --folder "$GDRIVE_FOLDER" -O "$PROJECT_DIR/data/processed/"
     echo "  Data downloaded."
 fi
 echo ""
