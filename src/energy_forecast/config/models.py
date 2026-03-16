@@ -248,6 +248,7 @@ class TFTTrainingConfig(BaseModel, frozen=True):
     prediction_length: int = Field(default=48, ge=1)
     max_steps: int = Field(default=10000, ge=1)
     windows_batch_size: int = Field(default=2048, ge=1)
+    step_size: int = Field(default=1, ge=1)
     learning_rate: float = Field(default=0.001, gt=0.0)
     early_stop_patience_steps: int = Field(default=200, ge=-1)  # -1 disables
     val_check_steps: int = Field(default=50, ge=1)

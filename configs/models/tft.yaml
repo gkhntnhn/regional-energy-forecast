@@ -10,7 +10,8 @@ training:
   encoder_length: 168  # 7 days → input_size
   prediction_length: 48       # h (forecast horizon)
   max_steps: 10000            # Production (early stopping decides)
-  windows_batch_size: 2048    # Production (A100 80GB sweet spot)
+  windows_batch_size: 1024    # Production (H100 80GB — 2048 OOM risk)
+  step_size: 12               # Window stride: 4.8x speedup (benchmark validated)
   learning_rate: 0.001
   early_stop_patience_steps: 200  # Step-based early stopping (prod)
   val_check_steps: 50         # Validate every N steps

@@ -166,6 +166,7 @@ class TFTForecaster(BaseForecaster):
             scaler_type=train_cfg.scaler_type,
             batch_size=1,  # Single time series
             windows_batch_size=train_cfg.windows_batch_size,
+            step_size=train_cfg.step_size,
             futr_exog_list=list(cfg.covariates.time_varying_known),
             hist_exog_list=list(cfg.covariates.time_varying_unknown),
             num_lr_decays=-1,
