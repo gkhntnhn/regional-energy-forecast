@@ -33,24 +33,22 @@ echo ""
 # --- Step 2: Download & copy parquet files ---
 echo "[2/7] Setting up data files..."
 mkdir -p "$PROJECT_DIR/data/processed"
-GDRIVE_ID="1h09eFHyegLHZILU5N4KCGNVzN75tIgLi"
-if [ -f "$PROJECT_DIR/data/processed/features_historical.parquet" ]; then
+GDRIVE_HIST="1h09eFHyegLHZILU5N4KCGNVzN75tIgLi"
+GDRIVE_FCST="1RuBln8mWvIkKOgSe0ef9Ik_LNneEp-r5"
+HIST_PATH="$PROJECT_DIR/data/processed/features_historical.parquet"
+FCST_PATH="$PROJECT_DIR/data/processed/features_forecast.parquet"
+if [ -f "$HIST_PATH" ] && [ -f "$FCST_PATH" ]; then
     echo "  Parquet files already exist, skipping download."
 elif [ -f "$WORKSPACE/features_historical.parquet" ]; then
-    cp "$WORKSPACE/features_historical.parquet" "$PROJECT_DIR/data/processed/"
-    cp "$WORKSPACE/features_forecast.parquet" "$PROJECT_DIR/data/processed/"
+    cp "$WORKSPACE/features_historical.parquet" "$HIST_PATH"
+    cp "$WORKSPACE/features_forecast.parquet" "$FCST_PATH"
     echo "  Parquet files copied from /workspace/."
-elif [ -f "$WORKSPACE/data.tar.gz" ]; then
-    cd "$PROJECT_DIR"
-    tar -xzf "$WORKSPACE/data.tar.gz"
-    echo "  Parquet files extracted from data.tar.gz."
 else
     echo "  Downloading data from Google Drive..."
     pip install -q gdown
-    gdown "https://drive.google.com/uc?id=$GDRIVE_ID" -O "$WORKSPACE/data.tar.gz"
-    cd "$PROJECT_DIR"
-    tar -xzf "$WORKSPACE/data.tar.gz"
-    echo "  Data downloaded and extracted."
+    gdown "https://drive.google.com/uc?id=$GDRIVE_HIST" -O "$HIST_PATH"
+    gdown "https://drive.google.com/uc?id=$GDRIVE_FCST" -O "$FCST_PATH"
+    echo "  Data downloaded."
 fi
 echo ""
 
