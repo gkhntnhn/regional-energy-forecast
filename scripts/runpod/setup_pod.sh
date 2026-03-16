@@ -12,7 +12,7 @@ WORKSPACE="/workspace"
 PROJECT_DIR="$WORKSPACE/regional-energy-forecast"
 
 echo "============================================"
-echo "  RunPod R3 Setup — RTX PRO 6000 (96GB)"
+echo "  RunPod R3 Setup — Production HPO"
 echo "============================================"
 echo ""
 
