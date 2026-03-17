@@ -23,6 +23,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from energy_forecast import __version__
 from energy_forecast.config import load_config
+from energy_forecast.serving.dependencies import DBContext, get_db_context
 from energy_forecast.serving.exceptions import APIError, JobNotFoundError, JobQueueFullError
 from energy_forecast.serving.job_manager import JobManager
 from energy_forecast.serving.rate_limit import limiter
@@ -399,6 +400,7 @@ def _serve_spa() -> FileResponse:
     )
 
 
+# /admin and /admin/ — explicit SPA route (also handled by catch-all middleware below)
 @app.get("/admin", include_in_schema=False)
 @app.get("/admin/", include_in_schema=False)
 async def admin_dashboard() -> FileResponse:
@@ -495,10 +497,10 @@ async def predict(
     # Save uploaded file
     excel_path, file_stem = file_service.save_upload(file)
 
-    use_db: bool = getattr(request.app.state, "use_db", False)
+    db: DBContext = await get_db_context(request)
 
-    if use_db:
-        session_factory = request.app.state.session_factory
+    if db.use_db:
+        session_factory = db.session_factory
 
         # Lock ensures create+enqueue is atomic — no interleaving under concurrency
         async with job_manager.enqueue_lock:
@@ -597,10 +599,9 @@ async def get_active_status(
     qsize = job_manager.queue_size
     max_q = job_manager.max_queue_size
 
-    use_db: bool = getattr(request.app.state, "use_db", False)
-    if use_db:
-        session_factory = request.app.state.session_factory
-        async with session_factory() as session:
+    db: DBContext = await get_db_context(request)
+    if db.use_db:
+        async with db.session_factory() as session:
             active = await job_manager.get_active_job_db(session)
         return {
             "busy": active is not None,
@@ -634,12 +635,11 @@ async def get_status(
         Job status with progress information.
     """
     job_manager: JobManager = request.app.state.job_manager
-    use_db: bool = getattr(request.app.state, "use_db", False)
+    db: DBContext = await get_db_context(request)
 
     try:
-        if use_db:
-            session_factory = request.app.state.session_factory
-            async with session_factory() as session:
+        if db.use_db:
+            async with db.session_factory() as session:
                 job = await job_manager.get_job_db(session, job_id)
             return JobStatusResponse(
                 job_id=job.id,
@@ -673,14 +673,13 @@ async def delete_job(
 ) -> dict[str, str]:
     """Delete or cancel a job by ID."""
     job_manager: JobManager = request.app.state.job_manager
-    use_db: bool = getattr(request.app.state, "use_db", False)
+    db: DBContext = await get_db_context(request)
 
     try:
-        if use_db:
+        if db.use_db:
             from energy_forecast.db.repositories.job_repo import JobRepository
 
-            session_factory = request.app.state.session_factory
-            async with session_factory() as session:
+            async with db.session_factory() as session:
                 repo = JobRepository(session)
                 job = await repo.get_by_id(job_id)
                 if job is None:
@@ -718,13 +717,12 @@ async def list_jobs(
 ) -> dict[str, object]:
     """List all jobs (for debugging/admin)."""
     job_manager: JobManager = request.app.state.job_manager
-    use_db: bool = getattr(request.app.state, "use_db", False)
+    db: DBContext = await get_db_context(request)
 
-    if use_db:
+    if db.use_db:
         from energy_forecast.db.repositories.job_repo import JobRepository
 
-        session_factory = request.app.state.session_factory
-        async with session_factory() as session:
+        async with db.session_factory() as session:
             repo = JobRepository(session)
             db_jobs = await repo.get_all()
             stats = await repo.get_stats()
@@ -791,9 +789,27 @@ async def download_file(
     )
 
 
-# SPA catch-all: serve index.html for client-side routes (/login, /history, etc.)
-@app.get("/login", include_in_schema=False)
-@app.get("/history", include_in_schema=False)
-async def spa_routes() -> FileResponse:
-    """Serve SPA index.html for client-side routes."""
-    return _serve_spa()
+# SPA catch-all middleware: serve index.html for any unknown GET path
+# that doesn't look like a file request (no extension in last segment).
+# This eliminates the need to add explicit routes for each frontend page.
+# API path prefixes — never serve SPA for these (let 404 pass through)
+_API_PREFIXES = (
+    "/health", "/predict", "/status/", "/jobs", "/models", "/files/", "/docs",
+    "/openapi", "/admin/analytics", "/admin/jobs", "/admin/models", "/admin/system",
+    "/internal/",
+)
+
+
+@app.middleware("http")
+async def spa_catch_all(request: Request, call_next: Any) -> Any:
+    """Catch 404 GET requests and serve SPA index.html for client-side routing."""
+    response = await call_next(request)
+    path = request.url.path
+    if (
+        response.status_code == 404
+        and request.method == "GET"
+        and "." not in path.split("/")[-1]  # skip file requests (.js, .css)
+        and not path.startswith(_API_PREFIXES)  # skip API endpoints
+    ):
+        return _serve_spa()
+    return response
