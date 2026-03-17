@@ -91,6 +91,11 @@ class EnsembleForecaster(BaseForecaster):
         """Get ensemble mode."""
         return self._mode
 
+    @property
+    def catboost_model(self) -> CatBoostRegressor | None:
+        """Access CatBoost model (for feature importance, etc.)."""
+        return self._catboost_model
+
     def set_models(
         self,
         catboost_model: CatBoostRegressor | None = None,
@@ -185,8 +190,7 @@ class EnsembleForecaster(BaseForecaster):
     def predict(
         self,
         X: pd.DataFrame,
-        *,
-        history: pd.DataFrame | None = None,
+        **kwargs: Any,
     ) -> pd.DataFrame:
         """Generate ensemble prediction.
 
@@ -194,7 +198,7 @@ class EnsembleForecaster(BaseForecaster):
 
         Args:
             X: Feature DataFrame with DatetimeIndex.
-            history: Optional historical data for TFT rolling prediction.
+            **kwargs: history (pd.DataFrame | None) for TFT encoder context.
 
         Returns:
             DataFrame with PREDICTION_COL and individual model predictions.
@@ -202,6 +206,7 @@ class EnsembleForecaster(BaseForecaster):
         Raises:
             RuntimeError: If no active models are loaded.
         """
+        history: pd.DataFrame | None = kwargs.get("history")
         predictions = self._get_base_predictions(X, history=history)
 
         if not predictions:

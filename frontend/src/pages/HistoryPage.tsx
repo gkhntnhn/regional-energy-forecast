@@ -29,17 +29,19 @@ export function HistoryPage() {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((r) => {
-        if (!r.ok) return;
+        if (!r.ok) throw new Error(`Download failed: ${r.status}`);
         return r.blob();
       })
       .then((blob) => {
-        if (!blob) return;
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
         a.download = resultFile;
         a.click();
         URL.revokeObjectURL(url);
+      })
+      .catch(() => {
+        alert("Dosya indirilemedi");
       });
   }
 

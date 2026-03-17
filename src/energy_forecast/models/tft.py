@@ -257,6 +257,7 @@ class TFTForecaster(BaseForecaster):
         self,
         X: pd.DataFrame,
         target_col: str | None = None,
+        **kwargs: Any,
     ) -> pd.DataFrame:
         """Generate predictions using median quantile.
 

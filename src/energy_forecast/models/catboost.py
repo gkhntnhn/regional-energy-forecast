@@ -76,16 +76,16 @@ class CatBoostForecaster(BaseForecaster):
         logger.info("CatBoost simple training complete")
         return None
 
-    def predict(self, x: pd.DataFrame) -> pd.DataFrame:
+    def predict(self, X: pd.DataFrame, **kwargs: Any) -> pd.DataFrame:
         """Generate predictions using trained CatBoost model.
 
         Args:
-            x: Feature DataFrame for prediction period.
+            X: Feature DataFrame for prediction period.
 
         Returns:
             DataFrame with ``consumption_mwh`` column and same index as input.
         """
-        x = x.copy()
+        x = X.copy()
         # Reindex columns to match training feature order
         model_features = self.model.feature_names_
         if model_features:

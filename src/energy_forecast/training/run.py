@@ -125,52 +125,40 @@ def apply_config_overrides(settings: Settings, config_path: Path) -> None:
 
     hp = settings.hyperparameters
 
-    # Override CatBoost
-    if "catboost" in overrides:
-        cb_override = overrides["catboost"]
-        cb_config = hp.catboost
-        if "n_trials" in cb_override:
-            object.__setattr__(cb_config, "n_trials", cb_override["n_trials"])
-        if "search_space" in cb_override:
-            new_space = {k: SearchParamConfig(**v) for k, v in cb_override["search_space"].items()}
-            object.__setattr__(cb_config, "search_space", new_space)
-        logger.debug("CatBoost overrides applied")
+    def _apply_model_hp_override(
+        model_name: str, model_config: Any, override_dict: dict[str, Any]
+    ) -> None:
+        """Apply n_trials and search_space overrides to a model's HP config."""
+        if "n_trials" in override_dict:
+            object.__setattr__(model_config, "n_trials", override_dict["n_trials"])
+        if "search_space" in override_dict:
+            new_space = {
+                k: SearchParamConfig(**v) for k, v in override_dict["search_space"].items()
+            }
+            object.__setattr__(model_config, "search_space", new_space)
+        logger.debug("{} overrides applied", model_name)
 
-    # Override Prophet
-    if "prophet" in overrides:
-        p_override = overrides["prophet"]
-        p_config = hp.prophet
-        if "n_trials" in p_override:
-            object.__setattr__(p_config, "n_trials", p_override["n_trials"])
-        if "search_space" in p_override:
-            new_space = {k: SearchParamConfig(**v) for k, v in p_override["search_space"].items()}
-            object.__setattr__(p_config, "search_space", new_space)
-        logger.debug("Prophet overrides applied")
+    # Override CatBoost / Prophet / TFT hyperparameters
+    for model_name, model_config in [
+        ("catboost", hp.catboost),
+        ("prophet", hp.prophet),
+        ("tft", hp.tft),
+    ]:
+        if model_name in overrides:
+            _apply_model_hp_override(model_name, model_config, overrides[model_name])
 
-    # Override TFT
+    # TFT-specific: training + optimization param overrides
     if "tft" in overrides:
         tft_override = overrides["tft"]
-        tft_config = hp.tft
-        if "n_trials" in tft_override:
-            object.__setattr__(tft_config, "n_trials", tft_override["n_trials"])
-        if "search_space" in tft_override:
-            new_space = {k: SearchParamConfig(**v) for k, v in tft_override["search_space"].items()}
-            object.__setattr__(tft_config, "search_space", new_space)
-        # Override TFT training params
-        if "training" in tft_override:
-            train_ovr = tft_override["training"]
-            train_cfg = settings.tft.training
-            for key, val in train_ovr.items():
-                if hasattr(train_cfg, key):
-                    object.__setattr__(train_cfg, key, val)
-        # Override TFT optimization params (e.g., optuna_splits, val_size_hours)
-        if "optimization" in tft_override:
-            opt_ovr = tft_override["optimization"]
-            opt_cfg = settings.tft.optimization
-            for key, val in opt_ovr.items():
-                if hasattr(opt_cfg, key):
-                    object.__setattr__(opt_cfg, key, val)
-        logger.debug("TFT overrides applied")
+        for section, cfg in [
+            ("training", settings.tft.training),
+            ("optimization", settings.tft.optimization),
+        ]:
+            if section in tft_override:
+                for key, val in tft_override[section].items():
+                    if hasattr(cfg, key):
+                        object.__setattr__(cfg, key, val)
+        logger.debug("TFT training/optimization overrides applied")
 
     # Override cross-validation
     if "cross_validation" in overrides:

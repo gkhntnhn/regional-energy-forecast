@@ -648,11 +648,9 @@ def main() -> int:
     # EPIAS and consumption columns must NOT be forward-filled — EPIAS
     # raw values are dropped by the feature pipeline and consumption NaN
     # in forecast rows marks the prediction target.
-    weather_prefixes = (
-        "temperature", "relative_humidity", "dew_point", "apparent_temperature",
-        "precipitation", "snow_depth", "surface_pressure",
-        "wind_speed", "wind_direction", "shortwave_radiation",
-    )
+    from energy_forecast.utils import WEATHER_FILL_PREFIXES
+
+    weather_prefixes = WEATHER_FILL_PREFIXES
     weather_cols = [c for c in merged_df.columns if c.startswith(weather_prefixes)]
     if weather_cols:
         merged_df[weather_cols] = merged_df[weather_cols].ffill().bfill()

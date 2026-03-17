@@ -326,8 +326,8 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Config loaded at module level for CORS middleware; reloaded in lifespan for model paths
-# Load CORS origins from config (fallback to ["*"] if config unavailable)
+# CORS middleware must be added at module level (before lifespan runs).
+# Config is also loaded in lifespan for services/models — this duplication is unavoidable.
 try:
     _cors_settings = load_config()
     _cors_origins = _cors_settings.api.cors_origins

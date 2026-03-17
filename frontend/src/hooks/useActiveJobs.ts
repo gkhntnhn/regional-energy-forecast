@@ -1,15 +1,15 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { getJobs } from "@/api/predict";
 import { useJobStore } from "@/stores/jobs";
 
 /**
  * On mount, fetch active jobs from backend and hydrate Zustand store.
- * This restores the queue after page refresh.
+ * This restores the queue after page refresh. Runs only once.
  */
 export function useActiveJobs() {
   const addJob = useJobStore((s) => s.addJob);
-  const activeJobs = useJobStore((s) => s.activeJobs);
+  const hasHydrated = useRef(false);
 
   const { data } = useQuery({
     queryKey: ["jobs-list"],
@@ -18,14 +18,15 @@ export function useActiveJobs() {
   });
 
   useEffect(() => {
-    if (!data || activeJobs.length > 0) return;
+    if (!data || hasHydrated.current) return;
+    hasHydrated.current = true;
 
     // Backend /jobs returns { jobs: [...] }
     const jobs = (data as unknown as { jobs: Array<{ id: string; status: string; created_at: string }> }).jobs;
     if (!jobs) return;
 
     const active = jobs.filter(
-      (j) => j.status === "queued" || j.status === "running" || j.status === "pending" || j.status === "processing",
+      (j) => j.status === "queued" || j.status === "running" || j.status === "pending",
     );
 
     for (const j of active) {
@@ -35,5 +36,5 @@ export function useActiveJobs() {
         created_at: j.created_at,
       });
     }
-  }, [data, activeJobs.length, addJob]);
+  }, [data, addJob]);
 }

@@ -233,20 +233,12 @@ class PredictionService:
             merged_df = merged_df.join(weather_df, how="left")
 
             # Fill missing weather values (forecast rows may have gaps)
-            # Matches prepare_dataset.py logic — only weather columns, never consumption/EPIAS
-            weather_prefixes = (
-                "temperature",
-                "relative_humidity",
-                "dew_point",
-                "apparent_temperature",
-                "precipitation",
-                "snow_depth",
-                "surface_pressure",
-                "wind_speed",
-                "wind_direction",
-                "shortwave_radiation",
-            )
-            weather_cols = [c for c in merged_df.columns if c.startswith(weather_prefixes)]
+            # Shared constant — only weather columns, never consumption/EPIAS
+            from energy_forecast.utils import WEATHER_FILL_PREFIXES
+
+            weather_cols = [
+                c for c in merged_df.columns if c.startswith(WEATHER_FILL_PREFIXES)
+            ]
             if weather_cols:
                 merged_df[weather_cols] = merged_df[weather_cols].ffill()
             cat_weather_cols = [
@@ -323,8 +315,15 @@ class PredictionService:
             logger.error("Prediction failed: {}", e)
             raise PredictionError(f"Prediction failed: {e}") from e
 
-    def _fetch_epias_data(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Fetch EPIAS data for the date range in df.
+    def _fetch_with_epias_client(
+        self, df: pd.DataFrame, fetch_method: str, warn_msg: str
+    ) -> pd.DataFrame:
+        """Fetch data via EpiasClient with shared error handling.
+
+        Args:
+            df: DataFrame with DatetimeIndex for date range.
+            fetch_method: Client method name ("fetch" or "fetch_generation").
+            warn_msg: Warning prefix if fetch fails.
 
         Raises:
             EpiasAuthError: If authentication fails (critical, not recoverable).
@@ -340,46 +339,30 @@ class PredictionService:
                 config=self._settings.epias_api,
                 db_session=session,
             ) as client:
-                return client.fetch(start_date, end_date)
+                result: pd.DataFrame = getattr(client, fetch_method)(start_date, end_date)
+                return result
         except EpiasAuthError:
-            raise  # auth failures are critical — do not swallow
+            raise
         except Exception as e:
-            msg = f"EPIAS fetch failed, predictions will lack market features: {e}"
+            msg = f"{warn_msg}: {e}"
             logger.warning(msg)
             self._warnings.append(msg)
             return pd.DataFrame(index=df.index)
         finally:
             if session is not None:
                 session.close()
+
+    def _fetch_epias_data(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Fetch EPIAS market data for the date range in df."""
+        return self._fetch_with_epias_client(
+            df, "fetch", "EPIAS fetch failed, predictions will lack market features"
+        )
 
     def _fetch_generation_data(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Fetch EPIAS generation data for the date range in df.
-
-        Raises:
-            EpiasAuthError: If authentication fails (critical, not recoverable).
-        """
-        start_date = df.index.min().strftime("%Y-%m-%d")
-        end_date = df.index.max().strftime("%Y-%m-%d")
-
-        session = self._get_sync_session()
-        try:
-            with EpiasClient(
-                username=self._settings.env.epias_username,
-                password=self._settings.env.epias_password,
-                config=self._settings.epias_api,
-                db_session=session,
-            ) as client:
-                return client.fetch_generation(start_date, end_date)
-        except EpiasAuthError:
-            raise  # auth failures are critical — do not swallow
-        except Exception as e:
-            msg = f"Generation fetch failed, predictions will lack supply features: {e}"
-            logger.warning(msg)
-            self._warnings.append(msg)
-            return pd.DataFrame(index=df.index)
-        finally:
-            if session is not None:
-                session.close()
+        """Fetch EPIAS generation data for the date range in df."""
+        return self._fetch_with_epias_client(
+            df, "fetch_generation", "Generation fetch failed, predictions will lack supply features"
+        )
 
     def _fetch_weather_data(self, df: pd.DataFrame) -> pd.DataFrame:
         """Fetch weather data: historical for past, forecast for future."""
@@ -480,10 +463,10 @@ class PredictionService:
         Returns:
             List of {"feature": name, "importance": value} dicts, or None if unavailable.
         """
-        if self._ensemble is None or self._ensemble._catboost_model is None:
+        if self._ensemble is None or self._ensemble.catboost_model is None:
             return None
         try:
-            model = self._ensemble._catboost_model
+            model = self._ensemble.catboost_model
             importances = model.get_feature_importance()
             feature_names = model.feature_names_
             pairs = sorted(

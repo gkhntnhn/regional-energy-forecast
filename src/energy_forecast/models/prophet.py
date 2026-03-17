@@ -77,7 +77,7 @@ class ProphetForecaster(BaseForecaster):
         target = self._target_col if include_target else None
         return to_prophet_format(df, self._regressor_names, target_col=target)
 
-    def predict(self, X: pd.DataFrame) -> pd.DataFrame:
+    def predict(self, X: pd.DataFrame, **kwargs: Any) -> pd.DataFrame:
         """Generate predictions using trained Prophet model.
 
         Args:
