@@ -31,3 +31,10 @@ export const useAuthStore = create<AuthState>((set) => ({
     set({ token: null, isAuthenticated: false });
   },
 }));
+
+// Multi-tab logout sync: other tabs detect token removal
+window.addEventListener("storage", (e) => {
+  if (e.key === AUTH_STORAGE_KEY && e.newValue === null) {
+    useAuthStore.getState().logout();
+  }
+});

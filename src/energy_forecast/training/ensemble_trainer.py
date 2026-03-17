@@ -52,6 +52,12 @@ from energy_forecast.training.ensemble_weights import (
 )
 from energy_forecast.training.experiment import ExperimentTracker
 from energy_forecast.training.metrics import MetricsResult
+from energy_forecast.training.oof_cache import (
+    CachedPipelineResult,
+    CachedTrainingResult,
+    compute_config_hash,
+    load_oof_cache,
+)
 from energy_forecast.training.prophet_trainer import (
     ProphetPipelineResult,
     ProphetTrainer,
@@ -62,7 +68,9 @@ from energy_forecast.training.tft_trainer import (
 )
 
 # Type alias for any model pipeline result
-ModelResult = CatBoostPipelineResult | ProphetPipelineResult | TFTPipelineResult
+ModelResult = (
+    CatBoostPipelineResult | ProphetPipelineResult | TFTPipelineResult | CachedPipelineResult
+)
 
 # ---------------------------------------------------------------------------
 # Result dataclasses
@@ -128,12 +136,15 @@ class EnsembleTrainer:
         settings: Settings,
         tracker: ExperimentTracker | None = None,
         active_models_override: list[str] | None = None,
+        *,
+        no_cache: bool = False,
     ) -> None:
         self._settings = settings
         self._ensemble_config = settings.ensemble
         self._tracker = tracker or ExperimentTracker(enabled=False)
         self._meta_model: CatBoostRegressor | None = None
         self._mode = self._ensemble_config.mode
+        self._no_cache = no_cache
 
         # Determine active models
         if active_models_override is not None:
@@ -182,25 +193,34 @@ class EnsembleTrainer:
             self._mode,
         )
 
-        # Train all active models
-        model_results, failed_models = self._train_models(df)
+        # Try loading cached OOF predictions
+        cached_results = None if self._no_cache else self._load_cached_oof()
 
-        # Update active models based on successful training
-        successful_models = [m for m in self._active_models if m not in failed_models]
-        if not successful_models:
-            msg = f"All models failed. Errors: {failed_models}"
-            raise RuntimeError(msg)
+        if cached_results is not None:
+            logger.info("Using cached OOF predictions (skipping model training)")
+            model_results = cached_results
+        else:
+            # Train all active models
+            model_results, failed_models = self._train_models(df)
 
-        if failed_models:
-            logger.warning(
-                "Some models failed, continuing with: {}. Failed: {}",
-                successful_models,
-                list(failed_models.keys()),
-            )
-            self._active_models = successful_models
-            if self._mode == "stacking" and len(self._active_models) < 2:
-                logger.warning("Too few models for stacking, falling back to weighted_average")
-                self._mode = "weighted_average"
+            # Update active models based on successful training
+            successful_models = [m for m in self._active_models if m not in failed_models]
+            if not successful_models:
+                msg = f"All models failed. Errors: {failed_models}"
+                raise RuntimeError(msg)
+
+            if failed_models:
+                logger.warning(
+                    "Some models failed, continuing with: {}. Failed: {}",
+                    successful_models,
+                    list(failed_models.keys()),
+                )
+                self._active_models = successful_models
+                if self._mode == "stacking" and len(self._active_models) < 2:
+                    logger.warning(
+                        "Too few models for stacking, falling back to weighted_average"
+                    )
+                    self._mode = "weighted_average"
 
         # Collect predictions and compute ensemble metrics
         training_result = self._compute_ensemble(model_results, df)
@@ -317,6 +337,43 @@ class EnsembleTrainer:
                     raise RuntimeError(f"{model_name} failed and fallback disabled: {e}") from e
 
         return results, errors
+
+    # -- OOF cache --
+
+    def _load_cached_oof(self) -> dict[str, ModelResult] | None:
+        """Load cached OOF predictions for all active models.
+
+        Returns None if any model has a cache miss — ensemble needs
+        all models to be consistent (same CV splits).
+
+        Returns:
+            Dict of model name -> CachedPipelineResult, or None.
+        """
+        results: dict[str, ModelResult] = {}
+        models_dir = self._settings.paths.models_dir
+
+        for model_name in self._active_models:
+            expected_hash = compute_config_hash(self._settings, model_name)
+            split_results = load_oof_cache(model_name, models_dir, expected_hash)
+
+            if split_results is None:
+                logger.info("OOF cache miss for {} — will train all models", model_name)
+                return None
+
+            # Compute aggregate metrics from cached splits
+            val_mapes = [sr.val_metrics.mape for sr in split_results]
+            test_mapes = [sr.test_metrics.mape for sr in split_results]
+
+            results[model_name] = CachedPipelineResult(
+                training_result=CachedTrainingResult(
+                    split_results=split_results,
+                    avg_val_mape=float(np.mean(val_mapes)),
+                    avg_test_mape=float(np.mean(test_mapes)),
+                    std_val_mape=float(np.std(val_mapes)),
+                ),
+            )
+
+        return results
 
     # -- Ensemble computation (mode branching) --
 

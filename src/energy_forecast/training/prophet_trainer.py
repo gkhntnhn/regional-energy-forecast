@@ -547,6 +547,17 @@ class ProphetTrainer:
 
         logger.info("Prophet pipeline complete in {:.1f}s", elapsed)
 
+        # Save OOF cache for ensemble
+        from energy_forecast.training.oof_cache import compute_config_hash, save_oof_cache
+
+        try:
+            config_hash = compute_config_hash(self._settings, "prophet")
+            save_oof_cache(
+                "prophet", best_result.split_results, self._settings.paths.models_dir, config_hash
+            )
+        except Exception as e:
+            logger.warning("Failed to save OOF cache (non-fatal): {}", e)
+
         return ProphetPipelineResult(
             study=study,
             best_params=study.best_params,

@@ -63,7 +63,7 @@ tft:
   n_trials: 15             # Production HPO
   search_space:
     # hidden_size: fixed at 128 in tft.yaml (H200 validated)
-    # windows_batch_size: fixed at 2048 in tft.yaml (H200 sweet spot)
+    # windows_batch_size: fixed at 1024 in tft.yaml (2048 OOM risk on H100 80GB)
     n_head:
       type: categorical
       choices: [2, 4]     # 1 too weak for hidden=128, 2-4 optimal

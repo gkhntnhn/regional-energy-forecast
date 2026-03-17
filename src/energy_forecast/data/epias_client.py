@@ -208,11 +208,11 @@ class EpiasClient:
         combined = combined.sort_index()
         combined = combined[~combined.index.duplicated(keep="first")]
 
-        # Ensure DatetimeIndex and normalize to tz-naive
+        # Ensure DatetimeIndex and normalize to tz-naive Istanbul
         if not isinstance(combined.index, pd.DatetimeIndex):
             combined.index = pd.to_datetime(combined.index)
         if combined.index.tz is not None:
-            combined.index = combined.index.tz_localize(None)
+            combined.index = combined.index.tz_convert("Europe/Istanbul").tz_localize(None)
 
         # Filter to requested range
         mask = (combined.index >= start_dt) & (combined.index <= end_dt + pd.Timedelta(hours=23))
@@ -482,7 +482,7 @@ class EpiasClient:
         if not isinstance(combined.index, pd.DatetimeIndex):
             combined.index = pd.to_datetime(combined.index)
         if combined.index.tz is not None:
-            combined.index = combined.index.tz_localize(None)
+            combined.index = combined.index.tz_convert("Europe/Istanbul").tz_localize(None)
 
         mask = (combined.index >= start_dt) & (combined.index <= end_dt + pd.Timedelta(hours=23))
         return combined.loc[mask]

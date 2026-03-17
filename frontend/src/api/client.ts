@@ -28,10 +28,24 @@ async function request<T>(
     headers["Content-Type"] = "application/json";
   }
 
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...options,
-    headers,
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 30_000);
+
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      ...options,
+      headers,
+      signal: controller.signal,
+    });
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") {
+      throw new ApiError(0, "Istek zaman asimina ugradi");
+    }
+    throw new ApiError(0, "Sunucuya baglanilamiyor");
+  } finally {
+    clearTimeout(timeoutId);
+  }
 
   if (response.status === 401) {
     useAuthStore.getState().logout();

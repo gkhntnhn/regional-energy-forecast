@@ -6,6 +6,7 @@ Handles long-format conversion and quantile prediction output.
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 from typing import Any
@@ -417,7 +418,14 @@ class TFTForecaster(BaseForecaster):
                 torch.save(ckpt, ckpt_file)
                 logger.debug("Stripped callbacks from {}", ckpt_file.name)
 
-        # Save our metadata (quantiles, architecture, covariates)
+        # Compute checkpoint hashes for integrity verification (Prophet parity)
+        ckpt_hashes: dict[str, str] = {}
+        for ckpt_file in path.glob("*.ckpt"):
+            ckpt_hashes[ckpt_file.name] = hashlib.sha256(
+                ckpt_file.read_bytes()
+            ).hexdigest()
+
+        # Save our metadata (quantiles, architecture, covariates, hashes)
         metadata = {
             "quantiles": self._quantiles,
             "architecture": self._tft_config.architecture.model_dump(),
@@ -429,6 +437,7 @@ class TFTForecaster(BaseForecaster):
                 "rnn_type": self._tft_config.training.rnn_type,
             },
             "covariates": self._tft_config.covariates.model_dump(),
+            "ckpt_hashes": ckpt_hashes,
         }
         metadata_path = path / self.METADATA_FILENAME
         with open(metadata_path, "w") as f:
@@ -465,6 +474,21 @@ class TFTForecaster(BaseForecaster):
             raise FileNotFoundError(msg)
         with open(metadata_path) as f:
             metadata = json.load(f)
+
+        # Verify checkpoint integrity (hash check — Prophet parity)
+        ckpt_hashes = metadata.get("ckpt_hashes", {})
+        if ckpt_hashes:
+            for ckpt_name, expected_hash in ckpt_hashes.items():
+                ckpt_file = path / ckpt_name
+                if ckpt_file.exists():
+                    actual_hash = hashlib.sha256(ckpt_file.read_bytes()).hexdigest()
+                    if actual_hash != expected_hash:
+                        msg = (
+                            f"TFT checkpoint integrity check failed: {ckpt_name} "
+                            f"(expected {expected_hash[:12]}..., got {actual_hash[:12]}...)"
+                        )
+                        raise RuntimeError(msg)
+            logger.debug("TFT checkpoint integrity verified ({} files)", len(ckpt_hashes))
 
         # Load NeuralForecast model
         nf = NeuralForecast.load(path=str(path))

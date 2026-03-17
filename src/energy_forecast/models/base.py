@@ -53,11 +53,12 @@ class BaseForecaster(ABC):
         ...
 
     @abstractmethod
-    def predict(self, X: pd.DataFrame) -> pd.DataFrame:
+    def predict(self, X: pd.DataFrame, **kwargs: Any) -> pd.DataFrame:
         """Generate 48-hour forecast.
 
         Args:
             X: Feature DataFrame for prediction period.
+            **kwargs: Model-specific arguments (e.g., history for TFT).
 
         Returns:
             DataFrame with hourly predictions.

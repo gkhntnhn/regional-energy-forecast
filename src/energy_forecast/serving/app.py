@@ -92,50 +92,46 @@ def _rate_limit_exceeded_handler(
 # ---------------------------------------------------------------------------
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Application lifespan: load models on startup, cleanup on shutdown."""
-    from dotenv import load_dotenv
-
-    load_dotenv()  # populate os.environ from .env (needed for GDrive, etc.)
-
-    # Configure file-based logging for persistent traceback capture
+def _init_logging() -> None:
+    """Configure file-based logging for persistent traceback capture."""
     from energy_forecast.utils.logging import setup_logger
 
     setup_logger(level="DEBUG", log_file="logs/api_server.log")
 
-    logger.info("Starting Energy Forecast API...")
 
-    # Load configuration
+def _load_settings() -> Any:
+    """Load config or fall back to defaults."""
     try:
-        settings = load_config()
+        return load_config()
     except FileNotFoundError:
         logger.warning("Config files not found, using defaults")
         from energy_forecast.config import get_default_config
 
-        settings = get_default_config()
+        return get_default_config()
 
-    # Initialize file service
-    file_config = FileServiceConfig(
-        upload_dir=Path("data/uploads"),
-        output_dir=Path("data/outputs"),
+
+def _init_services(app: FastAPI, settings: Any) -> None:
+    """Initialize file, email, prediction services and job manager."""
+    # File service
+    app.state.file_service = FileService(
+        FileServiceConfig(upload_dir=Path("data/uploads"), output_dir=Path("data/outputs"))
     )
-    app.state.file_service = FileService(file_config)
 
-    # Initialize email service
-    email_config = EmailServiceConfig(
-        smtp_server=settings.env.smtp_server,
-        smtp_port=settings.env.smtp_port,
-        username=settings.env.smtp_username,
-        password=settings.env.smtp_password,
-        sender_email=settings.env.sender_email or settings.env.smtp_username,
-        sender_name=settings.api.email.sender_name,
-        subject_template=settings.api.email.subject_template,
-        body_template=settings.api.email.body_template,
+    # Email service
+    app.state.email_service = EmailService(
+        EmailServiceConfig(
+            smtp_server=settings.env.smtp_server,
+            smtp_port=settings.env.smtp_port,
+            username=settings.env.smtp_username,
+            password=settings.env.smtp_password,
+            sender_email=settings.env.sender_email or settings.env.smtp_username,
+            sender_name=settings.api.email.sender_name,
+            subject_template=settings.api.email.subject_template,
+            body_template=settings.api.email.body_template,
+        )
     )
-    app.state.email_service = EmailService(email_config)
 
-    # Initialize prediction service — prefer final_models/ (flat), fallback to timestamped
+    # Prediction service — prefer final_models/ (flat), fallback to timestamped
     models_dir = Path(settings.paths.models_dir)
     final_dir = Path("final_models")
     use_final = (final_dir / "catboost" / "model.cbm").exists()
@@ -153,15 +149,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         ensemble_dir = models_dir / "ensemble"
         logger.info("Serving from models/ directory")
 
-    pred_config = PredictionServiceConfig(
-        models_dir=models_dir,
-        catboost_path=catboost_path,
-        prophet_path=prophet_path,
-        tft_path=tft_path,
-        ensemble_dir=ensemble_dir,
-    )
-
-    # Create sync session factory for PredictionService (DB data access)
+    # Sync session for DB data access
     sync_session_factory = None
     if settings.env.database_url_sync:
         from energy_forecast.db.engine import create_sync_engine, create_sync_session_factory
@@ -171,28 +159,36 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         logger.info("Sync DB session factory created for prediction service")
 
     app.state.prediction_service = PredictionService(
-        pred_config,
+        PredictionServiceConfig(
+            models_dir=models_dir,
+            catboost_path=catboost_path,
+            prophet_path=prophet_path,
+            tft_path=tft_path,
+            ensemble_dir=ensemble_dir,
+        ),
         settings,
         sync_session_factory=sync_session_factory,
     )
 
-    # Try to load models (warn if not available)
+    # Load models (warn if unavailable)
     try:
         app.state.prediction_service.load_models()
         logger.info("Models loaded successfully")
     except Exception as e:
         logger.warning("Failed to load models (API will reject predictions): {}", e)
 
-    # Store API key for auth middleware
+    # API key
     app.state.api_key = settings.env.api_key
     if not settings.env.api_key:
         logger.warning("API_KEY is empty — all authenticated endpoints will reject requests")
 
-    # Initialize job manager with queue
+    # Job manager
     app.state.job_manager = JobManager(max_queue_size=5)
     app.state.job_manager.start_worker()
 
-    # Initialize database (if DATABASE_URL is set)
+
+def _init_database(app: FastAPI, settings: Any) -> None:
+    """Initialize async database connection (or in-memory fallback)."""
     if settings.env.database_url:
         from energy_forecast.db import create_db_engine, create_session_factory
 
@@ -214,71 +210,94 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.use_db = False
         logger.warning("DATABASE_URL not set — using in-memory job storage (dev mode)")
 
-    # Startup cleanup: mark stuck running/queued jobs as failed
-    if app.state.use_db:
-        try:
-            async with session_factory() as session:
-                from energy_forecast.db.models import JobModel
 
-                from sqlalchemy import update
+async def _cleanup_stuck_jobs(app: FastAPI) -> None:
+    """Mark stuck running/queued jobs as failed after server restart."""
+    if not app.state.use_db:
+        return
+    try:
+        async with app.state.session_factory() as session:
+            from sqlalchemy import update
 
-                stmt = (
-                    update(JobModel)
-                    .where(JobModel.status.in_(["running", "queued"]))
-                    .values(
-                        status="failed",
-                        progress="Server restart — isleniyor durumundan cikarildi",
-                        error="Job interrupted by server restart",
-                    )
+            from energy_forecast.db.models import JobModel
+
+            stmt = (
+                update(JobModel)
+                .where(JobModel.status.in_(["running", "queued"]))
+                .values(
+                    status="failed",
+                    progress="Server restart — isleniyor durumundan cikarildi",
+                    error="Job interrupted by server restart",
                 )
-                res = await session.execute(stmt)
-                await session.commit()
-                count = getattr(res, "rowcount", 0) or 0
-                if count > 0:
-                    logger.info(
-                        "Startup cleanup: marked {} stuck jobs as failed", count,
-                    )
-        except Exception as e:
-            logger.warning("Startup cleanup failed: {}", e)
+            )
+            res = await session.execute(stmt)
+            await session.commit()
+            count = getattr(res, "rowcount", 0) or 0
+            if count > 0:
+                logger.info("Startup cleanup: marked {} stuck jobs as failed", count)
+    except Exception as e:
+        logger.warning("Startup cleanup failed: {}", e)
 
-    # Start weather actuals scheduler (DB mode only)
-    _scheduler_task = None
-    if app.state.use_db:
-        import asyncio
 
-        from energy_forecast.jobs.weather_actuals import run_scheduler
+def _start_scheduler(
+    app: FastAPI, settings: Any
+) -> Any:
+    """Start weather actuals scheduler with crash recovery (DB mode only)."""
+    if not app.state.use_db:
+        return None
 
-        _scheduler_restart_count = 0
-        _max_scheduler_restarts = 3
+    import asyncio
 
-        def _on_scheduler_done(task: asyncio.Task[None]) -> None:
-            nonlocal _scheduler_task, _scheduler_restart_count
-            if task.cancelled():
-                return
-            exc = task.exception()
-            if exc is not None:
-                _scheduler_restart_count += 1
-                if _scheduler_restart_count <= _max_scheduler_restarts:
-                    logger.error(
-                        "Weather scheduler crashed (restart {}/{}): {}",
-                        _scheduler_restart_count,
-                        _max_scheduler_restarts,
-                        exc,
-                    )
-                    _scheduler_task = asyncio.create_task(
-                        run_scheduler(app.state.session_factory, settings)
-                    )
-                    _scheduler_task.add_done_callback(_on_scheduler_done)
-                else:
-                    logger.critical(
-                        "Weather scheduler crashed {} times — NOT restarting. "
-                        "Manual intervention required.",
-                        _scheduler_restart_count,
-                    )
+    from energy_forecast.jobs.weather_actuals import run_scheduler
 
-        _scheduler_task = asyncio.create_task(run_scheduler(app.state.session_factory, settings))
-        _scheduler_task.add_done_callback(_on_scheduler_done)
-        logger.info("Weather actuals scheduler started (daily at 04:00)")
+    _restart_count = 0
+    _max_restarts = 3
+    _task: asyncio.Task[None] | None = None
+
+    def _on_done(task: asyncio.Task[None]) -> None:
+        nonlocal _task, _restart_count
+        if task.cancelled():
+            return
+        exc = task.exception()
+        if exc is not None:
+            _restart_count += 1
+            if _restart_count <= _max_restarts:
+                logger.error(
+                    "Weather scheduler crashed (restart {}/{}): {}",
+                    _restart_count, _max_restarts, exc,
+                )
+                _task = asyncio.create_task(
+                    run_scheduler(app.state.session_factory, settings)
+                )
+                _task.add_done_callback(_on_done)
+            else:
+                logger.critical(
+                    "Weather scheduler crashed {} times — NOT restarting. "
+                    "Manual intervention required.",
+                    _restart_count,
+                )
+
+    _task = asyncio.create_task(run_scheduler(app.state.session_factory, settings))
+    _task.add_done_callback(_on_done)
+    logger.info("Weather actuals scheduler started (daily at 04:00)")
+    return _task
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Application lifespan: load models on startup, cleanup on shutdown."""
+    from dotenv import load_dotenv
+
+    load_dotenv()
+
+    _init_logging()
+    logger.info("Starting Energy Forecast API...")
+
+    settings = _load_settings()
+    _init_services(app, settings)
+    _init_database(app, settings)
+    await _cleanup_stuck_jobs(app)
+    _scheduler_task = _start_scheduler(app, settings)
 
     logger.info("Energy Forecast API started successfully")
 
@@ -482,7 +501,7 @@ async def predict(
         session_factory = request.app.state.session_factory
 
         # Lock ensures create+enqueue is atomic — no interleaving under concurrency
-        async with job_manager._enqueue_lock:
+        async with job_manager.enqueue_lock:
             async with session_factory() as session:
                 job = await job_manager.create_job_db(
                     session, email=str(email), excel_path=excel_path, file_stem=file_stem
@@ -533,7 +552,7 @@ async def predict(
         )
 
     # In-memory fallback
-    async with job_manager._enqueue_lock:
+    async with job_manager.enqueue_lock:
         job_mem = job_manager.create_job_in_memory(
             email=str(email), excel_path=excel_path, file_stem=file_stem
         )

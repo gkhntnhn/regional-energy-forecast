@@ -19,8 +19,6 @@ regressors:
     mode: "multiplicative"
   - name: "consumption_lag_48"
     mode: "multiplicative"
-  - name: "consumption_lag_720"
-    mode: "multiplicative"
   # --- Weather ---
   - name: "temperature_2m"
     mode: "multiplicative"

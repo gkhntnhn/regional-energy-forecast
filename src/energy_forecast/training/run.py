@@ -76,6 +76,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=None,
         help="Override active models for ensemble (comma-separated: catboost,prophet,tft).",
     )
+    parser.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="Force retrain even if OOF cache exists (ensemble only).",
+    )
     return parser.parse_args(argv)
 
 
@@ -204,10 +209,6 @@ def _run_model(
     Returns:
         Dict with metrics and model_path for DB recording.
     """
-    from datetime import datetime
-
-    from energy_forecast.utils import TZ_ISTANBUL
-
     # Lazy imports for each trainer
     trainer_factories: dict[str, tuple[str, str]] = {
         "catboost": (
@@ -243,13 +244,12 @@ def _run_model(
     logger.info("Best params: {}", result.best_params)
     logger.info("Training time: {:.1f}s", result.training_time_seconds)
 
-    run_ts = datetime.now(tz=TZ_ISTANBUL).strftime("%Y-%m-%d_%H-%M")
     return {
         "metrics": {
             "val_mape": result.training_result.avg_val_mape,
             "test_mape": result.training_result.avg_test_mape,
         },
-        "model_path": str(Path(settings.paths.models_dir) / model_name / f"{model_name}_{run_ts}"),
+        "model_path": str(Path(settings.paths.models_dir) / model_name),
         "best_params": result.best_params,
     }
 
@@ -317,6 +317,7 @@ def run_ensemble(
     *,
     no_mlflow: bool = False,
     active_models_override: list[str] | None = None,
+    no_cache: bool = False,
 ) -> dict[str, Any]:
     """Run Ensemble training pipeline (CatBoost + Prophet + TFT).
 
@@ -325,6 +326,7 @@ def run_ensemble(
         data: Feature-engineered DataFrame.
         no_mlflow: If True, disable MLflow tracking.
         active_models_override: Override active models from config.
+        no_cache: If True, force retrain even if OOF cache exists.
 
     Returns:
         Dict with metrics and model_path for DB recording.
@@ -339,7 +341,9 @@ def run_ensemble(
         tracking_uri=settings.env.mlflow_tracking_uri,
         enabled=not no_mlflow,
     )
-    trainer = EnsembleTrainer(settings, tracker, active_models_override=active_models_override)
+    trainer = EnsembleTrainer(
+        settings, tracker, active_models_override=active_models_override, no_cache=no_cache
+    )
     result = trainer.run(data)
 
     # Save ensemble artifacts to fixed directory (overwrite previous)
@@ -424,6 +428,7 @@ def main(argv: list[str] | None = None) -> None:
             data,
             no_mlflow=args.no_mlflow,
             active_models_override=active_models_override,
+            no_cache=args.no_cache,
         ),
     }
 

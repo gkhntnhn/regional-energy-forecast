@@ -236,7 +236,7 @@ class PredictionService:
             # Matches prepare_dataset.py logic — only weather columns, never consumption/EPIAS
             weather_prefixes = (
                 "temperature",
-                "humidity",
+                "relative_humidity",
                 "dew_point",
                 "apparent_temperature",
                 "precipitation",
@@ -492,7 +492,8 @@ class PredictionService:
                 reverse=True,
             )[:n]
             return [{"feature": name, "importance": round(float(imp), 4)} for name, imp in pairs]
-        except Exception:
+        except Exception as e:
+            logger.debug("Feature importance extraction failed: {}", e)
             return None
 
     # ------------------------------------------------------------------

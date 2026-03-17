@@ -452,10 +452,12 @@ class EnsembleForecaster(BaseForecaster):
         # Load CatBoost
         if catboost_path is not None and catboost_path.exists():
             try:
-                self._catboost_model = CatBoostRegressor()
-                self._catboost_model.load_model(str(catboost_path))
+                model = CatBoostRegressor()
+                model.load_model(str(catboost_path))
+                self._catboost_model = model
                 logger.info("Loaded CatBoost model from {}", catboost_path)
             except Exception as e:
+                self._catboost_model = None
                 logger.warning("Failed to load CatBoost model, skipping: {}", e)
 
         # Load Prophet (with hash integrity check)
@@ -478,16 +480,18 @@ class EnsembleForecaster(BaseForecaster):
 
             try:
                 with open(prophet_path, "rb") as f:
-                    self._prophet_model = pickle.load(f)
+                    model = pickle.load(f)
+                self._prophet_model = model
                 logger.info("Loaded Prophet model from {}", prophet_path)
             except (pickle.UnpicklingError, EOFError, AttributeError) as e:
-                msg = f"Failed to load Prophet model (corrupted file?): {e}"
-                raise RuntimeError(msg) from e
+                self._prophet_model = None
+                logger.warning("Failed to load Prophet model, skipping: {}", e)
 
         # Load TFT
         if tft_path is not None and tft_path.exists():
             try:
                 self._tft_model = TFTForecaster.from_checkpoint(tft_path)
                 logger.info("Loaded TFT model from {}", tft_path)
-            except FileNotFoundError as e:
-                logger.warning("TFT model incomplete, skipping: {}", e)
+            except Exception as e:
+                self._tft_model = None
+                logger.warning("Failed to load TFT model, skipping: {}", e)

@@ -51,13 +51,13 @@ class CatBoostTrainingConfig(BaseModel, frozen=True):
     """CatBoost training parameters."""
 
     task_type: Literal["CPU", "GPU"] = "CPU"
-    iterations: int = Field(default=5000, ge=100)
+    iterations: int = Field(default=10000, ge=100)
     learning_rate: float = Field(default=0.05, gt=0.0, lt=1.0)
     depth: int = Field(default=6, ge=1, le=16)
     loss_function: str = "RMSE"
     eval_metric: str = "MAPE"
     early_stopping_rounds: int = Field(default=100, ge=1)
-    bootstrap_type: str | None = None
+    bootstrap_type: str | None = "MVS"
     has_time: bool = True
     random_seed: int = 42
     verbose: int = 500
@@ -200,7 +200,6 @@ class ProphetConfig(BaseModel, frozen=True):
             # Consumption lags (autoregressive signal)
             ProphetRegressorConfig(name="consumption_lag_168", mode="multiplicative"),
             ProphetRegressorConfig(name="consumption_lag_48", mode="multiplicative"),
-            ProphetRegressorConfig(name="consumption_lag_720", mode="multiplicative"),
             # Weather
             ProphetRegressorConfig(name="temperature_2m", mode="multiplicative"),
             ProphetRegressorConfig(name="apparent_temperature", mode="multiplicative"),
@@ -226,9 +225,9 @@ class ProphetConfig(BaseModel, frozen=True):
 
 # ---------------------------------------------------------------------------
 # TFT
-# NOTE: Pydantic defaults below represent PRODUCTION values (e.g. max_steps=10000).
-# YAML files (configs/models/tft.yaml, hyperparameters.yaml) contain LOCAL/SMOKE
-# TEST overrides that take effect at runtime. This is intentional — see CLAUDE.md.
+# NOTE: Pydantic defaults are synced with YAML production values (tft.yaml).
+# Exception: accelerator="auto" (safe fallback — YAML overrides to "gpu" for RunPod).
+# YAML always takes precedence at runtime via load_config().
 # ---------------------------------------------------------------------------
 
 
@@ -247,8 +246,8 @@ class TFTTrainingConfig(BaseModel, frozen=True):
     encoder_length: int = Field(default=168, ge=1)
     prediction_length: int = Field(default=48, ge=1)
     max_steps: int = Field(default=10000, ge=1)
-    windows_batch_size: int = Field(default=2048, ge=1)
-    step_size: int = Field(default=1, ge=1)
+    windows_batch_size: int = Field(default=1024, ge=1)
+    step_size: int = Field(default=12, ge=1)
     learning_rate: float = Field(default=0.001, gt=0.0)
     early_stop_patience_steps: int = Field(default=200, ge=-1)  # -1 disables
     val_check_steps: int = Field(default=50, ge=1)
@@ -316,7 +315,7 @@ class TFTCovariatesConfig(BaseModel, frozen=True):
 class TFTOptimizationConfig(BaseModel, frozen=True):
     """TFT optimization settings."""
 
-    optuna_splits: int = Field(default=3, ge=1)
+    optuna_splits: int = Field(default=12, ge=1)
     n_jobs: int = Field(default=1, ge=1)  # Parallel Optuna trials (1=serial, 8=RunPod A100)
     val_size_hours: int = Field(default=720, ge=24)  # ~1 month (24 * 30)
 

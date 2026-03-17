@@ -81,6 +81,7 @@ class JobManager:
         self._queue: asyncio.Queue[_QueueItem] = asyncio.Queue(maxsize=max_queue_size)
         self._max_queue_size = max_queue_size
         self._enqueue_lock = asyncio.Lock()
+        self.enqueue_lock = self._enqueue_lock  # Public alias for atomic create+enqueue
         self._worker_task: asyncio.Task[None] | None = None
         self._worker_restart_count = 0
 
@@ -155,7 +156,8 @@ class JobManager:
             item = await self._queue.get()
             try:
                 if item.is_db_mode:
-                    assert item.session_factory is not None  # guaranteed by enqueue caller
+                    if item.session_factory is None:
+                        raise RuntimeError("DB mode requires session_factory")
                     await self.process_job_db(
                         job_id=item.job_id,
                         excel_path=item.excel_path,
@@ -168,7 +170,8 @@ class JobManager:
                         email_service=item.email_service,
                     )
                 else:
-                    assert item.job_ref is not None  # guaranteed by enqueue caller
+                    if item.job_ref is None:
+                        raise RuntimeError("In-memory mode requires job_ref")
                     await self.process_job_in_memory(
                         job=item.job_ref,
                         prediction_service=item.prediction_service,

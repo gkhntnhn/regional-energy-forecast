@@ -141,6 +141,7 @@ class TFTTrainer:
                 "windows_batch_size", base.training.windows_batch_size
             ),
             "max_steps": base.training.max_steps,
+            "step_size": base.training.step_size,
             "learning_rate": params.get("learning_rate", base.training.learning_rate),
             "early_stop_patience_steps": base.training.early_stop_patience_steps,
             "val_check_steps": base.training.val_check_steps,
@@ -551,6 +552,17 @@ class TFTTrainer:
             )
 
         logger.info("TFT pipeline complete in {:.1f}s", elapsed)
+
+        # Save OOF cache for ensemble
+        from energy_forecast.training.oof_cache import compute_config_hash, save_oof_cache
+
+        try:
+            config_hash = compute_config_hash(self._settings, "tft")
+            save_oof_cache(
+                "tft", best_result.split_results, self._settings.paths.models_dir, config_hash
+            )
+        except Exception as e:
+            logger.warning("Failed to save OOF cache (non-fatal): {}", e)
 
         return TFTPipelineResult(
             study=study,

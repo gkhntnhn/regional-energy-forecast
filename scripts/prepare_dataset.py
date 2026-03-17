@@ -649,7 +649,7 @@ def main() -> int:
     # raw values are dropped by the feature pipeline and consumption NaN
     # in forecast rows marks the prediction target.
     weather_prefixes = (
-        "temperature", "humidity", "dew_point", "apparent_temperature",
+        "temperature", "relative_humidity", "dew_point", "apparent_temperature",
         "precipitation", "snow_depth", "surface_pressure",
         "wind_speed", "wind_direction", "shortwave_radiation",
     )
