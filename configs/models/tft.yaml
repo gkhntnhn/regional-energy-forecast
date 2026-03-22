@@ -9,7 +9,7 @@ architecture:
 training:
   encoder_length: 168  # 7 days → input_size
   prediction_length: 48       # h (forecast horizon)
-  max_steps: 10000            # Production (early stopping decides)
+  max_steps: 5000             # R5: 10000→5000, early stopping handles convergence
   windows_batch_size: 128     # R5: best val/test balance on A6000 (5.7GB VRAM, 2.3x faster than 256)
   step_size: 12               # Window stride: 4.8x speedup (benchmark validated)
   learning_rate: 0.001
