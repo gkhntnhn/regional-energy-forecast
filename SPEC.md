@@ -281,28 +281,26 @@ Input (feature-engineered DataFrame)
 | Weekly Fourier order | 8 |
 | Yearly Fourier order | 12 |
 | Holidays | TR resmi tatilleri + Ramazan (3-tier: bayram -1/+1, resmi 0/+1, ramazan 0/0) |
-| Regressors | 14 adet (asagida) |
+| Regressors | 12 adet (asagida) |
 | Changepoint prior scale | 0.001-1.0 (Optuna ile optimize) |
 | n_changepoints | 15-50 (Optuna ile optimize) |
 
-**Prophet Regressors (14 adet, R2 güncel):**
+**Prophet Regressors (12 adet, R3 güncel):**
 
 | # | Regressor | Mode |
 |---|-----------|------|
 | 1 | consumption_lag_168 | multiplicative |
 | 2 | consumption_lag_48 | multiplicative |
-| 3 | consumption_lag_720 | multiplicative |
-| 4 | temperature_2m | multiplicative |
-| 5 | apparent_temperature | multiplicative |
-| 6 | relative_humidity_2m | additive |
-| 7 | shortwave_radiation | multiplicative |
-| 8 | wth_cdd | multiplicative |
-| 9 | wth_hdd | multiplicative |
-| 10 | is_weekend | multiplicative |
-| 11 | is_sunday | multiplicative |
-| 12 | is_holiday | multiplicative |
-| 13 | is_business_hours | multiplicative |
-| 14 | sol_elevation | multiplicative |
+| 3 | apparent_temperature | multiplicative |
+| 4 | relative_humidity_2m | additive |
+| 5 | shortwave_radiation | multiplicative |
+| 6 | wth_cdd | multiplicative |
+| 7 | wth_hdd | multiplicative |
+| 8 | is_weekend | multiplicative |
+| 9 | is_sunday | multiplicative |
+| 10 | is_holiday | multiplicative |
+| 11 | is_business_hours | multiplicative |
+| 12 | sol_elevation | multiplicative |
 
 **Güçlü yanı:** Trend + mevsimsellik yapısal ayrıştırma, tatil etkilerini doğal modelleme.
 

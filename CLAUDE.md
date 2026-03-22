@@ -88,7 +88,7 @@ uv run python -m energy_forecast.training.run --model catboost
 - Ham EPIAS değerleri pipeline çıkışında her zaman DROP
 - PREDICTION_COL = "consumption_mwh" — tüm modellerin standart output kolon ismi
 - CatBoost categorical_features: 35 adet (catboost.yaml'da tanımlı, 6 grup: Time, Holiday, Interaction, Time-period, Weather, Season/Solar)
-- Prophet regressors: 14 adet (prophet.yaml'da tanımlı, her biri mode bilgisiyle)
+- Prophet regressors: 12 adet (prophet.yaml'da tanımlı, her biri mode bilgisiyle)
 - Ensemble ağırlık optimizasyonu: MAPE(y, Σwᵢ·predᵢ) — blended predictions üzerinden
 - TimeSeriesSplitter: shuffle=True → ValueError (zaman serisi CV'de shuffle yasak)
 
@@ -168,7 +168,7 @@ configs/
 ├── api.yaml                # API config (CORS, rate limit)
 ├── models/
 │   ├── catboost.yaml       # CatBoost model config (35 kategorik feature)
-│   ├── prophet.yaml        # Prophet model config (14 regressor)
+│   ├── prophet.yaml        # Prophet model config (12 regressor)
 │   ├── tft.yaml            # TFT model config (NeuralForecast)
 │   ├── ensemble.yaml       # Ensemble config
 │   └── hyperparameters.yaml # Optuna arama uzayı

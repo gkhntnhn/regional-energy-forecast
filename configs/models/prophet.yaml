@@ -12,7 +12,7 @@ holidays:
   country: "TR"
   include_ramadan: true
 
-# R2: 14 regressors (2 swapped: -wind_speed_10m -is_peak, +apparent_temperature +is_sunday)
+# R3: 13 regressors (-temperature_2m multicollinear with apparent_temperature)
 regressors:
   # --- Consumption lags (autoregressive signal) ---
   - name: "consumption_lag_168"
@@ -20,9 +20,7 @@ regressors:
   - name: "consumption_lag_48"
     mode: "multiplicative"
   # --- Weather ---
-  - name: "temperature_2m"
-    mode: "multiplicative"
-  - name: "apparent_temperature"    # R2 NEW: 3.06% CatBoost importance, better thermal proxy
+  - name: "apparent_temperature"    # R2: better thermal proxy (includes wind+humidity effect), temperature_2m dropped (multicollinear)
     mode: "multiplicative"
   - name: "relative_humidity_2m"
     mode: "additive"
