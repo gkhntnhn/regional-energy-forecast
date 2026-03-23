@@ -135,3 +135,5 @@ src/energy_forecast/serving/static/dist/
 docs/PRODUCTION_ROADMAP.md
 docs/PLATFORM_COMPARISON.md
 configs/smoke_override.yaml
+runpod_processed.tar.gz
+.gitignore

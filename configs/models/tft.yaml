@@ -25,7 +25,7 @@ training:
   rnn_type: "lstm"            # lstm or gru
 
 optimization:
-  optuna_splits: 12           # Production: 12-fold
+  optuna_splits: 3            # Rolling predict makes 3 splits sufficient for HPO
   n_jobs: 1                   # MUST be 1 — parallel trials on single GPU = slowdown
   val_size_hours: 720  # ~1 month (24 * 30) for final model validation
 

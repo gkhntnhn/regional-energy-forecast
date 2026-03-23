@@ -218,9 +218,26 @@ class TFTTrainer:
             )
 
             # Predictions
+            # Train: last 48h is sufficient (quick sanity metric)
             train_pred = model.predict(train_df, target_col=self._target_col)
-            val_pred = model.predict(val_df, target_col=self._target_col)
-            test_pred = model.predict(test_df, target_col=self._target_col)
+
+            # Val: rolling prediction — covers full validation period
+            train_val_df = pd.concat([train_df, val_df])
+            val_pred = model.rolling_predict(
+                train_val_df,
+                eval_start=split_info.val_start,
+                eval_end=split_info.val_end,
+                target_col=self._target_col,
+            )
+
+            # Test: rolling prediction — covers full test period
+            full_df = pd.concat([train_df, val_df, test_df])
+            test_pred = model.rolling_predict(
+                full_df,
+                eval_start=split_info.test_start,
+                eval_end=split_info.test_end,
+                target_col=self._target_col,
+            )
         finally:
             # Free GPU/CPU memory from this fold's model
             del model
@@ -234,14 +251,25 @@ class TFTTrainer:
         y_train = np.asarray(
             train_df[self._target_col].values[-len(train_pred) :], dtype=np.float64
         )
-        y_val = np.asarray(val_df[self._target_col].values[-len(val_pred) :], dtype=np.float64)
-        y_test = np.asarray(test_df[self._target_col].values[-len(test_pred) :], dtype=np.float64)
 
         from energy_forecast.models.base import PREDICTION_COL
 
         train_pred_arr = np.asarray(train_pred[PREDICTION_COL].values, dtype=np.float64)
-        val_pred_arr = np.asarray(val_pred[PREDICTION_COL].values, dtype=np.float64)
-        test_pred_arr = np.asarray(test_pred[PREDICTION_COL].values, dtype=np.float64)
+
+        # Val/test: align actuals to rolling prediction index
+        val_common_idx = val_pred.index.intersection(val_df.index)
+        y_val = np.asarray(val_df.loc[val_common_idx, self._target_col].values, dtype=np.float64)
+        val_pred_arr = np.asarray(
+            val_pred.loc[val_common_idx, PREDICTION_COL].values, dtype=np.float64
+        )
+
+        test_common_idx = test_pred.index.intersection(test_df.index)
+        y_test = np.asarray(
+            test_df.loc[test_common_idx, self._target_col].values, dtype=np.float64
+        )
+        test_pred_arr = np.asarray(
+            test_pred.loc[test_common_idx, PREDICTION_COL].values, dtype=np.float64
+        )
 
         return TFTSplitResult(
             split_idx=split_info.split_idx,

@@ -351,6 +351,137 @@ class TFTForecaster(BaseForecaster):
 
         return result
 
+    def rolling_predict(
+        self,
+        full_df: pd.DataFrame,
+        eval_start: pd.Timestamp,
+        eval_end: pd.Timestamp,
+        target_col: str | None = None,
+        step_hours: int = 24,
+    ) -> pd.DataFrame:
+        """Predict full evaluation period using 48h rolling windows.
+
+        Slides a prediction window across the evaluation period, producing
+        predictions for every hour. This is production-faithful: in real use,
+        the model is called daily to forecast the next 48 hours.
+
+        Args:
+            full_df: Full DataFrame including history before eval_start
+                (needed for encoder context). Must have DatetimeIndex.
+            eval_start: Start of evaluation period (inclusive).
+            eval_end: End of evaluation period (inclusive).
+            target_col: Target column name.
+            step_hours: Hours between consecutive prediction origins.
+                24 = one prediction per day (production-faithful).
+
+        Returns:
+            DataFrame with PREDICTION_COL column covering eval_start..eval_end.
+            For overlapping windows, the latest prediction wins.
+
+        Raises:
+            RuntimeError: If model is not fitted.
+        """
+        if target_col is None:
+            target_col = self._target_col
+        if not self.is_fitted:
+            msg = "Model must be trained before prediction"
+            raise RuntimeError(msg)
+        if self._nf is None:
+            msg = "Model not fitted — call fit() or load() first"
+            raise RuntimeError(msg)
+
+        enc_len = self._tft_config.training.encoder_length
+        pred_len = self._tft_config.training.prediction_length
+        futr_cols = list(self._tft_config.covariates.time_varying_known)
+        step_delta = pd.Timedelta(hours=step_hours)
+        pred_delta = pd.Timedelta(hours=pred_len)
+
+        # Collect predictions: later windows overwrite earlier (last wins)
+        predictions: dict[pd.Timestamp, float] = {}
+
+        origin = pd.Timestamp(eval_start)
+        eval_end_ts = pd.Timestamp(eval_end)
+
+        n_windows = 0
+        while origin + pred_delta - pd.Timedelta(hours=1) <= eval_end_ts:
+            # Context window: [origin - enc_len, origin)
+            ctx_start = origin - pd.Timedelta(hours=enc_len)
+            context_df = full_df.loc[ctx_start : origin - pd.Timedelta(hours=1)]
+
+            if len(context_df) < enc_len // 2:
+                # Not enough context — skip this window
+                origin += step_delta
+                continue
+
+            # Forecast window: [origin, origin + pred_len)
+            fcast_end = origin + pred_delta - pd.Timedelta(hours=1)
+            forecast_df = full_df.loc[origin:fcast_end]
+
+            if forecast_df.empty:
+                origin += step_delta
+                continue
+
+            # Build NF context
+            nf_context = self._to_nf_format(
+                context_df, target_col, drop_target_nan=False
+            )
+            if nf_context["y"].isna().any():
+                nf_context = nf_context.copy()
+                nf_context["y"] = nf_context["y"].ffill().bfill()
+
+            # Build future exogenous DataFrame
+            futr_data: dict[str, Any] = {
+                "unique_id": NF_UNIQUE_ID,
+                "ds": forecast_df.index,
+            }
+            for col in futr_cols:
+                if col in forecast_df.columns:
+                    futr_data[col] = forecast_df[col].values
+            futr_df = pd.DataFrame(futr_data)
+
+            # NF predict
+            preds = self._nf.predict(df=nf_context, futr_df=futr_df)
+
+            # Extract median prediction column
+            median_col = "TFT-median"
+            if median_col not in preds.columns:
+                median_col = "TFT"
+                if median_col not in preds.columns:
+                    pred_cols_avail = [
+                        c for c in preds.columns if c.startswith("TFT")
+                    ]
+                    median_col = (
+                        pred_cols_avail[0] if pred_cols_avail else preds.columns[-1]
+                    )
+
+            pred_values = preds[median_col].values
+            # Map predictions to timestamps (overwrite = last window wins)
+            for i, ts in enumerate(forecast_df.index[: len(pred_values)]):
+                predictions[ts] = float(pred_values[i])
+
+            n_windows += 1
+            origin += step_delta
+
+        logger.info(
+            "Rolling predict: {} windows, {} unique hours predicted",
+            n_windows,
+            len(predictions),
+        )
+
+        if not predictions:
+            return pd.DataFrame({PREDICTION_COL: []}, index=pd.DatetimeIndex([]))
+
+        # Build result — sorted by timestamp, filtered to eval period
+        result_ts = sorted(predictions.keys())
+        result = pd.DataFrame(
+            {PREDICTION_COL: [predictions[ts] for ts in result_ts]},
+            index=pd.DatetimeIndex(result_ts),
+        )
+        # Filter to eval period
+        result = result.loc[eval_start:eval_end]
+
+        return result
+
     def _store_quantile_predictions(self, preds: pd.DataFrame) -> None:
         """Extract and store quantile predictions from NF output.
 

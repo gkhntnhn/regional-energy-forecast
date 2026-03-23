@@ -319,6 +319,99 @@ class TestTFTForecasterSaveLoad:
             assert len(predictions) > 0
 
 
+class TestTFTForecasterRollingPredict:
+    """Tests for rolling prediction over evaluation periods."""
+
+    @pytest.mark.slow
+    def test_rolling_predict_covers_eval_period(
+        self,
+        tft_config: TFTConfig,
+        sample_df: pd.DataFrame,
+    ) -> None:
+        """Test rolling_predict covers the full evaluation period."""
+        model = TFTForecaster(tft_config)
+        train_df = sample_df.iloc[:200]
+        val_df = sample_df.iloc[200:]
+
+        model.train(train_df, val_df, max_steps=20)
+
+        eval_start = sample_df.index[200]
+        eval_end = sample_df.index[-1]
+
+        result = model.rolling_predict(
+            sample_df, eval_start=eval_start, eval_end=eval_end
+        )
+
+        assert isinstance(result, pd.DataFrame)
+        assert "consumption_mwh" in result.columns
+        # Rolling should cover more hours than single predict (which gives 12)
+        assert len(result) > tft_config.training.prediction_length
+
+    @pytest.mark.slow
+    def test_rolling_predict_index_within_eval_bounds(
+        self,
+        tft_config: TFTConfig,
+        sample_df: pd.DataFrame,
+    ) -> None:
+        """Test all predictions fall within eval_start..eval_end."""
+        model = TFTForecaster(tft_config)
+        train_df = sample_df.iloc[:200]
+        val_df = sample_df.iloc[200:]
+
+        model.train(train_df, val_df, max_steps=20)
+
+        eval_start = sample_df.index[200]
+        eval_end = sample_df.index[-1]
+
+        result = model.rolling_predict(
+            sample_df, eval_start=eval_start, eval_end=eval_end
+        )
+
+        assert result.index.min() >= eval_start
+        assert result.index.max() <= eval_end
+
+    @pytest.mark.slow
+    def test_rolling_predict_step_hours_affects_coverage(
+        self,
+        tft_config: TFTConfig,
+        sample_df: pd.DataFrame,
+    ) -> None:
+        """Test step_hours=12 produces same or more coverage than step_hours=24."""
+        model = TFTForecaster(tft_config)
+        train_df = sample_df.iloc[:200]
+        val_df = sample_df.iloc[200:]
+
+        model.train(train_df, val_df, max_steps=20)
+
+        eval_start = sample_df.index[200]
+        eval_end = sample_df.index[-1]
+
+        result_24 = model.rolling_predict(
+            sample_df, eval_start=eval_start, eval_end=eval_end, step_hours=24
+        )
+        result_12 = model.rolling_predict(
+            sample_df, eval_start=eval_start, eval_end=eval_end, step_hours=12
+        )
+
+        # More frequent steps should produce same or more predictions
+        assert len(result_12) >= len(result_24)
+
+    def test_rolling_predict_raises_if_not_fitted(
+        self,
+        tft_config: TFTConfig,
+        sample_df: pd.DataFrame,
+    ) -> None:
+        """Test rolling_predict raises if model not fitted."""
+        model = TFTForecaster(tft_config)
+
+        with pytest.raises(RuntimeError, match="trained"):
+            model.rolling_predict(
+                sample_df,
+                eval_start=sample_df.index[100],
+                eval_end=sample_df.index[-1],
+            )
+
+
 class TestTFTForecasterQuantiles:
     """Tests for quantile prediction access."""
 
