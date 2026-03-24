@@ -31,7 +31,7 @@ catboost:
       high: 0.95          # Narrowed from [0.6, 1.0] — R1 optimum: 0.75
     loss_function:
       type: categorical
-      choices: ["RMSE"]   # Fixed — RMSE beat MAE by 0.16% (2.42% vs 2.58%)
+      choices: ["RMSE","MAE"]   # Fixed — RMSE beat MAE by 0.16% (2.42% vs 2.58%)
 
 prophet:
   n_trials: 30             # R6 Production HPO
