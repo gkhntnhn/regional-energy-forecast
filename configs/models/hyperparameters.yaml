@@ -5,7 +5,7 @@
 target_col: consumption
 
 catboost:
-  n_trials: 3              # R5 HPO test (prod: 30)
+  n_trials: 30             # R6 Production HPO
   search_space:
     # iterations: fixed at 10000 in catboost.yaml (early stopping decides)
     learning_rate:
@@ -34,7 +34,7 @@ catboost:
       choices: ["RMSE"]   # Fixed — RMSE beat MAE by 0.16% (2.42% vs 2.58%)
 
 prophet:
-  n_trials: 1              # R5 HPO test (prod: 30)
+  n_trials: 30             # R6 Production HPO
   search_space:
     changepoint_prior_scale:
       type: float
@@ -60,7 +60,7 @@ prophet:
     # Fixed in configs/models/prophet.yaml → seasonality.mode: "multiplicative"
 
 tft:
-  n_trials: 1              # R5 HPO test (prod: 15)
+  n_trials: 15             # R6 Production HPO
   search_space:
     # hidden_size: fixed at 64 in tft.yaml (R5: 128→64, optimal for 13 covariates)
     # windows_batch_size: fixed at 512 in tft.yaml (RunPod L4/A100)
