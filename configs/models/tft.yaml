@@ -1,90 +1,57 @@
 # Temporal Fusion Transformer configuration (NeuralForecast)
-# R2 → R3: Migrated from pytorch-forecasting to NeuralForecast API
+# R5: 13-covariate pruned config (~600K params, rolling eval, winter-fix)
+# Baseline: Val 3.23%, Test 3.05% (1000 step, 12 split, 1 trial, local GPU)
 architecture:
-  hidden_size: 128            # Production (RunPod A100)
-  n_head: 2                   # attention_head_size → n_head (NF naming)
-  n_rnn_layers: 1             # lstm_layers → n_rnn_layers (NF naming)
+  hidden_size: 64
+  n_head: 4
+  n_rnn_layers: 2
   dropout: 0.1
 
 training:
-  encoder_length: 168  # 7 days → input_size
+  encoder_length: 168         # 7 days input window
   prediction_length: 48       # h (forecast horizon)
-  max_steps: 5000             # R5: 10000→5000, early stopping handles convergence
-  windows_batch_size: 128     # R5: best val/test balance on A6000 (5.7GB VRAM, 2.3x faster than 256)
+  max_steps: 3000             # Production (local test: 1000)
+  windows_batch_size: 512     # Production RunPod (local test: 64)
   step_size: 12               # Window stride: 4.8x speedup (benchmark validated)
   learning_rate: 0.001
-  early_stop_patience_steps: 200  # Step-based early stopping (prod)
-  val_check_steps: 50         # Validate every N steps
+  early_stop_patience_steps: 200
+  val_check_steps: 50
   gradient_clip_val: 0.1
   random_seed: 42
-  accelerator: "gpu"          # Production (RunPod A100)
-  num_workers: 4              # Production (RunPod)
-  enable_progress_bar: true   # true for visibility
-  precision: "bf16-mixed"     # Production (A100 bf16 support)
-  scaler_type: "robust"       # NF built-in normalizer (robust/standard/identity)
-  rnn_type: "lstm"            # lstm or gru
+  accelerator: "gpu"          # Production RunPod
+  num_workers: 4              # Production RunPod (local: 0)
+  enable_progress_bar: true
+  precision: "bf16-mixed"     # Production A100/L4 (local: 32-true)
+  scaler_type: "robust"
+  rnn_type: "lstm"
 
 optimization:
-  optuna_splits: 3            # Rolling predict makes 3 splits sufficient for HPO
-  n_jobs: 1                   # MUST be 1 — parallel trials on single GPU = slowdown
-  val_size_hours: 720  # ~1 month (24 * 30) for final model validation
+  optuna_splits: 12           # R5 HPO test: full 12-fold (prod: 3)
+  n_jobs: 1
+  val_size_hours: 720         # ~1 month for final model validation
 
-# R2: Covariates pruned via CatBoost feature importance (top-75, >= 0.1%)
-# NeuralForecast mapping: time_varying_known → futr_exog_list, time_varying_unknown → hist_exog_list
+# R5: 13 covariates (6 futr + 7 hist)
+# Pruned from 38 → 13 via CatBoost importance + winter-fix analysis
+# ~600K params (was 6.1M with 38 covariates)
 covariates:
-  # Deterministic or forecast-available — enters both encoder AND decoder (futr_exog_list)
+  # Known at prediction time — enters encoder AND decoder
   time_varying_known:
-    # Cyclical time encodings
-    - hour_cos              # 0.23% importance
-    - day_of_week_sin       # 0.94%
-    - day_of_week_cos       # 0.22%
-    - month_sin             # 0.17%
-    - day_of_year_sin       # 0.16%
-    - day_of_year_cos       # 0.30%
-    # Weekend/holiday signals
-    - is_weekend            # 0.30%
-    - is_sunday             # 0.36%
-    - is_bridge_day         # 0.13%
-    - tatil_tipi            # 1.44% — holiday type (0/1/2)
-    - holiday_duration      # 2.22% — consecutive holiday length
-    - bayrama_kalan_gun     # 0.62% — days until bayram
-    - bayram_gun_no         # 0.45% — bayram day number
-    - days_since_holiday    # 0.36%
-    - days_until_holiday    # 0.17%
-    # Weather (forecast available at prediction time)
-    - temperature_2m        # 1.10%
-    - apparent_temperature  # 2.24%
-    - shortwave_radiation   # 0.23%
-    # Solar (deterministic, astronomic)
-    - sol_elevation         # 0.11%
-    # R2: Weather-derived features (forecast-derivable, all known at prediction time)
-    - wth_cdd              # cooling degree days, forecast-derived
-    - wth_hdd              # heating degree days, forecast-derived
-    - hdd_x_hour           # wth_hdd*hour = forecast*deterministic = KNOWN
-    - temp_x_hour          # temperature*hour interaction, forecast-derived
-    - cdd_x_hour           # CDD*hour interaction, forecast-derived
+    - apparent_temperature        # 2.24% — primary weather signal
+    - holiday_duration            # 2.22% — consecutive holiday length
+    - tatil_tipi                  # 1.44% — holiday type (0/1/2)
+    - day_of_week_sin             # 0.94% — weekly cycle
+    - wth_hdd                     # heating degree days — winter demand signal
+    - is_weekend                  # 0.30% — weekday/weekend split
 
-  # Observed only in past (lagged >= 48h) — enters ONLY encoder (hist_exog_list)
+  # Observed only in past (lagged >= 48h) — enters ONLY encoder
   time_varying_unknown:
-    # Consumption lags (core autoregressive signal, 42.5% total)
-    - consumption_lag_48          # 6.09%
-    - consumption_lag_168         # 27.04% — strongest single feature
-    - consumption_lag_336         # 9.24%
-    # consumption_lag_720 removed: CatBoost importance 0.004% (pruned), causes 30d NaN loss
-    # Consumption derived (momentum, ratios, profile — 22.7% total)
-    - consumption_week_ratio      # 8.02%
-    # - consumption_hourly_profile  # 5.59%
-    - consumption_momentum_168    # 2.46%
-    - consumption_pct_change_168  # 1.96%
-    - consumption_trend_ratio_168_336  # 0.80%
-    - consumption_trend_ratio_48_168   # 0.48%
-    - consumption_window_720_std  # 1.15%
-    - consumption_window_48_max   # 0.38%
-    - consumption_window_336_max  # 0.37%
-    # Weather windows (observed, not forecast)
-    - temperature_2m_window_24_max   # 2.24%
-    - temperature_2m_window_12_max   # 1.49%
-    - temperature_2m_window_6_mean   # 1.48%
+    - consumption_lag_168         # 27.04% — weekly lag (dominant)
+    - consumption_lag_336         # 9.24% — 2-week lag
+    - consumption_week_ratio      # 8.02% — week-over-week ratio
+    - consumption_lag_48          # 6.09% — 2-day lag
+    - consumption_momentum_168    # 2.46% — weekly momentum
+    - temperature_2m_window_24_max  # 2.24% — daily peak temperature
+    - consumption_pct_change_168  # 1.96% — weekly change (seasonal transition)
 
 quantiles:
   - 0.02
