@@ -11,7 +11,7 @@ training:
   encoder_length: 168         # 7 days input window
   prediction_length: 48       # h (forecast horizon)
   max_steps: 3000             # Production (local test: 1000)
-  windows_batch_size: 512     # Production RunPod (local test: 64)
+  windows_batch_size: 256     # RTX 4000 Ada 20GB (~11GB VRAM)
   step_size: 12               # Window stride: 4.8x speedup (benchmark validated)
   learning_rate: 0.001
   early_stop_patience_steps: 200
