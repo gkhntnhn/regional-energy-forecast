@@ -1,30 +1,28 @@
-# Ensemble configuration for CatBoost + Prophet + TFT
+# Ensemble configuration — R6 optimized
+# SLSQP weight optimization: TFT=0.52 CB=0.48 Prophet=0.00 (2.79% MAPE)
+# Stacking (2.88-2.96%) < weighted_average (2.79%) — simpler is better
 
-# Ensemble mode: "stacking" (CatBoost meta-learner) or "weighted_average" (fallback)
-mode: "stacking"
+# Ensemble mode: "weighted_average" (R6 optimal) or "stacking" (fallback)
+mode: "weighted_average"
 
 # Active models (can be overridden via CLI --models flag)
 active_models:
   - tft
   - catboost
-  - prophet
 
-# Default weights (used when mode=weighted_average or as fallback)
-# Weights are auto-normalized to sum=1 based on active models
+# Default weights (SLSQP optimized on R6 OOF predictions)
+# Prophet excluded: optimizer assigned 0.000 weight
 weights:
-  catboost: 0.45
-  prophet: 0.30
-  tft: 0.25
+  catboost: 0.48
+  tft: 0.52
 
 # Weight optimization settings (used when mode=weighted_average)
 optimization:
   enabled: true
   metric: "mape"  # Metric to minimize
-  # R2: Per-model weight bounds [min, max] — tighter based on R1 performance
   bounds:
-    catboost: [0.2, 0.7]     # R2: Best MAPE, min weight raised
-    prophet: [0.1, 0.5]      # R2: Complementary bias, max slightly reduced
-    tft: [0.1, 0.5]          # R2: Uncertainty quantification, max slightly reduced
+    catboost: [0.2, 0.7]
+    tft: [0.3, 0.8]
 
 # Stacking meta-learner config (used when mode=stacking)
 stacking:
