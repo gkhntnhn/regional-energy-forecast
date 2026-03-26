@@ -141,12 +141,14 @@ def _init_services(app: FastAPI, settings: Any) -> None:
         catboost_path = final_dir / "catboost" / "model.cbm"
         prophet_path = final_dir / "prophet" / "prophet_model.pkl"
         tft_path = final_dir / "tft"
+        tsmixerx_path = final_dir / "tsmixerx"
         ensemble_dir: Path | None = final_dir / "ensemble"
         logger.info("Serving from final_models/ directory")
     else:
         catboost_path = models_dir / "catboost" / "model.cbm"
         prophet_path = models_dir / "prophet" / "prophet_model.pkl"
         tft_path = models_dir / "tft"
+        tsmixerx_path = models_dir / "tsmixerx"
         ensemble_dir = models_dir / "ensemble"
         logger.info("Serving from models/ directory")
 
@@ -165,6 +167,7 @@ def _init_services(app: FastAPI, settings: Any) -> None:
             catboost_path=catboost_path,
             prophet_path=prophet_path,
             tft_path=tft_path,
+            tsmixerx_path=tsmixerx_path,
             ensemble_dir=ensemble_dir,
         ),
         settings,

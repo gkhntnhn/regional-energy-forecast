@@ -39,6 +39,12 @@ __all__ = [
     "TFTCovariatesConfig",
     "TFTOptimizationConfig",
     "TFTTrainingConfig",
+    # TSMixerx
+    "TSMixerxArchitectureConfig",
+    "TSMixerxConfig",
+    "TSMixerxCovariatesConfig",
+    "TSMixerxOptimizationConfig",
+    "TSMixerxTrainingConfig",
 ]
 
 
@@ -338,6 +344,87 @@ class TFTConfig(BaseModel, frozen=True):
 
 
 # ---------------------------------------------------------------------------
+# TSMixerx
+# ---------------------------------------------------------------------------
+
+
+class TSMixerxArchitectureConfig(BaseModel, frozen=True):
+    """TSMixerx architecture parameters."""
+
+    n_block: int = Field(default=2, ge=1)
+    ff_dim: int = Field(default=128, ge=1)
+    dropout: float = Field(default=0.1, ge=0.0, lt=1.0)
+    input_size: int = Field(default=168, ge=1)
+    revin: bool = True
+
+
+class TSMixerxTrainingConfig(BaseModel, frozen=True):
+    """TSMixerx training parameters (NeuralForecast API)."""
+
+    prediction_length: int = Field(default=48, ge=1)
+    max_steps: int = Field(default=3000, ge=1)
+    windows_batch_size: int = Field(default=64, ge=1)
+    step_size: int = Field(default=12, ge=1)
+    learning_rate: float = Field(default=0.001, gt=0.0)
+    early_stop_patience_steps: int = Field(default=200, ge=-1)  # -1 disables
+    val_check_steps: int = Field(default=50, ge=1)
+    random_seed: int = 42
+    accelerator: Literal["cpu", "gpu", "auto"] = "auto"
+    num_workers: int = Field(default=4, ge=0)
+    enable_progress_bar: bool = True
+    scaler_type: str = "robust"
+
+
+class TSMixerxCovariatesConfig(BaseModel, frozen=True):
+    """TSMixerx covariate specification (futr_exog_list / hist_exog_list)."""
+
+    futr_exog: list[str] = Field(
+        default_factory=lambda: [
+            "apparent_temperature",
+            "holiday_duration",
+            "tatil_tipi",
+            "day_of_week_sin",
+            "wth_hdd",
+            "is_weekend",
+        ]
+    )
+    hist_exog: list[str] = Field(
+        default_factory=lambda: [
+            "consumption_lag_168",
+            "consumption_lag_336",
+            "consumption_week_ratio",
+            "consumption_lag_48",
+            "consumption_momentum_168",
+            "temperature_2m_window_24_max",
+            "consumption_pct_change_168",
+        ]
+    )
+
+
+class TSMixerxOptimizationConfig(BaseModel, frozen=True):
+    """TSMixerx optimization settings."""
+
+    optuna_splits: int = Field(default=12, ge=1)
+    n_jobs: int = Field(default=1, ge=1)
+    val_size_hours: int = Field(default=720, ge=24)
+
+
+class TSMixerxConfig(BaseModel, frozen=True):
+    """TSMixerx model configuration (point forecast, MAE loss)."""
+
+    architecture: TSMixerxArchitectureConfig = Field(
+        default_factory=TSMixerxArchitectureConfig,
+    )
+    training: TSMixerxTrainingConfig = Field(default_factory=TSMixerxTrainingConfig)
+    covariates: TSMixerxCovariatesConfig = Field(
+        default_factory=TSMixerxCovariatesConfig,
+    )
+    optimization: TSMixerxOptimizationConfig = Field(
+        default_factory=TSMixerxOptimizationConfig,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Ensemble
 # ---------------------------------------------------------------------------
 
@@ -351,10 +438,11 @@ class EnsembleWeightsConfig(BaseModel, frozen=True):
     catboost: float = Field(default=0.45, ge=0.0, le=1.0)
     prophet: float = Field(default=0.0, ge=0.0, le=1.0)
     tft: float = Field(default=0.25, ge=0.0, le=1.0)
+    tsmixerx: float = Field(default=0.0, ge=0.0, le=1.0)
 
     @model_validator(mode="after")
     def _weights_sum_valid(self) -> Self:
-        total = self.catboost + self.prophet + self.tft
+        total = self.catboost + self.prophet + self.tft + self.tsmixerx
         if total > 1.0 + 1e-6:
             msg = f"Ensemble weights cannot exceed 1.0, got {total:.6f}"
             raise ValueError(msg)
@@ -373,6 +461,7 @@ class EnsembleWeightsConfig(BaseModel, frozen=True):
             "catboost": self.catboost,
             "prophet": self.prophet,
             "tft": self.tft,
+            "tsmixerx": self.tsmixerx,
         }
         active_weights = {m: raw_weights[m] for m in active_models if m in raw_weights}
 
@@ -391,6 +480,7 @@ class EnsembleWeightBoundsConfig(BaseModel, frozen=True):
     catboost: tuple[float, float] = (0.2, 0.7)
     prophet: tuple[float, float] = (0.1, 0.5)
     tft: tuple[float, float] = (0.1, 0.5)
+    tsmixerx: tuple[float, float] = (0.1, 0.5)
 
 
 class EnsembleOptimizationConfig(BaseModel, frozen=True):
@@ -456,7 +546,7 @@ class EnsembleConfig(BaseModel, frozen=True):
     @field_validator("active_models")
     @classmethod
     def _valid_model_names(cls, v: list[str]) -> list[str]:
-        valid = {"catboost", "prophet", "tft"}
+        valid = {"catboost", "prophet", "tft", "tsmixerx"}
         for m in v:
             if m not in valid:
                 msg = f"Unknown ensemble model: {m}. Valid: {valid}"
@@ -541,6 +631,7 @@ class HyperparameterConfig(BaseModel, frozen=True):
     catboost: ModelSearchConfig = Field(default_factory=ModelSearchConfig)
     prophet: ModelSearchConfig = Field(default_factory=ModelSearchConfig)
     tft: ModelSearchConfig = Field(default_factory=ModelSearchConfig)
+    tsmixerx: ModelSearchConfig = Field(default_factory=ModelSearchConfig)
     cross_validation: CrossValidationConfig = Field(
         default_factory=CrossValidationConfig,
     )

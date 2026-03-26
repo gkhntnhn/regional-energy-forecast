@@ -63,7 +63,12 @@ class TestEnsembleForecasterInit:
     def test_default_config(self) -> None:
         config: dict[str, Any] = {}
         forecaster = EnsembleForecaster(config)
-        assert forecaster.weights == {"catboost": 0.45, "prophet": 0.30, "tft": 0.25}
+        assert forecaster.weights == {
+            "catboost": 0.45,
+            "prophet": 0.0,
+            "tft": 0.25,
+            "tsmixerx": 0.0,
+        }
 
     def test_default_active_models(self) -> None:
         config: dict[str, Any] = {}

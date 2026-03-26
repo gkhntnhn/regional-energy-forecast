@@ -39,6 +39,7 @@ class PredictionServiceConfig(BaseModel, frozen=True):
     catboost_path: Path = Field(default=Path("models/catboost/model.cbm"))
     prophet_path: Path = Field(default=Path("models/prophet"))
     tft_path: Path = Field(default=Path("models/tft"))
+    tsmixerx_path: Path = Field(default=Path("models/tsmixerx"))
     ensemble_dir: Path | None = Field(default=None)
     forecast_horizon: int = Field(default=48, ge=1)
 
@@ -110,6 +111,7 @@ class PredictionService:
                     "catboost": self._settings.ensemble.weights.catboost,
                     "prophet": self._settings.ensemble.weights.prophet,
                     "tft": self._settings.ensemble.weights.tft,
+                    "tsmixerx": self._settings.ensemble.weights.tsmixerx,
                 },
                 "target_col": "consumption",
                 "prophet_regressors": [r.name for r in self._settings.prophet.regressors],
@@ -135,6 +137,9 @@ class PredictionService:
                 if self._config.prophet_path.exists()
                 else None,
                 tft_path=self._config.tft_path if self._config.tft_path.exists() else None,
+                tsmixerx_path=self._config.tsmixerx_path
+                if self._config.tsmixerx_path.exists()
+                else None,
             )
 
             self._models_loaded = True

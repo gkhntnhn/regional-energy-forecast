@@ -21,6 +21,7 @@ from loguru import logger
 from energy_forecast.config import EnsembleConfig
 from energy_forecast.models.base import PREDICTION_COL, BaseForecaster
 from energy_forecast.models.tft import TFTForecaster
+from energy_forecast.models.tsmixerx import TSMixerxForecaster
 from energy_forecast.utils.ensemble_helpers import build_context_features
 from energy_forecast.utils.prophet_utils import to_prophet_format
 
@@ -54,6 +55,7 @@ class EnsembleForecaster(BaseForecaster):
                     "catboost": default_cfg.weights.catboost,
                     "prophet": default_cfg.weights.prophet,
                     "tft": default_cfg.weights.tft,
+                    "tsmixerx": default_cfg.weights.tsmixerx,
                 },
             ),
             "target_col": config.get("target_col", "consumption"),
@@ -73,6 +75,7 @@ class EnsembleForecaster(BaseForecaster):
         self._catboost_model: CatBoostRegressor | None = None
         self._prophet_model: Prophet | None = None
         self._tft_model: TFTForecaster | None = None
+        self._tsmixerx_model: TSMixerxForecaster | None = None
         self._meta_model: CatBoostRegressor | None = None
         self._prophet_regressors: list[str] = merged_config["prophet_regressors"]
 
@@ -101,6 +104,7 @@ class EnsembleForecaster(BaseForecaster):
         catboost_model: CatBoostRegressor | None = None,
         prophet_model: Prophet | None = None,
         tft_model: TFTForecaster | None = None,
+        tsmixerx_model: TSMixerxForecaster | None = None,
     ) -> None:
         """Set pre-trained models for prediction.
 
@@ -108,6 +112,7 @@ class EnsembleForecaster(BaseForecaster):
             catboost_model: Trained CatBoost model.
             prophet_model: Trained Prophet model.
             tft_model: Trained TFT model.
+            tsmixerx_model: Trained TSMixerx model.
         """
         if catboost_model is not None:
             self._catboost_model = catboost_model
@@ -115,11 +120,14 @@ class EnsembleForecaster(BaseForecaster):
             self._prophet_model = prophet_model
         if tft_model is not None:
             self._tft_model = tft_model
+        if tsmixerx_model is not None:
+            self._tsmixerx_model = tsmixerx_model
         logger.info(
-            "Ensemble models set: catboost={}, prophet={}, tft={}",
+            "Ensemble models set: catboost={}, prophet={}, tft={}, tsmixerx={}",
             self._catboost_model is not None,
             self._prophet_model is not None,
             self._tft_model is not None,
+            self._tsmixerx_model is not None,
         )
 
     def set_meta_model(self, meta_model: CatBoostRegressor) -> None:
@@ -156,7 +164,7 @@ class EnsembleForecaster(BaseForecaster):
         Raises:
             ValueError: If unknown model name provided.
         """
-        valid = {"catboost", "prophet", "tft"}
+        valid = {"catboost", "prophet", "tft", "tsmixerx"}
         for m in models:
             if m not in valid:
                 msg = f"Unknown model: {m}. Valid: {valid}"
@@ -287,6 +295,29 @@ class EnsembleForecaster(BaseForecaster):
                 # No history — direct prediction (needs sufficient rows)
                 tft_result = self._tft_model.predict(X, target_col=self._target_col)
                 predictions["tft"] = np.asarray(tft_result[PREDICTION_COL].values, dtype=np.float64)
+
+        # TSMixerx prediction (point forecast)
+        if "tsmixerx" in self._active_models and self._tsmixerx_model is not None:
+            enc_len = self._tsmixerx_model._tsmixerx_config.architecture.input_size
+
+            if history is not None:
+                context = history.iloc[-enc_len:]
+                full_df = pd.concat([context, X])
+                full_df = full_df[~full_df.index.duplicated(keep="last")].sort_index()
+                tsmixerx_result = self._tsmixerx_model.predict(
+                    full_df, target_col=self._target_col
+                )
+                tsmixerx_aligned = tsmixerx_result.reindex(X.index)
+                predictions["tsmixerx"] = np.asarray(
+                    tsmixerx_aligned[PREDICTION_COL].values, dtype=np.float64
+                )
+            else:
+                tsmixerx_result = self._tsmixerx_model.predict(
+                    X, target_col=self._target_col
+                )
+                predictions["tsmixerx"] = np.asarray(
+                    tsmixerx_result[PREDICTION_COL].values, dtype=np.float64
+                )
 
         return predictions
 
@@ -443,6 +474,7 @@ class EnsembleForecaster(BaseForecaster):
         catboost_path: Path | None = None,
         prophet_path: Path | None = None,
         tft_path: Path | None = None,
+        tsmixerx_path: Path | None = None,
     ) -> None:
         """Load pre-trained models from disk.
 
@@ -450,6 +482,7 @@ class EnsembleForecaster(BaseForecaster):
             catboost_path: Path to CatBoost .cbm file.
             prophet_path: Path to Prophet .pkl file.
             tft_path: Path to TFT model directory.
+            tsmixerx_path: Path to TSMixerx model directory.
 
         Raises:
             RuntimeError: If model file is corrupted.
@@ -500,3 +533,12 @@ class EnsembleForecaster(BaseForecaster):
             except Exception as e:
                 self._tft_model = None
                 logger.warning("Failed to load TFT model, skipping: {}", e)
+
+        # Load TSMixerx
+        if tsmixerx_path is not None and tsmixerx_path.exists():
+            try:
+                self._tsmixerx_model = TSMixerxForecaster.from_checkpoint(tsmixerx_path)
+                logger.info("Loaded TSMixerx model from {}", tsmixerx_path)
+            except Exception as e:
+                self._tsmixerx_model = None
+                logger.warning("Failed to load TSMixerx model, skipping: {}", e)

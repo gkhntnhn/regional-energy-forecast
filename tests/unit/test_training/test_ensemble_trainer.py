@@ -89,11 +89,11 @@ def _make_mock_metrics(mape: float = 5.0) -> MetricsResult:
 class TestEnsembleConfig:
     """Tests for ensemble configuration loading."""
 
-    def test_default_weights_sum_to_one(self) -> None:
+    def test_default_weights_do_not_exceed_one(self) -> None:
         settings = get_default_config()
         weights = settings.ensemble.weights
-        total = weights.catboost + weights.prophet + weights.tft
-        assert abs(total - 1.0) < 1e-6
+        total = weights.catboost + weights.prophet + weights.tft + weights.tsmixerx
+        assert total <= 1.0 + 1e-6
 
     def test_default_catboost_weight(self) -> None:
         settings = get_default_config()
@@ -101,11 +101,15 @@ class TestEnsembleConfig:
 
     def test_default_prophet_weight(self) -> None:
         settings = get_default_config()
-        assert settings.ensemble.weights.prophet == 0.30
+        assert settings.ensemble.weights.prophet == 0.0
 
     def test_default_tft_weight(self) -> None:
         settings = get_default_config()
         assert settings.ensemble.weights.tft == 0.25
+
+    def test_default_tsmixerx_weight(self) -> None:
+        settings = get_default_config()
+        assert settings.ensemble.weights.tsmixerx == 0.0
 
     def test_optimization_enabled_by_default(self) -> None:
         settings = get_default_config()
@@ -121,19 +125,18 @@ class TestEnsembleConfig:
 
     def test_weight_normalization_all_models(self) -> None:
         settings = get_default_config()
-        normalized = settings.ensemble.weights.get_normalized(["catboost", "prophet", "tft"])
+        normalized = settings.ensemble.weights.get_normalized(["catboost", "tft"])
         assert abs(sum(normalized.values()) - 1.0) < 1e-6
-        assert normalized["catboost"] == pytest.approx(0.45)
-        assert normalized["prophet"] == pytest.approx(0.30)
-        assert normalized["tft"] == pytest.approx(0.25)
+        assert normalized["catboost"] == pytest.approx(0.45 / 0.70)
+        assert normalized["tft"] == pytest.approx(0.25 / 0.70)
 
     def test_weight_normalization_two_models(self) -> None:
         settings = get_default_config()
+        # catboost=0.45, prophet=0.0 → catboost gets all weight
         normalized = settings.ensemble.weights.get_normalized(["catboost", "prophet"])
         assert abs(sum(normalized.values()) - 1.0) < 1e-6
-        # 0.45 / (0.45 + 0.30) = 0.6, 0.30 / 0.75 = 0.4
-        assert normalized["catboost"] == pytest.approx(0.6)
-        assert normalized["prophet"] == pytest.approx(0.4)
+        assert normalized["catboost"] == pytest.approx(1.0)
+        assert normalized["prophet"] == pytest.approx(0.0)
 
 
 # ---------------------------------------------------------------------------

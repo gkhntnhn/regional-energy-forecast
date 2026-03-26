@@ -9,13 +9,15 @@ mode: "weighted_average"
 active_models:
   - tft
   - catboost
+  - tsmixerx
 
-# Default weights (SLSQP optimized on R6 OOF predictions)
+# Default weights — equal initial, SLSQP will optimize
 # Prophet excluded: optimizer assigned 0.000 weight
 weights:
-  catboost: 0.48
+  catboost: 0.33
   prophet: 0.0
-  tft: 0.52
+  tft: 0.34
+  tsmixerx: 0.33
 
 # Weight optimization settings (used when mode=weighted_average)
 optimization:
@@ -23,7 +25,8 @@ optimization:
   metric: "mape"  # Metric to minimize
   bounds:
     catboost: [0.2, 0.7]
-    tft: [0.3, 0.8]
+    tft: [0.2, 0.7]
+    tsmixerx: [0.1, 0.5]
 
 # Stacking meta-learner config (used when mode=stacking)
 stacking:

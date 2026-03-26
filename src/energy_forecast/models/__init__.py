@@ -5,6 +5,7 @@ from energy_forecast.models.catboost import CatBoostForecaster
 from energy_forecast.models.ensemble import EnsembleForecaster
 from energy_forecast.models.prophet import ProphetForecaster
 from energy_forecast.models.tft import TFTForecaster
+from energy_forecast.models.tsmixerx import TSMixerxForecaster
 
 __all__ = [
     "BaseForecaster",
@@ -12,4 +13,5 @@ __all__ = [
     "EnsembleForecaster",
     "ProphetForecaster",
     "TFTForecaster",
+    "TSMixerxForecaster",
 ]

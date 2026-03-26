@@ -125,6 +125,11 @@ from energy_forecast.config.models import (
     TFTCovariatesConfig,
     TFTOptimizationConfig,
     TFTTrainingConfig,
+    TSMixerxArchitectureConfig,
+    TSMixerxConfig,
+    TSMixerxCovariatesConfig,
+    TSMixerxOptimizationConfig,
+    TSMixerxTrainingConfig,
 )
 
 __all__ = [
@@ -216,6 +221,11 @@ __all__ = [
     "TFTCovariatesConfig",
     "TFTOptimizationConfig",
     "TFTTrainingConfig",
+    "TSMixerxArchitectureConfig",
+    "TSMixerxConfig",
+    "TSMixerxCovariatesConfig",
+    "TSMixerxOptimizationConfig",
+    "TSMixerxTrainingConfig",
     "TargetEncodingConfig",
     "TempDeviationConfig",
     "TrainingPathsConfig",

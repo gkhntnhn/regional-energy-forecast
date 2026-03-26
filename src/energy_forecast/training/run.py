@@ -37,7 +37,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--model",
-        choices=["catboost", "prophet", "tft", "ensemble"],
+        choices=["catboost", "prophet", "tft", "tsmixerx", "ensemble"],
         required=True,
         help="Model to train.",
     )
@@ -143,6 +143,7 @@ def apply_config_overrides(settings: Settings, config_path: Path) -> None:
         ("catboost", hp.catboost),
         ("prophet", hp.prophet),
         ("tft", hp.tft),
+        ("tsmixerx", hp.tsmixerx),
     ]:
         if model_name in overrides:
             _apply_model_hp_override(model_name, model_config, overrides[model_name])
@@ -159,6 +160,19 @@ def apply_config_overrides(settings: Settings, config_path: Path) -> None:
                     if hasattr(cfg, key):
                         object.__setattr__(cfg, key, val)
         logger.debug("TFT training/optimization overrides applied")
+
+    # TSMixerx-specific: training + optimization param overrides
+    if "tsmixerx" in overrides:
+        tsmixerx_override = overrides["tsmixerx"]
+        for section, cfg in [
+            ("training", settings.tsmixerx.training),
+            ("optimization", settings.tsmixerx.optimization),
+        ]:
+            if section in tsmixerx_override:
+                for key, val in tsmixerx_override[section].items():
+                    if hasattr(cfg, key):
+                        object.__setattr__(cfg, key, val)
+        logger.debug("TSMixerx training/optimization overrides applied")
 
     # Override cross-validation
     if "cross_validation" in overrides:
@@ -210,6 +224,10 @@ def _run_model(
         "tft": (
             "energy_forecast.training.tft_trainer",
             "TFTTrainer",
+        ),
+        "tsmixerx": (
+            "energy_forecast.training.tsmixerx_trainer",
+            "TSMixerxTrainer",
         ),
     }
 
@@ -278,6 +296,25 @@ def run_prophet(
         Dict with metrics and model_path for DB recording.
     """
     return _run_model("prophet", settings, data, no_mlflow=no_mlflow)
+
+
+def run_tsmixerx(
+    settings: Settings,
+    data: pd.DataFrame,
+    *,
+    no_mlflow: bool = False,
+) -> dict[str, Any]:
+    """Run TSMixerx training pipeline.
+
+    Args:
+        settings: Full application settings.
+        data: Feature-engineered DataFrame.
+        no_mlflow: If True, disable MLflow tracking.
+
+    Returns:
+        Dict with metrics and model_path for DB recording.
+    """
+    return _run_model("tsmixerx", settings, data, no_mlflow=no_mlflow)
 
 
 def run_tft(
