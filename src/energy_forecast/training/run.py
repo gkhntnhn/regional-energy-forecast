@@ -37,7 +37,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--model",
-        choices=["catboost", "prophet", "tft", "tsmixerx", "ensemble"],
+        choices=["catboost", "tft", "tsmixerx", "ensemble"],
         required=True,
         help="Model to train.",
     )
@@ -74,7 +74,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--models",
         type=str,
         default=None,
-        help="Override active models for ensemble (comma-separated: catboost,prophet,tft).",
+        help="Override active models for ensemble (comma-separated: catboost,tft,tsmixerx).",
     )
     parser.add_argument(
         "--no-cache",
@@ -138,10 +138,9 @@ def apply_config_overrides(settings: Settings, config_path: Path) -> None:
             object.__setattr__(model_config, "search_space", new_space)
         logger.debug("{} overrides applied", model_name)
 
-    # Override CatBoost / Prophet / TFT hyperparameters
+    # Override CatBoost / TFT / TSMixerx hyperparameters
     for model_name, model_config in [
         ("catboost", hp.catboost),
-        ("prophet", hp.prophet),
         ("tft", hp.tft),
         ("tsmixerx", hp.tsmixerx),
     ]:
@@ -198,7 +197,7 @@ def _run_model(
     *,
     no_mlflow: bool = False,
 ) -> dict[str, Any]:
-    """Run a single-model training pipeline (CatBoost, Prophet, or TFT).
+    """Run a single-model training pipeline (CatBoost, TFT, or TSMixerx).
 
     Shared logic for tracker creation, training, logging, and result formatting.
 
@@ -216,10 +215,6 @@ def _run_model(
         "catboost": (
             "energy_forecast.training.catboost_trainer",
             "CatBoostTrainer",
-        ),
-        "prophet": (
-            "energy_forecast.training.prophet_trainer",
-            "ProphetTrainer",
         ),
         "tft": (
             "energy_forecast.training.tft_trainer",
@@ -279,25 +274,6 @@ def run_catboost(
     return _run_model("catboost", settings, data, no_mlflow=no_mlflow)
 
 
-def run_prophet(
-    settings: Settings,
-    data: pd.DataFrame,
-    *,
-    no_mlflow: bool = False,
-) -> dict[str, Any]:
-    """Run Prophet training pipeline.
-
-    Args:
-        settings: Full application settings.
-        data: Feature-engineered DataFrame.
-        no_mlflow: If True, disable MLflow tracking.
-
-    Returns:
-        Dict with metrics and model_path for DB recording.
-    """
-    return _run_model("prophet", settings, data, no_mlflow=no_mlflow)
-
-
 def run_tsmixerx(
     settings: Settings,
     data: pd.DataFrame,
@@ -344,7 +320,7 @@ def run_ensemble(
     active_models_override: list[str] | None = None,
     no_cache: bool = False,
 ) -> dict[str, Any]:
-    """Run Ensemble training pipeline (CatBoost + Prophet + TFT).
+    """Run Ensemble training pipeline (CatBoost + TFT + TSMixerx).
 
     Args:
         settings: Full application settings.
@@ -427,11 +403,9 @@ def main(argv: list[str] | None = None) -> None:
     # Override n_trials if specified (applies to all models for ensemble)
     if args.n_trials is not None:
         catboost_config = settings.hyperparameters.catboost
-        prophet_config = settings.hyperparameters.prophet
         tft_config = settings.hyperparameters.tft
         tsmixerx_config = settings.hyperparameters.tsmixerx
         object.__setattr__(catboost_config, "n_trials", args.n_trials)
-        object.__setattr__(prophet_config, "n_trials", args.n_trials)
         object.__setattr__(tft_config, "n_trials", args.n_trials)
         object.__setattr__(tsmixerx_config, "n_trials", args.n_trials)
         logger.info("Overriding n_trials to {}", args.n_trials)
@@ -448,7 +422,6 @@ def main(argv: list[str] | None = None) -> None:
 
     model_runners: dict[str, Any] = {
         "catboost": lambda: run_catboost(settings, data, no_mlflow=args.no_mlflow),
-        "prophet": lambda: run_prophet(settings, data, no_mlflow=args.no_mlflow),
         "tft": lambda: run_tft(settings, data, no_mlflow=args.no_mlflow),
         "tsmixerx": lambda: run_tsmixerx(settings, data, no_mlflow=args.no_mlflow),
         "ensemble": lambda: run_ensemble(
@@ -499,7 +472,6 @@ def _get_n_trials(settings: Settings, model: str) -> int:
     """Get n_trials for a model from settings."""
     trial_map = {
         "catboost": settings.hyperparameters.catboost.n_trials,
-        "prophet": settings.hyperparameters.prophet.n_trials,
         "tft": settings.hyperparameters.tft.n_trials,
         "tsmixerx": settings.hyperparameters.tsmixerx.n_trials,
         "ensemble": 0,

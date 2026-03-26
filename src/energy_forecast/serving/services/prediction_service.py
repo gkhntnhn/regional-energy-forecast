@@ -37,7 +37,6 @@ class PredictionServiceConfig(BaseModel, frozen=True):
 
     models_dir: Path = Field(default=Path("models"))
     catboost_path: Path = Field(default=Path("models/catboost/model.cbm"))
-    prophet_path: Path = Field(default=Path("models/prophet"))
     tft_path: Path = Field(default=Path("models/tft"))
     tsmixerx_path: Path = Field(default=Path("models/tsmixerx"))
     ensemble_dir: Path | None = Field(default=None)
@@ -109,12 +108,10 @@ class PredictionService:
                 "active_models": list(self._settings.ensemble.active_models),
                 "weights": {
                     "catboost": self._settings.ensemble.weights.catboost,
-                    "prophet": self._settings.ensemble.weights.prophet,
                     "tft": self._settings.ensemble.weights.tft,
                     "tsmixerx": self._settings.ensemble.weights.tsmixerx,
                 },
                 "target_col": "consumption",
-                "prophet_regressors": [r.name for r in self._settings.prophet.regressors],
             }
             self._ensemble = EnsembleForecaster(ensemble_config)
 
@@ -132,9 +129,6 @@ class PredictionService:
             self._ensemble.load_models(
                 catboost_path=self._config.catboost_path
                 if self._config.catboost_path.exists()
-                else None,
-                prophet_path=self._config.prophet_path
-                if self._config.prophet_path.exists()
                 else None,
                 tft_path=self._config.tft_path if self._config.tft_path.exists() else None,
                 tsmixerx_path=self._config.tsmixerx_path
@@ -501,8 +495,8 @@ class PredictionService:
             },
             "model_versions": {
                 "catboost": str(self._config.catboost_path),
-                "prophet": str(self._config.prophet_path),
                 "tft": str(self._config.tft_path),
+                "tsmixerx": str(self._config.tsmixerx_path),
             },
         }
 

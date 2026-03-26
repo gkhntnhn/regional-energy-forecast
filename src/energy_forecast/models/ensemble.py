@@ -1,4 +1,4 @@
-"""Ensemble of CatBoost, Prophet, and TFT forecasters.
+"""Ensemble of CatBoost, TFT, and TSMixerx forecasters.
 
 Supports two modes:
 - stacking: CatBoost meta-learner combines base predictions with context features
@@ -7,11 +7,9 @@ Supports two modes:
 
 from __future__ import annotations
 
-import hashlib
 import json
-import pickle
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -23,14 +21,10 @@ from energy_forecast.models.base import PREDICTION_COL, BaseForecaster
 from energy_forecast.models.tft import TFTForecaster
 from energy_forecast.models.tsmixerx import TSMixerxForecaster
 from energy_forecast.utils.ensemble_helpers import build_context_features
-from energy_forecast.utils.prophet_utils import to_prophet_format
-
-if TYPE_CHECKING:
-    from prophet import Prophet
 
 
 class EnsembleForecaster(BaseForecaster):
-    """Ensemble of CatBoost, Prophet, and TFT.
+    """Ensemble of CatBoost, TFT, and TSMixerx.
 
     Loads pre-trained models and uses either a stacking meta-learner or
     optimized weights to produce ensemble predictions.
@@ -53,13 +47,11 @@ class EnsembleForecaster(BaseForecaster):
                 "weights",
                 {
                     "catboost": default_cfg.weights.catboost,
-                    "prophet": default_cfg.weights.prophet,
                     "tft": default_cfg.weights.tft,
                     "tsmixerx": default_cfg.weights.tsmixerx,
                 },
             ),
             "target_col": config.get("target_col", "consumption"),
-            "prophet_regressors": config.get("prophet_regressors", []),
             "mode": config.get("mode", default_cfg.mode),
             "context_features": config.get(
                 "context_features",
@@ -73,11 +65,9 @@ class EnsembleForecaster(BaseForecaster):
         self._mode: str = merged_config["mode"]
         self._context_features: list[str] = merged_config["context_features"]
         self._catboost_model: CatBoostRegressor | None = None
-        self._prophet_model: Prophet | None = None
         self._tft_model: TFTForecaster | None = None
         self._tsmixerx_model: TSMixerxForecaster | None = None
         self._meta_model: CatBoostRegressor | None = None
-        self._prophet_regressors: list[str] = merged_config["prophet_regressors"]
 
     @property
     def weights(self) -> dict[str, float]:
@@ -102,7 +92,6 @@ class EnsembleForecaster(BaseForecaster):
     def set_models(
         self,
         catboost_model: CatBoostRegressor | None = None,
-        prophet_model: Prophet | None = None,
         tft_model: TFTForecaster | None = None,
         tsmixerx_model: TSMixerxForecaster | None = None,
     ) -> None:
@@ -110,22 +99,18 @@ class EnsembleForecaster(BaseForecaster):
 
         Args:
             catboost_model: Trained CatBoost model.
-            prophet_model: Trained Prophet model.
             tft_model: Trained TFT model.
             tsmixerx_model: Trained TSMixerx model.
         """
         if catboost_model is not None:
             self._catboost_model = catboost_model
-        if prophet_model is not None:
-            self._prophet_model = prophet_model
         if tft_model is not None:
             self._tft_model = tft_model
         if tsmixerx_model is not None:
             self._tsmixerx_model = tsmixerx_model
         logger.info(
-            "Ensemble models set: catboost={}, prophet={}, tft={}, tsmixerx={}",
+            "Ensemble models set: catboost={}, tft={}, tsmixerx={}",
             self._catboost_model is not None,
-            self._prophet_model is not None,
             self._tft_model is not None,
             self._tsmixerx_model is not None,
         )
@@ -164,7 +149,7 @@ class EnsembleForecaster(BaseForecaster):
         Raises:
             ValueError: If unknown model name provided.
         """
-        valid = {"catboost", "prophet", "tft", "tsmixerx"}
+        valid = {"catboost", "tft", "tsmixerx"}
         for m in models:
             if m not in valid:
                 msg = f"Unknown model: {m}. Valid: {valid}"
@@ -270,12 +255,6 @@ class EnsembleForecaster(BaseForecaster):
                 self._catboost_model.predict(features), dtype=np.float64
             )
 
-        # Prophet prediction
-        if "prophet" in self._active_models and self._prophet_model is not None:
-            prophet_df = self._to_prophet_format(X)
-            prophet_forecast = self._prophet_model.predict(prophet_df)
-            predictions["prophet"] = np.asarray(prophet_forecast["yhat"].values, dtype=np.float64)
-
         # TFT prediction (uses median quantile)
         if "tft" in self._active_models and self._tft_model is not None:
             enc_len = self._tft_model._tft_config.training.encoder_length
@@ -375,16 +354,6 @@ class EnsembleForecaster(BaseForecaster):
         ensemble_pred = sum(normalized_weights[m] * predictions[m] for m in predictions)
         return np.asarray(ensemble_pred, dtype=np.float64)
 
-    def _to_prophet_format(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Convert feature DataFrame to Prophet ds+regressors format.
-
-        Args:
-            df: DataFrame with DatetimeIndex.
-
-        Returns:
-            Prophet-formatted DataFrame.
-        """
-        return to_prophet_format(df, self._prophet_regressors)
 
     def save(self, path: Path) -> None:
         """Save ensemble configuration, weights, and meta-learner.
@@ -399,7 +368,6 @@ class EnsembleForecaster(BaseForecaster):
             "weights": self._weights,
             "active_models": self._active_models,
             "target_col": self._target_col,
-            "prophet_regressors": self._prophet_regressors,
             "context_features": self._context_features,
         }
 
@@ -442,7 +410,6 @@ class EnsembleForecaster(BaseForecaster):
                 not in (
                     "active_models",
                     "target_col",
-                    "prophet_regressors",
                     "mode",
                     "context_features",
                 )
@@ -454,9 +421,6 @@ class EnsembleForecaster(BaseForecaster):
             "context_features",
             list(EnsembleConfig().stacking.context_features),
         )
-        if "prophet_regressors" in config:
-            self._prophet_regressors = config["prophet_regressors"]
-
         # Load meta-learner if stacking
         meta_path = path / "meta_model.cbm"
         if meta_path.exists():
@@ -472,7 +436,6 @@ class EnsembleForecaster(BaseForecaster):
     def load_models(
         self,
         catboost_path: Path | None = None,
-        prophet_path: Path | None = None,
         tft_path: Path | None = None,
         tsmixerx_path: Path | None = None,
     ) -> None:
@@ -480,7 +443,6 @@ class EnsembleForecaster(BaseForecaster):
 
         Args:
             catboost_path: Path to CatBoost .cbm file.
-            prophet_path: Path to Prophet .pkl file.
             tft_path: Path to TFT model directory.
             tsmixerx_path: Path to TSMixerx model directory.
 
@@ -497,33 +459,6 @@ class EnsembleForecaster(BaseForecaster):
             except Exception as e:
                 self._catboost_model = None
                 logger.warning("Failed to load CatBoost model, skipping: {}", e)
-
-        # Load Prophet (with hash integrity check)
-        if prophet_path is not None and prophet_path.exists():
-            # Verify hash if metadata exists
-            metadata_path = prophet_path.parent / "metadata.json"
-            if metadata_path.exists():
-                with open(metadata_path, encoding="utf-8") as f:
-                    metadata = json.load(f)
-                expected_hash = metadata.get("model_hash")
-                if expected_hash:
-                    actual = "sha256:" + hashlib.sha256(prophet_path.read_bytes()).hexdigest()
-                    if actual != expected_hash:
-                        msg = f"Prophet model integrity check failed: {prophet_path}"
-                        raise RuntimeError(msg)
-                else:
-                    logger.warning("No model_hash in metadata — skipping integrity check")
-            else:
-                logger.warning("No metadata.json — skipping Prophet integrity check")
-
-            try:
-                with open(prophet_path, "rb") as f:
-                    model = pickle.load(f)
-                self._prophet_model = model
-                logger.info("Loaded Prophet model from {}", prophet_path)
-            except (pickle.UnpicklingError, EOFError, AttributeError) as e:
-                self._prophet_model = None
-                logger.warning("Failed to load Prophet model, skipping: {}", e)
 
         # Load TFT
         if tft_path is not None and tft_path.exists():

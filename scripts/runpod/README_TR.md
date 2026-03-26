@@ -6,7 +6,7 @@ RunPod bulut GPU uzerinde production-seviye hiperparametre optimizasyonu.
 
 - TFT (PyTorch) icin GPU gerekli — H100 Tensor Core ile en hizli DL egitimi
 - CatBoost `task_type: "GPU"` ile 2-5x hizlanma
-- 50 CatBoost + 30 Prophet + 20 TFT trial, 12-fold TSCV local'de 10+ saat surer
+- 50 CatBoost + 20 TFT + 20 TSMixerx trial, 12-fold TSCV local'de 10+ saat surer
 
 ## GPU: H100 PCIe ($1.99/saat)
 
@@ -121,7 +121,7 @@ Uygulanan degisiklikler:
 
 | Dosya | Degisiklik |
 |-------|------------|
-| hyperparameters.yaml | CatBoost 50 trial, Prophet 30 trial, TFT 20 trial |
+| hyperparameters.yaml | CatBoost 50 trial, TFT 20 trial, TSMixerx 20 trial |
 | hyperparameters.yaml | CatBoost iterations 500-3000, 3 loss fonksiyonu (RMSE/MAE/MAPE) |
 | hyperparameters.yaml | TFT: hidden 32-128, attention [1,2,4], lstm [1,2], batch [64,128,256] |
 | hyperparameters.yaml | Cross-validation: 12 split (dev'deki 2'den) |
@@ -141,9 +141,9 @@ Bu komut **tmux** oturumunda 4 egitimi sirayla baslatir (SSH kopsa bile devam ed
 
 | # | Model | Cihaz | Tahmini Sure |
 |---|-------|-------|-------------|
-| 1 | CatBoost | GPU | ~30-60 dk |
-| 2 | Prophet | CPU | ~45-90 dk |
-| 3 | TFT | GPU | ~60-120 dk |
+| 1 | CatBoost | CPU | ~30-60 dk |
+| 2 | TFT | GPU | ~60-120 dk |
+| 3 | TSMixerx | GPU | ~30-60 dk |
 | 4 | Ensemble | CPU | ~10-15 dk |
 
 ```bash

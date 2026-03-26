@@ -1,6 +1,6 @@
 # Ensemble configuration — R6 optimized
-# SLSQP weight optimization: TFT=0.52 CB=0.48 Prophet=0.00 (2.79% MAPE)
-# Stacking (2.88-2.96%) < weighted_average (2.79%) — simpler is better
+# 3-model ensemble: CB + TFT + TSMixerx
+# Stacking < weighted_average — simpler is better
 
 # Ensemble mode: "weighted_average" (R6 optimal) or "stacking" (fallback)
 mode: "weighted_average"
@@ -12,10 +12,9 @@ active_models:
   - tsmixerx
 
 # Default weights — equal initial, SLSQP will optimize
-# Prophet excluded: optimizer assigned 0.000 weight
+# 3-model ensemble: CB + TFT + TSMixerx (SLSQP will optimize)
 weights:
   catboost: 0.33
-  prophet: 0.0
   tft: 0.34
   tsmixerx: 0.33
 

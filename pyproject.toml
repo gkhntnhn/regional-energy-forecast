@@ -8,7 +8,6 @@ license = { text = "MIT" }
 
 dependencies = [
     "catboost>=1.2,<2.0",
-    "prophet>=1.1,<2.0",
     "neuralforecast>=3.1,<4.0",
     "lightning>=2.0,<3.0",
     "torch>=2.0,<3.0",
@@ -114,7 +113,6 @@ plugins = ["pydantic.mypy"]
 [[tool.mypy.overrides]]
 module = [
     "catboost.*",
-    "prophet.*",
     "neuralforecast.*",
     "pytorch_lightning.*",
     "lightning.*",

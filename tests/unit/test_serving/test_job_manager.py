@@ -679,7 +679,7 @@ class TestProcessJobDB:
         raw_preds = pd.DataFrame(
             {
                 "catboost_prediction": [1195.0, 1205.0],
-                "prophet_prediction": [1210.0, 1220.0],
+                "tft_prediction": [1210.0, 1220.0],
             },
             index=pred_index,
         )
@@ -713,7 +713,7 @@ class TestProcessJobDB:
             email_service=mock_email,
         )
 
-        # 2 ensemble + 2 catboost + 2 prophet = 6 total
+        # 2 ensemble + 2 catboost + 2 tft = 6 total
         async with db_session_factory() as session:
             from sqlalchemy import select
 
@@ -723,7 +723,7 @@ class TestProcessJobDB:
             assert len(preds) == 6
 
             sources = {p.model_source for p in preds}
-            assert sources == {"ensemble", "catboost", "prophet"}
+            assert sources == {"ensemble", "catboost", "tft"}
 
     @pytest.mark.asyncio
     async def test_process_job_db_email_status_updated(

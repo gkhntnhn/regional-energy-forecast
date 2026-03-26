@@ -72,7 +72,7 @@ async def _seed_predictions(db_session_factory: Any) -> None:
 
         for h in range(24):
             dt = datetime(2026, 3, 1, h, tzinfo=TZ_ISTANBUL)
-            for model in ["ensemble", "catboost", "prophet"]:
+            for model in ["ensemble", "catboost", "tft"]:
                 pred = PredictionModel(
                     job_id="test_j1",
                     forecast_dt=dt,

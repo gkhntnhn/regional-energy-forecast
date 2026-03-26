@@ -57,10 +57,6 @@ def _get_test_settings() -> Settings:
     object.__setattr__(catboost_config, "n_trials", 1)
     object.__setattr__(catboost_config, "search_space", {})
 
-    prophet_config = settings.hyperparameters.prophet
-    object.__setattr__(prophet_config, "n_trials", 1)
-    object.__setattr__(prophet_config, "search_space", {})
-
     tft_config = settings.hyperparameters.tft
     object.__setattr__(tft_config, "n_trials", 1)
     object.__setattr__(tft_config, "search_space", {})
@@ -92,16 +88,12 @@ class TestEnsembleConfig:
     def test_default_weights_do_not_exceed_one(self) -> None:
         settings = get_default_config()
         weights = settings.ensemble.weights
-        total = weights.catboost + weights.prophet + weights.tft + weights.tsmixerx
+        total = weights.catboost + weights.tft + weights.tsmixerx
         assert total <= 1.0 + 1e-6
 
     def test_default_catboost_weight(self) -> None:
         settings = get_default_config()
         assert settings.ensemble.weights.catboost == 0.45
-
-    def test_default_prophet_weight(self) -> None:
-        settings = get_default_config()
-        assert settings.ensemble.weights.prophet == 0.0
 
     def test_default_tft_weight(self) -> None:
         settings = get_default_config()
@@ -121,7 +113,7 @@ class TestEnsembleConfig:
 
     def test_default_active_models(self) -> None:
         settings = get_default_config()
-        assert settings.ensemble.active_models == ["catboost", "prophet", "tft"]
+        assert settings.ensemble.active_models == ["catboost", "tft", "tsmixerx"]
 
     def test_weight_normalization_all_models(self) -> None:
         settings = get_default_config()
@@ -132,11 +124,11 @@ class TestEnsembleConfig:
 
     def test_weight_normalization_two_models(self) -> None:
         settings = get_default_config()
-        # catboost=0.45, prophet=0.0 → catboost gets all weight
-        normalized = settings.ensemble.weights.get_normalized(["catboost", "prophet"])
+        # catboost=0.45, tsmixerx=0.0 → catboost gets all weight
+        normalized = settings.ensemble.weights.get_normalized(["catboost", "tsmixerx"])
         assert abs(sum(normalized.values()) - 1.0) < 1e-6
         assert normalized["catboost"] == pytest.approx(1.0)
-        assert normalized["prophet"] == pytest.approx(0.0)
+        assert normalized["tsmixerx"] == pytest.approx(0.0)
 
 
 # ---------------------------------------------------------------------------
@@ -158,17 +150,17 @@ class TestEnsembleTrainerInit:
         tracker = ExperimentTracker(enabled=False)
         trainer = EnsembleTrainer(settings, tracker)
         assert "catboost" in trainer._trainers
-        assert "prophet" in trainer._trainers
         assert "tft" in trainer._trainers
+        assert "tsmixerx" in trainer._trainers
 
     def test_trainer_active_models_override(self) -> None:
         settings = _get_test_settings()
         tracker = ExperimentTracker(enabled=False)
-        trainer = EnsembleTrainer(settings, tracker, active_models_override=["catboost", "prophet"])
-        assert trainer._active_models == ["catboost", "prophet"]
+        trainer = EnsembleTrainer(settings, tracker, active_models_override=["catboost", "tft"])
+        assert trainer._active_models == ["catboost", "tft"]
         assert "catboost" in trainer._trainers
-        assert "prophet" in trainer._trainers
-        assert "tft" not in trainer._trainers
+        assert "tft" in trainer._trainers
+        assert "tsmixerx" not in trainer._trainers
 
     def test_trainer_single_model_override(self) -> None:
         settings = _get_test_settings()
@@ -197,7 +189,7 @@ class TestWeightOptimization:
         trainer = EnsembleTrainer(
             settings,
             ExperimentTracker(enabled=False),
-            active_models_override=["catboost", "prophet"],
+            active_models_override=["catboost", "tft"],
         )
 
         rng = np.random.default_rng(42)
@@ -209,35 +201,35 @@ class TestWeightOptimization:
                 split_idx=i,
                 model_metrics={
                     "catboost": _make_mock_metrics(5.0 + i * 0.5),
-                    "prophet": _make_mock_metrics(7.0 + i * 0.3),
+                    "tft": _make_mock_metrics(7.0 + i * 0.3),
                 },
                 ensemble_metrics=_make_mock_metrics(),
                 model_predictions={
                     "catboost": y_true * (1 + rng.normal(0, 0.05, 100)),
-                    "prophet": y_true * (1 + rng.normal(0, 0.08, 100)),
+                    "tft": y_true * (1 + rng.normal(0, 0.08, 100)),
                 },
                 ensemble_predictions=np.zeros(100, dtype=np.float64),
                 y_true=y_true,
-                weights={"catboost": 0.6, "prophet": 0.4},
+                weights={"catboost": 0.6, "tft": 0.4},
             )
             for i in range(3)
         ]
 
-        initial_weights = {"catboost": 0.6, "prophet": 0.4}
+        initial_weights = {"catboost": 0.6, "tft": 0.4}
         weights = trainer._optimize_weights(split_results, initial_weights)
 
         assert "catboost" in weights
-        assert "prophet" in weights
+        assert "tft" in weights
         assert abs(sum(weights.values()) - 1.0) < 1e-6
         assert 0.0 <= weights["catboost"] <= 1.0
-        assert 0.0 <= weights["prophet"] <= 1.0
+        assert 0.0 <= weights["tft"] <= 1.0
 
     def test_optimize_weights_respects_bounds(self) -> None:
         settings = _get_test_settings()
         trainer = EnsembleTrainer(
             settings,
             ExperimentTracker(enabled=False),
-            active_models_override=["catboost", "prophet"],
+            active_models_override=["catboost", "tft"],
         )
 
         rng = np.random.default_rng(123)
@@ -248,28 +240,28 @@ class TestWeightOptimization:
                 split_idx=0,
                 model_metrics={
                     "catboost": _make_mock_metrics(5.0),
-                    "prophet": _make_mock_metrics(10.0),
+                    "tft": _make_mock_metrics(10.0),
                 },
                 ensemble_metrics=_make_mock_metrics(),
                 model_predictions={
                     "catboost": y_true * (1 + rng.normal(0, 0.04, 100)),
-                    "prophet": y_true * (1 + rng.normal(0, 0.12, 100)),
+                    "tft": y_true * (1 + rng.normal(0, 0.12, 100)),
                 },
                 ensemble_predictions=np.zeros(100, dtype=np.float64),
                 y_true=y_true,
-                weights={"catboost": 0.6, "prophet": 0.4},
+                weights={"catboost": 0.6, "tft": 0.4},
             )
         ]
 
-        initial_weights = {"catboost": 0.6, "prophet": 0.4}
+        initial_weights = {"catboost": 0.6, "tft": 0.4}
         weights = trainer._optimize_weights(split_results, initial_weights)
 
         bounds_cfg = settings.ensemble.optimization.bounds
         # Check bounds
         assert weights["catboost"] >= bounds_cfg.catboost[0]
         assert weights["catboost"] <= bounds_cfg.catboost[1]
-        assert weights["prophet"] >= bounds_cfg.prophet[0]
-        assert weights["prophet"] <= bounds_cfg.prophet[1]
+        assert weights["tft"] >= bounds_cfg.tft[0]
+        assert weights["tft"] <= bounds_cfg.tft[1]
 
     def test_optimize_weights_three_models(self) -> None:
         settings = _get_test_settings()
@@ -283,27 +275,27 @@ class TestWeightOptimization:
                 split_idx=0,
                 model_metrics={
                     "catboost": _make_mock_metrics(5.0),
-                    "prophet": _make_mock_metrics(7.0),
-                    "tft": _make_mock_metrics(6.0),
+                    "tft": _make_mock_metrics(7.0),
+                    "tsmixerx": _make_mock_metrics(6.0),
                 },
                 ensemble_metrics=_make_mock_metrics(),
                 model_predictions={
                     "catboost": y_true * (1 + rng.normal(0, 0.05, 100)),
-                    "prophet": y_true * (1 + rng.normal(0, 0.08, 100)),
-                    "tft": y_true * (1 + rng.normal(0, 0.06, 100)),
+                    "tft": y_true * (1 + rng.normal(0, 0.08, 100)),
+                    "tsmixerx": y_true * (1 + rng.normal(0, 0.06, 100)),
                 },
                 ensemble_predictions=np.zeros(100, dtype=np.float64),
                 y_true=y_true,
-                weights={"catboost": 0.45, "prophet": 0.30, "tft": 0.25},
+                weights={"catboost": 0.4, "tft": 0.35, "tsmixerx": 0.25},
             )
         ]
 
-        initial_weights = {"catboost": 0.45, "prophet": 0.30, "tft": 0.25}
+        initial_weights = {"catboost": 0.4, "tft": 0.35, "tsmixerx": 0.25}
         weights = trainer._optimize_weights(split_results, initial_weights)
 
         assert "catboost" in weights
-        assert "prophet" in weights
         assert "tft" in weights
+        assert "tsmixerx" in weights
         assert abs(sum(weights.values()) - 1.0) < 1e-6
 
 
@@ -320,7 +312,7 @@ class TestComparisonDF:
         trainer = EnsembleTrainer(
             settings,
             ExperimentTracker(enabled=False),
-            active_models_override=["catboost", "prophet"],
+            active_models_override=["catboost", "tft"],
         )
 
         # Mock results
@@ -328,21 +320,21 @@ class TestComparisonDF:
         catboost_result.training_result.avg_val_mape = 5.0
         catboost_result.training_result.avg_test_mape = 5.5
 
-        prophet_result = MagicMock()
-        prophet_result.training_result.avg_val_mape = 7.0
-        prophet_result.training_result.avg_test_mape = 7.5
+        tft_result = MagicMock()
+        tft_result.training_result.avg_val_mape = 7.0
+        tft_result.training_result.avg_test_mape = 7.5
 
         model_results = {
             "catboost": catboost_result,
-            "prophet": prophet_result,
+            "tft": tft_result,
         }
 
         training_result = EnsembleTrainingResult(
             split_results=[],
             avg_val_mape=4.8,
             std_val_mape=0.5,
-            model_avg_val_mapes={"catboost": 5.0, "prophet": 7.0},
-            optimized_weights={"catboost": 0.7, "prophet": 0.3},
+            model_avg_val_mapes={"catboost": 5.0, "tft": 7.0},
+            optimized_weights={"catboost": 0.7, "tft": 0.3},
         )
 
         df = trainer._generate_comparison_df(model_results, training_result)
@@ -360,26 +352,26 @@ class TestComparisonDF:
         catboost_result.training_result.avg_val_mape = 5.0
         catboost_result.training_result.avg_test_mape = 5.5
 
-        prophet_result = MagicMock()
-        prophet_result.training_result.avg_val_mape = 7.0
-        prophet_result.training_result.avg_test_mape = 7.5
-
         tft_result = MagicMock()
-        tft_result.training_result.avg_val_mape = 6.0
-        tft_result.training_result.avg_test_mape = 6.5
+        tft_result.training_result.avg_val_mape = 7.0
+        tft_result.training_result.avg_test_mape = 7.5
+
+        tsmixerx_result = MagicMock()
+        tsmixerx_result.training_result.avg_val_mape = 6.0
+        tsmixerx_result.training_result.avg_test_mape = 6.5
 
         model_results = {
             "catboost": catboost_result,
-            "prophet": prophet_result,
             "tft": tft_result,
+            "tsmixerx": tsmixerx_result,
         }
 
         training_result = EnsembleTrainingResult(
             split_results=[],
             avg_val_mape=4.5,
             std_val_mape=0.5,
-            model_avg_val_mapes={"catboost": 5.0, "prophet": 7.0, "tft": 6.0},
-            optimized_weights={"catboost": 0.5, "prophet": 0.2, "tft": 0.3},
+            model_avg_val_mapes={"catboost": 5.0, "tft": 7.0, "tsmixerx": 6.0},
+            optimized_weights={"catboost": 0.5, "tft": 0.3, "tsmixerx": 0.2},
         )
 
         df = trainer._generate_comparison_df(model_results, training_result)
@@ -392,28 +384,28 @@ class TestComparisonDF:
         trainer = EnsembleTrainer(
             settings,
             ExperimentTracker(enabled=False),
-            active_models_override=["catboost", "prophet"],
+            active_models_override=["catboost", "tft"],
         )
 
         catboost_result = MagicMock()
         catboost_result.training_result.avg_val_mape = 5.0
         catboost_result.training_result.avg_test_mape = 5.5
 
-        prophet_result = MagicMock()
-        prophet_result.training_result.avg_val_mape = 7.0
-        prophet_result.training_result.avg_test_mape = 7.5
+        tft_result = MagicMock()
+        tft_result.training_result.avg_val_mape = 7.0
+        tft_result.training_result.avg_test_mape = 7.5
 
         model_results = {
             "catboost": catboost_result,
-            "prophet": prophet_result,
+            "tft": tft_result,
         }
 
         training_result = EnsembleTrainingResult(
             split_results=[],
             avg_val_mape=4.8,
             std_val_mape=0.5,
-            model_avg_val_mapes={"catboost": 5.0, "prophet": 7.0},
-            optimized_weights={"catboost": 0.7, "prophet": 0.3},
+            model_avg_val_mapes={"catboost": 5.0, "tft": 7.0},
+            optimized_weights={"catboost": 0.7, "tft": 0.3},
         )
 
         df = trainer._generate_comparison_df(model_results, training_result)
@@ -421,7 +413,7 @@ class TestComparisonDF:
         assert len(df) == 3
         model_names = list(df["Model"])
         assert "Catboost" in model_names
-        assert "Prophet" in model_names
+        assert "Tft" in model_names
         assert any("Ensemble" in m for m in model_names)
 
 
@@ -434,18 +426,18 @@ class TestWeightPersistence:
     """Tests for saving and loading ensemble weights."""
 
     def test_save_and_load_weights(self, tmp_path: Any) -> None:
-        weights = {"catboost": 0.5, "prophet": 0.3, "tft": 0.2}
+        weights = {"catboost": 0.5, "tft": 0.3, "tsmixerx": 0.2}
         path = tmp_path / "weights.json"
 
         save_ensemble_weights(weights, path)
         loaded = load_ensemble_weights(path)
 
         assert loaded["catboost"] == pytest.approx(0.5)
-        assert loaded["prophet"] == pytest.approx(0.3)
-        assert loaded["tft"] == pytest.approx(0.2)
+        assert loaded["tft"] == pytest.approx(0.3)
+        assert loaded["tsmixerx"] == pytest.approx(0.2)
 
     def test_save_creates_parent_dirs(self, tmp_path: Any) -> None:
-        weights = {"catboost": 0.45, "prophet": 0.30, "tft": 0.25}
+        weights = {"catboost": 0.5, "tft": 0.5}
         path = tmp_path / "nested" / "dir" / "weights.json"
 
         save_ensemble_weights(weights, path)
@@ -464,15 +456,15 @@ class TestResultDataclasses:
     def test_ensemble_split_result_immutable(self) -> None:
         result = EnsembleSplitResult(
             split_idx=0,
-            model_metrics={"catboost": _make_mock_metrics(), "prophet": _make_mock_metrics()},
+            model_metrics={"catboost": _make_mock_metrics(), "tft": _make_mock_metrics()},
             ensemble_metrics=_make_mock_metrics(),
             model_predictions={
                 "catboost": np.zeros(10, dtype=np.float64),
-                "prophet": np.zeros(10, dtype=np.float64),
+                "tft": np.zeros(10, dtype=np.float64),
             },
             ensemble_predictions=np.zeros(10, dtype=np.float64),
             y_true=np.ones(10, dtype=np.float64),
-            weights={"catboost": 0.6, "prophet": 0.4},
+            weights={"catboost": 0.6, "tft": 0.4},
         )
 
         with pytest.raises(AttributeError):
@@ -483,8 +475,8 @@ class TestResultDataclasses:
             split_results=[],
             avg_val_mape=5.0,
             std_val_mape=0.5,
-            model_avg_val_mapes={"catboost": 5.0, "prophet": 7.0},
-            optimized_weights={"catboost": 0.6, "prophet": 0.4},
+            model_avg_val_mapes={"catboost": 5.0, "tft": 7.0},
+            optimized_weights={"catboost": 0.6, "tft": 0.4},
         )
 
         with pytest.raises(AttributeError):
@@ -534,21 +526,21 @@ class TestTrainModels:
         trainer = EnsembleTrainer(
             settings,
             ExperimentTracker(enabled=False),
-            active_models_override=["catboost", "prophet"],
+            active_models_override=["catboost", "tft"],
         )
 
         # Mock sub-trainers
         cb_result = _make_mock_pipeline_result(3, 5.0)
-        pr_result = _make_mock_pipeline_result(3, 7.0)
+        tft_pipe_result = _make_mock_pipeline_result(3, 7.0)
         trainer._trainers["catboost"] = MagicMock()
         trainer._trainers["catboost"].run.return_value = cb_result
-        trainer._trainers["prophet"] = MagicMock()
-        trainer._trainers["prophet"].run.return_value = pr_result
+        trainer._trainers["tft"] = MagicMock()
+        trainer._trainers["tft"].run.return_value = tft_pipe_result
 
         results, errors = trainer._train_models(_make_feature_df())
 
         assert "catboost" in results
-        assert "prophet" in results
+        assert "tft" in results
         assert len(errors) == 0
 
     def test_train_models_with_failure_fallback(self) -> None:
@@ -556,20 +548,20 @@ class TestTrainModels:
         trainer = EnsembleTrainer(
             settings,
             ExperimentTracker(enabled=False),
-            active_models_override=["catboost", "prophet"],
+            active_models_override=["catboost", "tft"],
         )
 
         cb_result = _make_mock_pipeline_result(3, 5.0)
         trainer._trainers["catboost"] = MagicMock()
         trainer._trainers["catboost"].run.return_value = cb_result
-        trainer._trainers["prophet"] = MagicMock()
-        trainer._trainers["prophet"].run.side_effect = RuntimeError("Prophet failed")
+        trainer._trainers["tft"] = MagicMock()
+        trainer._trainers["tft"].run.side_effect = RuntimeError("Tft failed")
 
         results, errors = trainer._train_models(_make_feature_df())
 
         assert "catboost" in results
-        assert "prophet" in errors
-        assert "Prophet failed" in str(errors["prophet"])
+        assert "tft" in errors
+        assert "Tft failed" in str(errors["tft"])
 
 
 # ---------------------------------------------------------------------------
@@ -585,12 +577,12 @@ class TestCollectSplitMetrics:
         trainer = EnsembleTrainer(
             settings,
             ExperimentTracker(enabled=False),
-            active_models_override=["catboost", "prophet"],
+            active_models_override=["catboost", "tft"],
         )
 
         model_results = {
             "catboost": _make_mock_pipeline_result(3, 5.0),
-            "prophet": _make_mock_pipeline_result(3, 7.0),
+            "tft": _make_mock_pipeline_result(3, 7.0),
         }
 
         split_results = trainer._collect_split_metrics(model_results)
@@ -598,7 +590,7 @@ class TestCollectSplitMetrics:
         assert len(split_results) == 3
         for sr in split_results:
             assert "catboost" in sr.model_metrics
-            assert "prophet" in sr.model_metrics
+            assert "tft" in sr.model_metrics
             assert sr.ensemble_metrics.mape > 0
 
     def test_split_count_mismatch_raises(self) -> None:
@@ -606,12 +598,12 @@ class TestCollectSplitMetrics:
         trainer = EnsembleTrainer(
             settings,
             ExperimentTracker(enabled=False),
-            active_models_override=["catboost", "prophet"],
+            active_models_override=["catboost", "tft"],
         )
 
         model_results = {
             "catboost": _make_mock_pipeline_result(3, 5.0),
-            "prophet": _make_mock_pipeline_result(2, 7.0),
+            "tft": _make_mock_pipeline_result(2, 7.0),
         }
 
         with pytest.raises(ValueError, match="Split count mismatch"):
@@ -631,7 +623,7 @@ class TestComputeWeightedAverage:
         trainer = EnsembleTrainer(
             settings,
             ExperimentTracker(enabled=False),
-            active_models_override=["catboost", "prophet"],
+            active_models_override=["catboost", "tft"],
         )
 
         rng = np.random.default_rng(42)
@@ -642,20 +634,20 @@ class TestComputeWeightedAverage:
                 split_idx=0,
                 model_metrics={
                     "catboost": _make_mock_metrics(5.0),
-                    "prophet": _make_mock_metrics(7.0),
+                    "tft": _make_mock_metrics(7.0),
                 },
                 ensemble_metrics=_make_mock_metrics(),
                 model_predictions={
                     "catboost": y_true * (1 + rng.normal(0, 0.05, 100)),
-                    "prophet": y_true * (1 + rng.normal(0, 0.08, 100)),
+                    "tft": y_true * (1 + rng.normal(0, 0.08, 100)),
                 },
                 ensemble_predictions=np.zeros(100, dtype=np.float64),
                 y_true=y_true,
-                weights={"catboost": 0.6, "prophet": 0.4},
+                weights={"catboost": 0.6, "tft": 0.4},
             )
         ]
 
-        weights = {"catboost": 0.7, "prophet": 0.3}
+        weights = {"catboost": 0.7, "tft": 0.3}
         updated = trainer._compute_weighted_ensemble(split_results, weights)
 
         assert len(updated) == 1
@@ -671,15 +663,15 @@ class TestComputeWeightedTestMape:
         trainer = EnsembleTrainer(
             settings,
             ExperimentTracker(enabled=False),
-            active_models_override=["catboost", "prophet"],
+            active_models_override=["catboost", "tft"],
         )
 
         model_results = {
             "catboost": _make_mock_pipeline_result(3, 5.0),
-            "prophet": _make_mock_pipeline_result(3, 7.0),
+            "tft": _make_mock_pipeline_result(3, 7.0),
         }
 
-        weights = {"catboost": 0.6, "prophet": 0.4}
+        weights = {"catboost": 0.6, "tft": 0.4}
         test_mapes = trainer._compute_weighted_test_mape(model_results, weights)
 
         assert len(test_mapes) == 3
@@ -700,12 +692,12 @@ class TestPrintSummary:
         trainer = EnsembleTrainer(
             settings,
             ExperimentTracker(enabled=False),
-            active_models_override=["catboost", "prophet"],
+            active_models_override=["catboost", "tft"],
         )
 
         comparison_df = pd.DataFrame(
             {
-                "Model": ["Catboost", "Prophet", "Ensemble (weighted_average)"],
+                "Model": ["Catboost", "Tft", "Ensemble (weighted_average)"],
                 "Val MAPE (%)": [5.0, 7.0, 4.8],
                 "Test MAPE (%)": [5.5, 7.5, 5.0],
                 "Weight": [0.7, 0.3, 1.0],
@@ -715,8 +707,8 @@ class TestPrintSummary:
             split_results=[],
             avg_val_mape=4.8,
             std_val_mape=0.5,
-            model_avg_val_mapes={"catboost": 5.0, "prophet": 7.0},
-            optimized_weights={"catboost": 0.7, "prophet": 0.3},
+            model_avg_val_mapes={"catboost": 5.0, "tft": 7.0},
+            optimized_weights={"catboost": 0.7, "tft": 0.3},
             mode="weighted_average",
         )
 
@@ -728,12 +720,12 @@ class TestPrintSummary:
         trainer = EnsembleTrainer(
             settings,
             ExperimentTracker(enabled=False),
-            active_models_override=["catboost", "prophet"],
+            active_models_override=["catboost", "tft"],
         )
 
         comparison_df = pd.DataFrame(
             {
-                "Model": ["Catboost", "Prophet", "Ensemble (stacking)"],
+                "Model": ["Catboost", "Tft", "Ensemble (stacking)"],
                 "Val MAPE (%)": [5.0, 7.0, 4.5],
                 "Test MAPE (%)": [5.5, 7.5, 4.8],
                 "Weight": [0.7, 0.3, 1.0],
@@ -743,8 +735,8 @@ class TestPrintSummary:
             split_results=[],
             avg_val_mape=4.5,
             std_val_mape=0.0,
-            model_avg_val_mapes={"catboost": 5.0, "prophet": 7.0},
-            optimized_weights={"catboost": 0.5, "prophet": 0.5},
+            model_avg_val_mapes={"catboost": 5.0, "tft": 7.0},
+            optimized_weights={"catboost": 0.5, "tft": 0.5},
             mode="stacking",
         )
 
@@ -764,16 +756,16 @@ class TestRunPipeline:
         trainer = EnsembleTrainer(
             settings,
             ExperimentTracker(enabled=False),
-            active_models_override=["catboost", "prophet"],
+            active_models_override=["catboost", "tft"],
         )
 
         # Mock sub-trainers
         cb_result = _make_mock_pipeline_result(3, 5.0)
-        pr_result = _make_mock_pipeline_result(3, 7.0)
+        tft_pipe_result = _make_mock_pipeline_result(3, 7.0)
         trainer._trainers["catboost"] = MagicMock()
         trainer._trainers["catboost"].run.return_value = cb_result
-        trainer._trainers["prophet"] = MagicMock()
-        trainer._trainers["prophet"].run.return_value = pr_result
+        trainer._trainers["tft"] = MagicMock()
+        trainer._trainers["tft"].run.return_value = tft_pipe_result
 
         # Force weighted_average mode for simpler test
         trainer._mode = "weighted_average"
@@ -791,13 +783,13 @@ class TestRunPipeline:
         trainer = EnsembleTrainer(
             settings,
             ExperimentTracker(enabled=False),
-            active_models_override=["catboost", "prophet"],
+            active_models_override=["catboost", "tft"],
         )
 
         trainer._trainers["catboost"] = MagicMock()
         trainer._trainers["catboost"].run.side_effect = RuntimeError("Fail")
-        trainer._trainers["prophet"] = MagicMock()
-        trainer._trainers["prophet"].run.side_effect = RuntimeError("Fail")
+        trainer._trainers["tft"] = MagicMock()
+        trainer._trainers["tft"].run.side_effect = RuntimeError("Fail")
 
         with pytest.raises(RuntimeError, match="All models failed"):
             trainer.run(_make_feature_df())
@@ -820,16 +812,16 @@ class TestTrainModelsFallbackDisabled:
         trainer = EnsembleTrainer(
             settings,
             ExperimentTracker(enabled=False),
-            active_models_override=["catboost", "prophet"],
+            active_models_override=["catboost", "tft"],
         )
 
         cb_result = _make_mock_pipeline_result(3, 5.0)
         trainer._trainers["catboost"] = MagicMock()
         trainer._trainers["catboost"].run.return_value = cb_result
-        trainer._trainers["prophet"] = MagicMock()
-        trainer._trainers["prophet"].run.side_effect = RuntimeError("Prophet crashed")
+        trainer._trainers["tft"] = MagicMock()
+        trainer._trainers["tft"].run.side_effect = RuntimeError("Tft crashed")
 
-        with pytest.raises(RuntimeError, match="prophet failed and fallback disabled"):
+        with pytest.raises(RuntimeError, match="tft failed and fallback disabled"):
             trainer._train_models(_make_feature_df())
 
 
@@ -848,23 +840,23 @@ class TestRunWithPartialFailure:
         trainer = EnsembleTrainer(
             settings,
             ExperimentTracker(enabled=False),
-            active_models_override=["catboost", "prophet"],
+            active_models_override=["catboost", "tft"],
         )
         trainer._mode = "stacking"
 
-        # catboost succeeds, prophet fails
+        # catboost succeeds, tft fails (graceful degradation)
         cb_result = _make_mock_pipeline_result(3, 5.0)
         trainer._trainers["catboost"] = MagicMock()
         trainer._trainers["catboost"].run.return_value = cb_result
-        trainer._trainers["prophet"] = MagicMock()
-        trainer._trainers["prophet"].run.side_effect = RuntimeError("Prophet failed")
+        trainer._trainers["tft"] = MagicMock()
+        trainer._trainers["tft"].run.side_effect = RuntimeError("Tft failed")
 
         result = trainer.run(_make_feature_df())
 
         # Only 1 model survived — stacking requires >=2, should fall back
         assert result.training_result.mode == "weighted_average"
         assert "catboost" in result.model_results
-        assert "prophet" not in result.model_results
+        assert "tft" not in result.model_results
 
     def test_partial_failure_continues_with_remaining_models(self) -> None:
         """Test run() continues when one of three models fails."""
@@ -872,24 +864,24 @@ class TestRunWithPartialFailure:
         trainer = EnsembleTrainer(
             settings,
             ExperimentTracker(enabled=False),
-            active_models_override=["catboost", "prophet", "tft"],
+            active_models_override=["catboost", "tft", "tsmixerx"],
         )
         trainer._mode = "weighted_average"
 
         cb_result = _make_mock_pipeline_result(3, 5.0)
-        pr_result = _make_mock_pipeline_result(3, 7.0)
+        tft_result = _make_mock_pipeline_result(3, 7.0)
         trainer._trainers["catboost"] = MagicMock()
         trainer._trainers["catboost"].run.return_value = cb_result
-        trainer._trainers["prophet"] = MagicMock()
-        trainer._trainers["prophet"].run.return_value = pr_result
         trainer._trainers["tft"] = MagicMock()
-        trainer._trainers["tft"].run.side_effect = RuntimeError("TFT OOM")
+        trainer._trainers["tft"].run.return_value = tft_result
+        trainer._trainers["tsmixerx"] = MagicMock()
+        trainer._trainers["tsmixerx"].run.side_effect = RuntimeError("TSMixerx OOM")
 
         result = trainer.run(_make_feature_df())
 
         assert "catboost" in result.model_results
-        assert "prophet" in result.model_results
-        assert "tft" not in result.model_results
+        assert "tft" in result.model_results
+        assert "tsmixerx" not in result.model_results
         assert result.training_result.avg_val_mape > 0
 
 
@@ -907,7 +899,7 @@ class TestBuildOofDataframe:
         trainer = EnsembleTrainer(
             settings,
             ExperimentTracker(enabled=False),
-            active_models_override=["catboost", "prophet"],
+            active_models_override=["catboost", "tft"],
         )
 
         rng = np.random.default_rng(42)
@@ -924,7 +916,7 @@ class TestBuildOofDataframe:
         # Create mock model results with 3 splits, each having val predictions
         n_val = 100
         model_results: dict[str, Any] = {}
-        for model_name in ["catboost", "prophet"]:
+        for model_name in ["catboost", "tft"]:
             mock_result = MagicMock()
             split_results_list = []
             for _i in range(3):
@@ -957,7 +949,7 @@ class TestBuildOofDataframe:
 
         # Verify columns
         assert "pred_catboost" in oof_df.columns
-        assert "pred_prophet" in oof_df.columns
+        assert "pred_tft" in oof_df.columns
         assert "hour" in oof_df.columns
         assert "day_of_week" in oof_df.columns
         assert "is_weekend" in oof_df.columns
@@ -971,7 +963,7 @@ class TestBuildOofDataframe:
         trainer = EnsembleTrainer(
             settings,
             ExperimentTracker(enabled=False),
-            active_models_override=["catboost", "prophet"],
+            active_models_override=["catboost", "tft"],
         )
 
         rng = np.random.default_rng(99)
@@ -987,7 +979,7 @@ class TestBuildOofDataframe:
 
         n_val = 80
         model_results: dict[str, Any] = {}
-        for model_name in ["catboost", "prophet"]:
+        for model_name in ["catboost", "tft"]:
             mock_result = MagicMock()
             split_results_list = []
             for _ in range(2):
@@ -1031,7 +1023,7 @@ class TestTrainMetaLearner:
         trainer = EnsembleTrainer(
             settings,
             ExperimentTracker(enabled=False),
-            active_models_override=["catboost", "prophet"],
+            active_models_override=["catboost", "tft"],
         )
 
         # Create synthetic OOF DataFrame
@@ -1040,7 +1032,7 @@ class TestTrainMetaLearner:
         oof_df = pd.DataFrame(
             {
                 "pred_catboost": rng.random(n_rows) * 400 + 800,
-                "pred_prophet": rng.random(n_rows) * 400 + 800,
+                "pred_tft": rng.random(n_rows) * 400 + 800,
                 "hour": np.tile(np.arange(24), n_rows // 24 + 1)[:n_rows],
                 "day_of_week": np.tile(np.arange(7), n_rows // 7 + 1)[:n_rows],
                 "is_weekend": np.tile([0, 0, 0, 0, 0, 1, 1], n_rows // 7 + 1)[:n_rows],
@@ -1071,7 +1063,7 @@ class TestTrainMetaLearner:
         trainer = EnsembleTrainer(
             settings,
             ExperimentTracker(enabled=False),
-            active_models_override=["catboost", "prophet"],
+            active_models_override=["catboost", "tft"],
         )
 
         rng = np.random.default_rng(7)
@@ -1079,7 +1071,7 @@ class TestTrainMetaLearner:
         oof_df = pd.DataFrame(
             {
                 "pred_catboost": rng.random(n_rows) * 400 + 800,
-                "pred_prophet": rng.random(n_rows) * 400 + 800,
+                "pred_tft": rng.random(n_rows) * 400 + 800,
                 "hour": np.tile(np.arange(24), n_rows // 24 + 1)[:n_rows],
                 "day_of_week": np.tile(np.arange(7), n_rows // 7 + 1)[:n_rows],
                 "is_weekend": np.zeros(n_rows, dtype=int),
@@ -1120,7 +1112,7 @@ class TestComputeStackingTestMape:
         trainer = EnsembleTrainer(
             settings,
             ExperimentTracker(enabled=False),
-            active_models_override=["catboost", "prophet"],
+            active_models_override=["catboost", "tft"],
         )
         trainer._meta_model = None
 
@@ -1133,7 +1125,7 @@ class TestComputeStackingTestMape:
         trainer = EnsembleTrainer(
             settings,
             ExperimentTracker(enabled=False),
-            active_models_override=["catboost", "prophet"],
+            active_models_override=["catboost", "tft"],
         )
 
         rng = np.random.default_rng(42)
@@ -1155,7 +1147,7 @@ class TestComputeStackingTestMape:
         # Create mock model results with test predictions
         n_test = 100
         model_results: dict[str, Any] = {}
-        for model_name in ["catboost", "prophet"]:
+        for model_name in ["catboost", "tft"]:
             mock_result = MagicMock()
             split_results_list = []
             for _ in range(2):
@@ -1200,7 +1192,7 @@ class TestComputeStackingEnsemble:
         trainer = EnsembleTrainer(
             settings,
             ExperimentTracker(enabled=False),
-            active_models_override=["catboost", "prophet"],
+            active_models_override=["catboost", "tft"],
         )
 
         rng = np.random.default_rng(42)
@@ -1210,26 +1202,26 @@ class TestComputeStackingEnsemble:
                 split_idx=0,
                 model_metrics={
                     "catboost": _make_mock_metrics(5.0),
-                    "prophet": _make_mock_metrics(7.0),
+                    "tft": _make_mock_metrics(7.0),
                 },
                 ensemble_metrics=_make_mock_metrics(),
                 model_predictions={
                     "catboost": y_true * (1 + rng.normal(0, 0.05, 100)),
-                    "prophet": y_true * (1 + rng.normal(0, 0.08, 100)),
+                    "tft": y_true * (1 + rng.normal(0, 0.08, 100)),
                 },
                 ensemble_predictions=np.zeros(100, dtype=np.float64),
                 y_true=y_true,
-                weights={"catboost": 0.6, "prophet": 0.4},
+                weights={"catboost": 0.6, "tft": 0.4},
             )
         ]
-        default_weights = {"catboost": 0.6, "prophet": 0.4}
+        default_weights = {"catboost": 0.6, "tft": 0.4}
         df = _make_feature_df()
 
         mock_meta = MagicMock()
         mock_oof_df = pd.DataFrame(
             {
                 "pred_catboost": rng.random(100),
-                "pred_prophet": rng.random(100),
+                "pred_tft": rng.random(100),
                 "y_true": rng.random(100),
             }
         )
@@ -1272,12 +1264,12 @@ class TestCollectSplitMetricsNoRawPredictions:
         trainer = EnsembleTrainer(
             settings,
             ExperimentTracker(enabled=False),
-            active_models_override=["catboost", "prophet"],
+            active_models_override=["catboost", "tft"],
         )
 
         # Create mock results where val_predictions is None
         model_results: dict[str, Any] = {}
-        for model_name in ["catboost", "prophet"]:
+        for model_name in ["catboost", "tft"]:
             mock_result = MagicMock()
             split_results_list = []
             for i in range(3):
@@ -1317,7 +1309,7 @@ class TestComputeWeightedEnsembleFallback:
         trainer = EnsembleTrainer(
             settings,
             ExperimentTracker(enabled=False),
-            active_models_override=["catboost", "prophet"],
+            active_models_override=["catboost", "tft"],
         )
 
         # Split results with empty model_predictions (simulating no raw preds)
@@ -1326,17 +1318,17 @@ class TestComputeWeightedEnsembleFallback:
                 split_idx=0,
                 model_metrics={
                     "catboost": _make_mock_metrics(5.0),
-                    "prophet": _make_mock_metrics(7.0),
+                    "tft": _make_mock_metrics(7.0),
                 },
                 ensemble_metrics=_make_mock_metrics(),
                 model_predictions={},  # Empty — triggers fallback
                 ensemble_predictions=np.zeros(1, dtype=np.float64),
                 y_true=np.ones(1, dtype=np.float64),
-                weights={"catboost": 0.6, "prophet": 0.4},
+                weights={"catboost": 0.6, "tft": 0.4},
             )
         ]
 
-        weights = {"catboost": 0.7, "prophet": 0.3}
+        weights = {"catboost": 0.7, "tft": 0.3}
         updated = trainer._compute_weighted_ensemble(split_results, weights)
 
         assert len(updated) == 1
@@ -1350,7 +1342,7 @@ class TestComputeWeightedEnsembleFallback:
         trainer = EnsembleTrainer(
             settings,
             ExperimentTracker(enabled=False),
-            active_models_override=["catboost", "prophet"],
+            active_models_override=["catboost", "tft"],
         )
 
         split_results = [
@@ -1358,20 +1350,20 @@ class TestComputeWeightedEnsembleFallback:
                 split_idx=0,
                 model_metrics={
                     "catboost": _make_mock_metrics(4.0),
-                    "prophet": _make_mock_metrics(6.0),
+                    "tft": _make_mock_metrics(6.0),
                 },
                 ensemble_metrics=_make_mock_metrics(),
                 model_predictions={
                     "catboost": np.array([1000.0]),  # len == 1 triggers fallback
-                    "prophet": np.array([1100.0]),
+                    "tft": np.array([1100.0]),
                 },
                 ensemble_predictions=np.zeros(1, dtype=np.float64),
                 y_true=np.ones(1, dtype=np.float64),
-                weights={"catboost": 0.6, "prophet": 0.4},
+                weights={"catboost": 0.6, "tft": 0.4},
             )
         ]
 
-        weights = {"catboost": 0.5, "prophet": 0.5}
+        weights = {"catboost": 0.5, "tft": 0.5}
         updated = trainer._compute_weighted_ensemble(split_results, weights)
 
         assert len(updated) == 1
@@ -1394,7 +1386,7 @@ class TestComputeWeightedTestMapeMissingPredictions:
         trainer = EnsembleTrainer(
             settings,
             ExperimentTracker(enabled=False),
-            active_models_override=["catboost", "prophet"],
+            active_models_override=["catboost", "tft"],
         )
 
         rng = np.random.default_rng(42)
@@ -1413,18 +1405,18 @@ class TestComputeWeightedTestMapeMissingPredictions:
         cb_result.training_result.split_results = [cb_sr0, cb_sr1]
         model_results["catboost"] = cb_result
 
-        # Prophet: first split None, second has predictions
-        pr_result = MagicMock()
-        pr_sr0 = MagicMock()
-        pr_sr0.test_predictions = None
-        pr_sr0.test_actuals = None
-        pr_sr1 = MagicMock()
-        pr_sr1.test_predictions = y_test * (1 + rng.normal(0, 0.08, 100))
-        pr_sr1.test_actuals = y_test
-        pr_result.training_result.split_results = [pr_sr0, pr_sr1]
-        model_results["prophet"] = pr_result
+        # TFT: first split None, second has predictions
+        tft_pipe_result = MagicMock()
+        tft_sr0 = MagicMock()
+        tft_sr0.test_predictions = None
+        tft_sr0.test_actuals = None
+        tft_sr1 = MagicMock()
+        tft_sr1.test_predictions = y_test * (1 + rng.normal(0, 0.08, 100))
+        tft_sr1.test_actuals = y_test
+        tft_pipe_result.training_result.split_results = [tft_sr0, tft_sr1]
+        model_results["tft"] = tft_pipe_result
 
-        weights = {"catboost": 0.6, "prophet": 0.4}
+        weights = {"catboost": 0.6, "tft": 0.4}
         test_mapes = trainer._compute_weighted_test_mape(model_results, weights)
 
         # First split skipped (both models missing), only second split computed
@@ -1437,7 +1429,7 @@ class TestComputeWeightedTestMapeMissingPredictions:
         trainer = EnsembleTrainer(
             settings,
             ExperimentTracker(enabled=False),
-            active_models_override=["catboost", "prophet"],
+            active_models_override=["catboost", "tft"],
         )
 
         rng = np.random.default_rng(42)
@@ -1456,18 +1448,18 @@ class TestComputeWeightedTestMapeMissingPredictions:
         cb_result.training_result.split_results = [cb_sr0, cb_sr1]
         model_results["catboost"] = cb_result
 
-        # Prophet: same pattern
-        pr_result = MagicMock()
-        pr_sr0 = MagicMock()
-        pr_sr0.test_predictions = y_test * (1 + rng.normal(0, 0.08, 100))
-        pr_sr0.test_actuals = None
-        pr_sr1 = MagicMock()
-        pr_sr1.test_predictions = y_test * (1 + rng.normal(0, 0.08, 100))
-        pr_sr1.test_actuals = y_test
-        pr_result.training_result.split_results = [pr_sr0, pr_sr1]
-        model_results["prophet"] = pr_result
+        # TFT: same pattern
+        tft_pipe_result = MagicMock()
+        tft_sr0 = MagicMock()
+        tft_sr0.test_predictions = y_test * (1 + rng.normal(0, 0.08, 100))
+        tft_sr0.test_actuals = None
+        tft_sr1 = MagicMock()
+        tft_sr1.test_predictions = y_test * (1 + rng.normal(0, 0.08, 100))
+        tft_sr1.test_actuals = y_test
+        tft_pipe_result.training_result.split_results = [tft_sr0, tft_sr1]
+        model_results["tft"] = tft_pipe_result
 
-        weights = {"catboost": 0.6, "prophet": 0.4}
+        weights = {"catboost": 0.6, "tft": 0.4}
         test_mapes = trainer._compute_weighted_test_mape(model_results, weights)
 
         # First split skipped (no actuals), only second split computed

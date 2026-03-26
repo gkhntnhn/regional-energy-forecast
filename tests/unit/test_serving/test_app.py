@@ -28,8 +28,8 @@ def mock_prediction_service() -> MagicMock:
     )
     mock.get_model_info.return_value = {
         "loaded": True,
-        "active_models": ["catboost", "prophet"],
-        "weights": {"catboost": 0.6, "prophet": 0.4},
+        "active_models": ["catboost", "tft"],
+        "weights": {"catboost": 0.6, "tft": 0.4},
     }
     return mock
 

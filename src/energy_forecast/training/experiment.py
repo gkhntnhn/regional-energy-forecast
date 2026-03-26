@@ -1,7 +1,7 @@
 """MLflow experiment tracker for all models.
 
 Provides a thin wrapper around MLflow with graceful noop when disabled.
-All models (CatBoost, Prophet, TFT) use this same tracker.
+All models (CatBoost, TFT, TSMixerx) use this same tracker.
 """
 
 from __future__ import annotations
@@ -87,26 +87,6 @@ class ExperimentTracker:
         if not self._enabled:
             return
         self._mlflow.catboost.log_model(model, name=artifact_path)
-
-    def log_prophet_model(self, model: Any, artifact_path: str = "model") -> None:
-        """Log a Prophet model artifact using pickle.
-
-        Args:
-            model: Prophet model instance.
-            artifact_path: Path within the run's artifacts.
-        """
-        if not self._enabled:
-            return
-
-        import pickle
-        import tempfile
-        from pathlib import Path
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            model_path = Path(tmpdir) / "prophet_model.pkl"
-            with open(model_path, "wb") as f:
-                pickle.dump(model, f)
-            self._mlflow.log_artifact(str(model_path), artifact_path)
 
     def log_tft_model(self, model: Any, artifact_path: str = "model") -> None:
         """Log a TFT model artifact using PyTorch checkpoint.

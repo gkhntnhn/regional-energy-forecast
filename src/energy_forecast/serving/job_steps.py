@@ -151,8 +151,8 @@ async def store_predictions_step(
                 ensemble_dts = {pd.Timestamp(r["forecast_dt"]) for r in pred_rows}
                 model_col_map = {
                     "catboost": "catboost_prediction",
-                    "prophet": "prophet_prediction",
                     "tft": "tft_prediction",
+                    "tsmixerx": "tsmixerx_prediction",
                 }
                 for model_name, col_name in model_col_map.items():
                     if col_name not in raw_preds.columns:

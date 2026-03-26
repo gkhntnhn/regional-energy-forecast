@@ -31,7 +31,6 @@ from energy_forecast.config.models import (
     CatBoostConfig,
     EnsembleConfig,
     HyperparameterConfig,
-    ProphetConfig,
     TFTConfig,
     TSMixerxConfig,
 )
@@ -63,7 +62,6 @@ class Settings(BaseModel, frozen=True):
     openmeteo: OpenMeteoConfig = Field(default_factory=OpenMeteoConfig)
     features: FeaturesConfig = Field(default_factory=FeaturesConfig)
     catboost: CatBoostConfig = Field(default_factory=CatBoostConfig)
-    prophet: ProphetConfig = Field(default_factory=ProphetConfig)
     tft: TFTConfig = Field(default_factory=TFTConfig)
     tsmixerx: TSMixerxConfig = Field(default_factory=TSMixerxConfig)
     ensemble: EnsembleConfig = Field(default_factory=EnsembleConfig)
@@ -122,7 +120,6 @@ def _build_settings_dict(config_dir: Path) -> dict[str, Any]:
     # Model configs
     models_dir = config_dir / "models"
     catboost_data = _load_yaml(models_dir / "catboost.yaml")
-    prophet_data = _load_yaml(models_dir / "prophet.yaml")
     tft_data = _load_yaml(models_dir / "tft.yaml")
     tsmixerx_data = _load_yaml(models_dir / "tsmixerx.yaml")
     ensemble_data = _load_yaml(models_dir / "ensemble.yaml")
@@ -153,7 +150,6 @@ def _build_settings_dict(config_dir: Path) -> dict[str, Any]:
             "epias": epias_data,
         },
         "catboost": catboost_data,
-        "prophet": prophet_data,
         "tft": tft_data,
         "tsmixerx": tsmixerx_data,
         "ensemble": ensemble_data,
@@ -161,10 +157,6 @@ def _build_settings_dict(config_dir: Path) -> dict[str, Any]:
             "catboost": {
                 "n_trials": hyperparams_data.get("catboost", {}).get("n_trials", 50),
                 "search_space": hyperparams_data.get("catboost", {}).get("search_space", {}),
-            },
-            "prophet": {
-                "n_trials": hyperparams_data.get("prophet", {}).get("n_trials", 30),
-                "search_space": hyperparams_data.get("prophet", {}).get("search_space", {}),
             },
             "tft": {
                 "n_trials": hyperparams_data.get("tft", {}).get("n_trials", 20),

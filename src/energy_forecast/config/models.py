@@ -1,4 +1,4 @@
-"""Model configuration: CatBoost, Prophet, TFT, Ensemble, and hyperparameters."""
+"""Model configuration: CatBoost, TFT, TSMixerx, Ensemble, and hyperparameters."""
 
 from __future__ import annotations
 
@@ -20,17 +20,8 @@ __all__ = [
     "EnsembleWeightsConfig",
     "HyperparameterConfig",
     "ModelSearchConfig",
-    "ProphetChangepointConfig",
-    "ProphetConfig",
-    "ProphetHolidaysConfig",
-    "ProphetOptimizationConfig",
-    "ProphetRegressorConfig",
-    "ProphetSeasonalityConfig",
-    "ProphetUncertaintyConfig",
     # Hyperparameters
     "SearchParamConfig",
-    # Prophet
-    "SeasonalityPeriodConfig",
     "StackingConfig",
     "StackingMetaLearnerConfig",
     # TFT
@@ -129,104 +120,6 @@ class CatBoostConfig(BaseModel, frozen=True):
         ]
     )
     nan_handling: CatBoostNanHandling = Field(default_factory=CatBoostNanHandling)
-
-
-# ---------------------------------------------------------------------------
-# Prophet
-# ---------------------------------------------------------------------------
-
-
-class SeasonalityPeriodConfig(BaseModel, frozen=True):
-    """Prophet Fourier order for a seasonality period."""
-
-    fourier_order: int = Field(ge=1)
-
-
-class ProphetSeasonalityConfig(BaseModel, frozen=True):
-    """Prophet seasonality settings."""
-
-    mode: Literal["additive", "multiplicative"] = "multiplicative"
-    daily: SeasonalityPeriodConfig = Field(
-        default_factory=lambda: SeasonalityPeriodConfig(fourier_order=10),
-    )
-    weekly: SeasonalityPeriodConfig = Field(
-        default_factory=lambda: SeasonalityPeriodConfig(fourier_order=8),
-    )
-    yearly: SeasonalityPeriodConfig = Field(
-        default_factory=lambda: SeasonalityPeriodConfig(fourier_order=12),
-    )
-
-
-class ProphetHolidaysConfig(BaseModel, frozen=True):
-    """Prophet holiday settings."""
-
-    country: str = "TR"
-    include_ramadan: bool = True
-
-
-class ProphetRegressorConfig(BaseModel, frozen=True):
-    """Single Prophet regressor definition."""
-
-    name: str
-    mode: Literal["additive", "multiplicative"] = "additive"
-
-
-class ProphetChangepointConfig(BaseModel, frozen=True):
-    """Prophet changepoint settings."""
-
-    prior_scale: float = Field(default=0.05, gt=0.0)
-    n_changepoints: int = Field(default=25, ge=1)
-
-
-class ProphetUncertaintyConfig(BaseModel, frozen=True):
-    """Prophet uncertainty interval settings."""
-
-    interval_width: float = Field(default=0.95, gt=0.0, lt=1.0)
-    mcmc_samples: int = Field(default=0, ge=0)
-
-
-class ProphetOptimizationConfig(BaseModel, frozen=True):
-    """Prophet optimization settings."""
-
-    random_seed: int = Field(default=42, ge=0)
-
-
-class ProphetConfig(BaseModel, frozen=True):
-    """Prophet model configuration."""
-
-    seasonality: ProphetSeasonalityConfig = Field(
-        default_factory=ProphetSeasonalityConfig,
-    )
-    optimization: ProphetOptimizationConfig = Field(
-        default_factory=ProphetOptimizationConfig,
-    )
-    holidays: ProphetHolidaysConfig = Field(default_factory=ProphetHolidaysConfig)
-    regressors: list[ProphetRegressorConfig] = Field(
-        default_factory=lambda: [
-            # Consumption lags (autoregressive signal)
-            ProphetRegressorConfig(name="consumption_lag_168", mode="multiplicative"),
-            ProphetRegressorConfig(name="consumption_lag_48", mode="multiplicative"),
-            # Weather
-            ProphetRegressorConfig(name="temperature_2m", mode="multiplicative"),
-            ProphetRegressorConfig(name="apparent_temperature", mode="multiplicative"),
-            ProphetRegressorConfig(name="relative_humidity_2m", mode="additive"),
-            ProphetRegressorConfig(name="shortwave_radiation", mode="multiplicative"),
-            ProphetRegressorConfig(name="wth_cdd", mode="multiplicative"),
-            ProphetRegressorConfig(name="wth_hdd", mode="multiplicative"),
-            # Deterministic (calendar/solar)
-            ProphetRegressorConfig(name="is_weekend", mode="multiplicative"),
-            ProphetRegressorConfig(name="is_sunday", mode="multiplicative"),
-            ProphetRegressorConfig(name="is_holiday", mode="multiplicative"),
-            ProphetRegressorConfig(name="is_business_hours", mode="multiplicative"),
-            ProphetRegressorConfig(name="sol_elevation", mode="multiplicative"),
-        ]
-    )
-    changepoint: ProphetChangepointConfig = Field(
-        default_factory=ProphetChangepointConfig,
-    )
-    uncertainty: ProphetUncertaintyConfig = Field(
-        default_factory=ProphetUncertaintyConfig,
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -436,13 +329,12 @@ class EnsembleWeightsConfig(BaseModel, frozen=True):
     """
 
     catboost: float = Field(default=0.45, ge=0.0, le=1.0)
-    prophet: float = Field(default=0.0, ge=0.0, le=1.0)
     tft: float = Field(default=0.25, ge=0.0, le=1.0)
     tsmixerx: float = Field(default=0.0, ge=0.0, le=1.0)
 
     @model_validator(mode="after")
     def _weights_sum_valid(self) -> Self:
-        total = self.catboost + self.prophet + self.tft + self.tsmixerx
+        total = self.catboost + self.tft + self.tsmixerx
         if total > 1.0 + 1e-6:
             msg = f"Ensemble weights cannot exceed 1.0, got {total:.6f}"
             raise ValueError(msg)
@@ -459,7 +351,6 @@ class EnsembleWeightsConfig(BaseModel, frozen=True):
         """
         raw_weights = {
             "catboost": self.catboost,
-            "prophet": self.prophet,
             "tft": self.tft,
             "tsmixerx": self.tsmixerx,
         }
@@ -478,7 +369,6 @@ class EnsembleWeightBoundsConfig(BaseModel, frozen=True):
     """Per-model weight bounds for optimization."""
 
     catboost: tuple[float, float] = (0.2, 0.7)
-    prophet: tuple[float, float] = (0.1, 0.5)
     tft: tuple[float, float] = (0.1, 0.5)
     tsmixerx: tuple[float, float] = (0.1, 0.5)
 
@@ -535,7 +425,7 @@ class EnsembleConfig(BaseModel, frozen=True):
     """Ensemble model configuration."""
 
     mode: str = "stacking"
-    active_models: list[str] = Field(default_factory=lambda: ["catboost", "prophet", "tft"])
+    active_models: list[str] = Field(default_factory=lambda: ["catboost", "tft", "tsmixerx"])
     weights: EnsembleWeightsConfig = Field(default_factory=EnsembleWeightsConfig)
     optimization: EnsembleOptimizationConfig = Field(
         default_factory=EnsembleOptimizationConfig,
@@ -546,7 +436,7 @@ class EnsembleConfig(BaseModel, frozen=True):
     @field_validator("active_models")
     @classmethod
     def _valid_model_names(cls, v: list[str]) -> list[str]:
-        valid = {"catboost", "prophet", "tft", "tsmixerx"}
+        valid = {"catboost", "tft", "tsmixerx"}
         for m in v:
             if m not in valid:
                 msg = f"Unknown ensemble model: {m}. Valid: {valid}"
@@ -629,7 +519,6 @@ class HyperparameterConfig(BaseModel, frozen=True):
     """Hyperparameter tuning configuration for all models."""
 
     catboost: ModelSearchConfig = Field(default_factory=ModelSearchConfig)
-    prophet: ModelSearchConfig = Field(default_factory=ModelSearchConfig)
     tft: ModelSearchConfig = Field(default_factory=ModelSearchConfig)
     tsmixerx: ModelSearchConfig = Field(default_factory=ModelSearchConfig)
     cross_validation: CrossValidationConfig = Field(

@@ -361,7 +361,7 @@ async def test_get_model_runs_filter(
     db_session: AsyncSession,
 ) -> None:
     db_session.add(ModelRunModel(model_type="catboost", status="completed"))
-    db_session.add(ModelRunModel(model_type="prophet", status="completed"))
+    db_session.add(ModelRunModel(model_type="tft", status="completed"))
     await db_session.flush()
 
     repo = AnalyticsRepository(db_session)

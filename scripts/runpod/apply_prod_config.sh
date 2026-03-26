@@ -59,32 +59,6 @@ catboost:
       type: categorical
       choices: ["RMSE"]   # Fixed — RMSE beat MAE by 0.16% in R1 (2.42% vs 2.58%)
 
-prophet:
-  n_trials: 30
-  search_space:
-    changepoint_prior_scale:
-      type: float
-      low: 0.001
-      high: 1.0
-      log: true
-    seasonality_prior_scale:
-      type: float
-      low: 0.01
-      high: 50.0
-      log: true
-    holidays_prior_scale:
-      type: float
-      low: 0.01
-      high: 50.0
-      log: true
-    n_changepoints:
-      type: int
-      low: 15
-      high: 50
-    # seasonality_mode removed from search space — energy consumption is
-    # inherently multiplicative (seasonal effects scale with load level).
-    # Fixed in configs/models/prophet.yaml → seasonality.mode: "multiplicative"
-
 tft:
   n_trials: 20
   search_space:
@@ -124,7 +98,7 @@ cross_validation:
   gap_hours: 0
   shuffle: false
 EOF
-echo "[OK] hyperparameters.yaml → Production (CB:50, Prophet:30, TFT:20 trials, 12-fold CV)"
+echo "[OK] hyperparameters.yaml → Production (CB:50, TFT:20 trials, 12-fold CV)"
 
 # --- catboost.yaml ---
 cat > configs/models/catboost.yaml << 'EOF'
@@ -308,7 +282,6 @@ echo ""
 echo "Summary of changes:"
 echo "  hyperparameters.yaml:"
 echo "    - CatBoost: 50 trials, RMSE-only, bootstrap MVS"
-echo "    - Prophet:  30 trials"
 echo "    - TFT:      20 trials, batch search [256, 512]"
 echo "    - CV:       12 splits (was 2)"
 echo "  catboost.yaml:"
