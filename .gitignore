@@ -141,3 +141,4 @@ runpod_processed.tar.gz
 # Research experiments (local only)
 research/
 results.tar.gz
+data/raw/final_models_r6_backup.tar.gz

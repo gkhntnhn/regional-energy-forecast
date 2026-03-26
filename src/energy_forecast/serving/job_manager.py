@@ -363,7 +363,11 @@ class JobManager:
     ) -> None:
         """Update job status via a short-lived DB session."""
         await update_status_db(
-            session_factory, job_id, status, result_path=result_path, error=error,
+            session_factory,
+            job_id,
+            status,
+            result_path=result_path,
+            error=error,
         )
 
     # ------------------------------------------------------------------
@@ -439,7 +443,9 @@ class JobManager:
             # Step 6: Create output file
             logger.info("[Job {}] Step 6/8: Creating output file", job_id)
             await update_progress_db(
-                session_factory, job_id, "Rapor dosyasi olusturuluyor...",
+                session_factory,
+                job_id,
+                "Rapor dosyasi olusturuluyor...",
             )
 
             output_path = await create_output_step(
@@ -475,7 +481,10 @@ class JobManager:
 
             # Mark complete
             await update_status_db(
-                session_factory, job_id, "completed", result_path=str(output_path),
+                session_factory,
+                job_id,
+                "completed",
+                result_path=str(output_path),
             )
 
             logger.info("[Job {}] Completed successfully", job_id)
@@ -501,7 +510,10 @@ class JobManager:
             error_msg = str(e)
             logger.opt(exception=True).error("Job {} failed: {}", job_id, error_msg)
             await update_status_db(
-                session_factory, job_id, "failed", error=error_msg,
+                session_factory,
+                job_id,
+                "failed",
+                error=error_msg,
             )
 
             # Audit: job_failed (non-fatal)
@@ -555,7 +567,9 @@ class JobManager:
                 prediction_service.run_prediction,
                 excel_path=job.excel_path,
                 progress_callback=lambda msg: setattr(
-                    self._jobs.get(job.id, job), "progress", msg,
+                    self._jobs.get(job.id, job),
+                    "progress",
+                    msg,
                 ),
             )
 

@@ -96,7 +96,7 @@ from energy_forecast.config.general import (
     _load_yaml,
 )
 
-# -- models (catboost, prophet, tft, ensemble, hyperparameters) -------------
+# -- models (catboost, tft, tsmixerx, ensemble, hyperparameters) ------------
 from energy_forecast.config.models import (
     CatBoostConfig,
     CatBoostNanHandling,
@@ -109,15 +109,7 @@ from energy_forecast.config.models import (
     EnsembleWeightsConfig,
     HyperparameterConfig,
     ModelSearchConfig,
-    ProphetChangepointConfig,
-    ProphetConfig,
-    ProphetHolidaysConfig,
-    ProphetOptimizationConfig,
-    ProphetRegressorConfig,
-    ProphetSeasonalityConfig,
-    ProphetUncertaintyConfig,
     SearchParamConfig,
-    SeasonalityPeriodConfig,
     StackingConfig,
     StackingMetaLearnerConfig,
     TFTArchitectureConfig,
@@ -125,6 +117,11 @@ from energy_forecast.config.models import (
     TFTCovariatesConfig,
     TFTOptimizationConfig,
     TFTTrainingConfig,
+    TSMixerxArchitectureConfig,
+    TSMixerxConfig,
+    TSMixerxCovariatesConfig,
+    TSMixerxOptimizationConfig,
+    TSMixerxTrainingConfig,
 )
 
 __all__ = [
@@ -189,19 +186,11 @@ __all__ = [
     "PathsConfig",
     "PipelineConfig",
     "ProjectConfig",
-    "ProphetChangepointConfig",
-    "ProphetConfig",
-    "ProphetHolidaysConfig",
-    "ProphetOptimizationConfig",
-    "ProphetRegressorConfig",
-    "ProphetSeasonalityConfig",
-    "ProphetUncertaintyConfig",
     "QuadraticTemperatureConfig",
     "QuantileConfig",
     "RegionConfig",
     "RollingConfig",
     "SearchParamConfig",
-    "SeasonalityPeriodConfig",
     "Settings",
     "SolarConfig",
     "SolarLagRangeConfig",
@@ -216,6 +205,11 @@ __all__ = [
     "TFTCovariatesConfig",
     "TFTOptimizationConfig",
     "TFTTrainingConfig",
+    "TSMixerxArchitectureConfig",
+    "TSMixerxConfig",
+    "TSMixerxCovariatesConfig",
+    "TSMixerxOptimizationConfig",
+    "TSMixerxTrainingConfig",
     "TargetEncodingConfig",
     "TempDeviationConfig",
     "TrainingPathsConfig",

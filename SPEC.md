@@ -243,13 +243,13 @@ Bu sayede uzun lag'ler (consumption_lag_720 gibi) forecast satırlarında da do�
 ```
 Input (feature-engineered DataFrame)
         │
-        ├──→ CatBoost (gradient boosting)  ─→ 48 saatlik tahmin
-        ├──→ Prophet  (trend+seasonality)  ─→ 48 saatlik tahmin
-        └──→ TFT      (attention-based DL) ─→ 48 saatlik tahmin
+        ├──→ CatBoost  (gradient boosting)  ─→ 48 saatlik tahmin
+        ├──→ TFT       (attention-based DL) ─→ 48 saatlik tahmin
+        └──→ TSMixerx  (MLP-Mixer based DL) ─→ 48 saatlik tahmin
                 │
                 ▼
         Ensemble (weighted average)
-        prediction = w₁·CB + w₂·P + w₃·TFT
+        prediction = w₁·CB + w₂·TFT + w₃·TSMix
                 │
                 ▼
         48 saatlik final tahmin (PREDICTION_COL = "consumption_mwh")
@@ -272,39 +272,7 @@ Input (feature-engineered DataFrame)
 
 **Güçlü yanı:** Feature etkileşimleri (tatil × saat × mevsim), tabular data'da en iyi performans.
 
-### 5.3 Prophet
-
-| Parametre | Değer |
-|-----------|-------|
-| Seasonality mode | multiplicative (sabit, Optuna'dan çıkarıldı) |
-| Daily Fourier order | 15 |
-| Weekly Fourier order | 8 |
-| Yearly Fourier order | 12 |
-| Holidays | TR resmi tatilleri + Ramazan (3-tier: bayram -1/+1, resmi 0/+1, ramazan 0/0) |
-| Regressors | 12 adet (asagida) |
-| Changepoint prior scale | 0.001-1.0 (Optuna ile optimize) |
-| n_changepoints | 15-50 (Optuna ile optimize) |
-
-**Prophet Regressors (12 adet, R3 güncel):**
-
-| # | Regressor | Mode |
-|---|-----------|------|
-| 1 | consumption_lag_168 | multiplicative |
-| 2 | consumption_lag_48 | multiplicative |
-| 3 | apparent_temperature | multiplicative |
-| 4 | relative_humidity_2m | additive |
-| 5 | shortwave_radiation | multiplicative |
-| 6 | wth_cdd | multiplicative |
-| 7 | wth_hdd | multiplicative |
-| 8 | is_weekend | multiplicative |
-| 9 | is_sunday | multiplicative |
-| 10 | is_holiday | multiplicative |
-| 11 | is_business_hours | multiplicative |
-| 12 | sol_elevation | multiplicative |
-
-**Güçlü yanı:** Trend + mevsimsellik yapısal ayrıştırma, tatil etkilerini doğal modelleme.
-
-### 5.4 TFT (Temporal Fusion Transformer — NeuralForecast)
+### 5.3 TFT (Temporal Fusion Transformer — NeuralForecast)
 
 | Parametre | Değer |
 |-----------|-------|
@@ -322,6 +290,22 @@ Input (feature-engineered DataFrame)
 
 **Güçlü yanı:** Attention-based interpretability, GPU utilization %96+,
 hangi feature'ın hangi saatte önemli olduğunu gösterir.
+
+### 5.4 TSMixerx (MLP-Mixer — NeuralForecast)
+
+| Parametre | Değer |
+|-----------|-------|
+| Framework | NeuralForecast (nixtla) |
+| n_block | 2 |
+| ff_dim | 128 |
+| Prediction length (h) | 48 saat |
+| max_steps | 3000 (prod) |
+| Loss | MAE |
+| Covariates | futr_exog_list (known), hist_exog_list (unknown) |
+| Parameters | ~313K |
+
+**Güçlü yanı:** MLP-Mixer based architecture, lightweight (~313K params vs TFT ~600K),
+competitive accuracy with faster training. Prophet replacement.
 
 ### 5.5 Ensemble
 
@@ -345,8 +329,8 @@ hangi feature'ın hangi saatte önemli olduğunu gösterir.
 
 | Faz | Modeller | Durum |
 |-----|----------|-------|
-| Faz 1 | CatBoost + Prophet | ✅ Tamamlandı |
-| Faz 2 | CatBoost + Prophet + TFT | ✅ Tamamlandı (3-model production HPO pending) |
+| Faz 1 | CatBoost + Prophet | ✅ Tamamlandı (Prophet sonradan kaldırıldı) |
+| Faz 2 | CatBoost + TFT + TSMixerx | ✅ Tamamlandı |
 
 ---
 
@@ -379,7 +363,7 @@ Split N: [█████████████████ train ████
 
 | Ayar | Değer |
 |------|-------|
-| n_trials | 50+ (CatBoost), 30 (Prophet), 20 (TFT) |
+| n_trials | 50+ (CatBoost), 20 (TFT), 20 (TSMixerx) |
 | iterations | 1000-3000 |
 
 ### 6.3 Evaluation Metrikleri
@@ -517,7 +501,7 @@ Authorization: Bearer {API_KEY}
   ],
   "metadata": {
     "model": "ensemble_v1",
-    "weights": {"catboost": 0.55, "prophet": 0.25, "tft": 0.20},
+    "weights": {"catboost": 0.48, "tft": 0.52, "tsmixerx": 0.00},
     "last_data_point": "2024-12-31T23:00:00+03:00",
     "weather_updated_at": "2025-01-01T10:00:00+03:00",
     "latency_ms": 12450
@@ -551,7 +535,7 @@ Authorization: Bearer {API_KEY}
 │           └── Model files (S3'den yükle) │
 │                                          │
 │   S3                                     │
-│       ├── models/ (.cbm, .pkl, .ckpt)    │
+│       ├── models/ (.cbm, .ckpt)           │
 │       ├── reports/                        │
 │       └── data/external/                  │
 │                                          │
@@ -589,8 +573,8 @@ configs/
 ├── api.yaml                # API: CORS, rate limit
 ├── models/
 │   ├── catboost.yaml       # CatBoost: 28 kategorik kolon, eğitim parametreleri
-│   ├── prophet.yaml        # Prophet: seasonality, holidays, 14 regressor
 │   ├── tft.yaml            # TFT: NeuralForecast architecture, training
+│   ├── tsmixerx.yaml       # TSMixerx: NeuralForecast MLP-Mixer, training
 │   ├── ensemble.yaml       # Ensemble: ağırlıklar, aktif modeller
 │   └── hyperparameters.yaml # Optuna arama uzayı (tüm modeller)
 └── features/
@@ -679,7 +663,8 @@ Commit format: `feat(scope): description` / `fix(scope): description`
 | Tahmin üretme süresi | < 30 saniye | Ölçülüyor (latency_ms metadata'da) |
 | API response time | < 60 saniye | — |
 | CatBoost Val MAPE | < %5 | Yeni HPO sonrası güncellenecek |
-| Prophet Val MAPE | < %6 | Yeni HPO sonrası güncellenecek |
+| TFT Val MAPE | < %5 | Yeni HPO sonrası güncellenecek |
+| TSMixerx Val MAPE | < %5 | Yeni HPO sonrası güncellenecek |
 | Ensemble Val MAPE | < %3 (hedef) | Yeni HPO sonrası güncellenecek |
 
 ### 11.2 Güvenilirlik
@@ -688,7 +673,7 @@ Commit format: `feat(scope): description` / `fix(scope): description`
 - API rate limiting: 10 talep/dakika (configs/api.yaml)
 - Input validation: Pandera schema ile Excel doğrulama (ConsumptionSchema, EpiasSchema, WeatherSchema)
 - Error handling: Structured error responses (JSON), JobNotFoundError → 404, Exception → 500
-- Model integrity: Prophet pickle SHA256 hash verification
+- Model integrity: NeuralForecast checkpoint verification
 
 ---
 
@@ -699,7 +684,6 @@ Commit format: `feat(scope): description` / `fix(scope): description`
 | ~~FDPP deprecated~~ | ~~EPIAS API'den artık çekilemiyor~~ | **ÇÖZÜLDÜ**: region=TR1 parametresi gerekiyormuş |
 | EPIAS duplicate timestamps | Yıllık cache dosyalarında duplicate satırlar | `df[~df.index.duplicated(keep='first')]` ile temizle |
 | Windows cp1254 codec | Unicode box-drawing karakterler encode edilemiyor | ASCII karakterler kullan |
-| Prophet cmdstanpy | Bazı ortamlarda kurulum sorunu | `pip install cmdstanpy` sonra `cmdstanpy.install_cmdstan()` |
 
 ---
 

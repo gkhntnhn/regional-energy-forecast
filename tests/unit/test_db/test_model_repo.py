@@ -33,14 +33,14 @@ class TestModelRunCRUD:
 
     def test_complete_run(self, sync_session: Session) -> None:
         repo = ModelRunRepository(sync_session)
-        run = repo.create_run("prophet")
+        run = repo.create_run("tft")
         sync_session.commit()
 
         repo.complete_run(
             run.id,
             metrics={"val_mape": 3.55, "test_mape": 3.62},
-            model_path="models/prophet/prophet_2026-03-03",
-            hyperparams={"changepoint_prior": 0.0012},
+            model_path="models/tft/tft_2026-03-03",
+            hyperparams={"hidden_size": 128},
             duration_seconds=7200,
         )
         sync_session.commit()
@@ -50,7 +50,7 @@ class TestModelRunCRUD:
         assert updated.status == "completed"
         assert updated.val_mape == pytest.approx(3.55)
         assert updated.test_mape == pytest.approx(3.62)
-        assert updated.model_path == "models/prophet/prophet_2026-03-03"
+        assert updated.model_path == "models/tft/tft_2026-03-03"
         assert updated.duration_seconds == 7200
 
     def test_fail_run(self, sync_session: Session) -> None:
@@ -97,16 +97,16 @@ class TestModelRunQueries:
     def test_get_best_by_type(self, sync_session: Session) -> None:
         repo = ModelRunRepository(sync_session)
 
-        r1 = repo.create_run("prophet")
+        r1 = repo.create_run("tft")
         sync_session.commit()
         repo.complete_run(r1.id, metrics={"test_mape": 4.0}, model_path="a")
 
-        r2 = repo.create_run("prophet")
+        r2 = repo.create_run("tft")
         sync_session.commit()
         repo.complete_run(r2.id, metrics={"test_mape": 3.2}, model_path="b")
         sync_session.commit()
 
-        best = repo.get_best_by_type("prophet")
+        best = repo.get_best_by_type("tft")
         assert best is not None
         assert best.id == r2.id
         assert best.test_mape == pytest.approx(3.2)
@@ -167,7 +167,7 @@ class TestPromoteWorkflow:
         repo.complete_run(r1.id, metrics={}, model_path="a")
         repo.promote(r1.id)
 
-        r2 = repo.create_run("prophet")
+        r2 = repo.create_run("tft")
         sync_session.commit()
         repo.complete_run(r2.id, metrics={}, model_path="b")
         repo.promote(r2.id)
@@ -176,7 +176,7 @@ class TestPromoteWorkflow:
         promoted = repo.get_promoted_models()
         assert len(promoted) == 2
         types = {r.model_type for r in promoted}
-        assert types == {"catboost", "prophet"}
+        assert types == {"catboost", "tft"}
 
     def test_promote_not_found(self, sync_session: Session) -> None:
         repo = ModelRunRepository(sync_session)

@@ -6,7 +6,6 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import numpy as np
-
 import pytest
 
 from energy_forecast.training.experiment import ExperimentTracker
@@ -125,18 +124,6 @@ class TestEnabledTracker:
         assert "split_00_val_mape" in logged
         assert "split_00_test_mae" in logged
 
-    @patch("pickle.dump")
-    def test_log_prophet_model_when_enabled(
-        self, mock_dump: MagicMock, mock_mlflow: MagicMock
-    ) -> None:
-        tracker = ExperimentTracker(enabled=False)
-        tracker._enabled = True
-        tracker._mlflow = mock_mlflow
-        model = MagicMock()
-        tracker.log_prophet_model(model, artifact_path="prophet")
-        mock_dump.assert_called_once()
-        mock_mlflow.log_artifact.assert_called_once()
-
     def test_log_tft_model_when_enabled(self, mock_mlflow: MagicMock) -> None:
         tracker = ExperimentTracker(enabled=False)
         tracker._enabled = True
@@ -150,13 +137,9 @@ class TestEnabledTracker:
         tracker = ExperimentTracker(enabled=False)
         tracker._enabled = True
         tracker._mlflow = mock_mlflow
-        weights = {"catboost": 0.6, "prophet": 0.4}
+        weights = {"catboost": 0.6, "tft": 0.4}
         tracker.log_ensemble_weights(weights)
         assert mock_mlflow.log_metric.call_count == 2
-
-    def test_disabled_log_prophet_model(self) -> None:
-        tracker = ExperimentTracker(enabled=False)
-        tracker.log_prophet_model(object())
 
     def test_disabled_log_tft_model(self) -> None:
         tracker = ExperimentTracker(enabled=False)
@@ -196,7 +179,6 @@ class TestEnabledTracker:
 
     def test_log_predictions_summary_when_enabled(self, mock_mlflow: MagicMock) -> None:
         """log_predictions_summary logs residual statistics."""
-        import numpy as np
 
         tracker = ExperimentTracker(enabled=False)
         tracker._enabled = True
@@ -226,7 +208,6 @@ class TestEnabledTracker:
         tracker.log_config_snapshot({"n_trials": 50})
 
     def test_disabled_log_predictions_summary(self) -> None:
-        import numpy as np
 
         tracker = ExperimentTracker(enabled=False)
         tracker.log_predictions_summary(np.array([1.0]), np.array([1.0]))

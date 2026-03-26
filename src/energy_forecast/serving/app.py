@@ -139,14 +139,14 @@ def _init_services(app: FastAPI, settings: Any) -> None:
 
     if use_final:
         catboost_path = final_dir / "catboost" / "model.cbm"
-        prophet_path = final_dir / "prophet" / "prophet_model.pkl"
         tft_path = final_dir / "tft"
+        tsmixerx_path = final_dir / "tsmixerx"
         ensemble_dir: Path | None = final_dir / "ensemble"
         logger.info("Serving from final_models/ directory")
     else:
         catboost_path = models_dir / "catboost" / "model.cbm"
-        prophet_path = models_dir / "prophet" / "prophet_model.pkl"
         tft_path = models_dir / "tft"
+        tsmixerx_path = models_dir / "tsmixerx"
         ensemble_dir = models_dir / "ensemble"
         logger.info("Serving from models/ directory")
 
@@ -163,8 +163,8 @@ def _init_services(app: FastAPI, settings: Any) -> None:
         PredictionServiceConfig(
             models_dir=models_dir,
             catboost_path=catboost_path,
-            prophet_path=prophet_path,
             tft_path=tft_path,
+            tsmixerx_path=tsmixerx_path,
             ensemble_dir=ensemble_dir,
         ),
         settings,
@@ -200,9 +200,7 @@ def _init_database(app: FastAPI, settings: Any) -> None:
         app.state.use_db = True
         parsed = urlparse(settings.env.database_url)
         masked_url = urlunparse(
-            parsed._replace(
-                netloc=f"{parsed.username}:***@{parsed.hostname}:{parsed.port}"
-            )
+            parsed._replace(netloc=f"{parsed.username}:***@{parsed.hostname}:{parsed.port}")
         )
         logger.info("Database connected: {}", masked_url)
     else:
@@ -240,9 +238,7 @@ async def _cleanup_stuck_jobs(app: FastAPI) -> None:
         logger.warning("Startup cleanup failed: {}", e)
 
 
-def _start_scheduler(
-    app: FastAPI, settings: Any
-) -> Any:
+def _start_scheduler(app: FastAPI, settings: Any) -> Any:
     """Start weather actuals scheduler with crash recovery (DB mode only)."""
     if not app.state.use_db:
         return None
@@ -265,11 +261,11 @@ def _start_scheduler(
             if _restart_count <= _max_restarts:
                 logger.error(
                     "Weather scheduler crashed (restart {}/{}): {}",
-                    _restart_count, _max_restarts, exc,
+                    _restart_count,
+                    _max_restarts,
+                    exc,
                 )
-                _task = asyncio.create_task(
-                    run_scheduler(app.state.session_factory, settings)
-                )
+                _task = asyncio.create_task(run_scheduler(app.state.session_factory, settings))
                 _task.add_done_callback(_on_done)
             else:
                 logger.critical(
@@ -794,8 +790,18 @@ async def download_file(
 # This eliminates the need to add explicit routes for each frontend page.
 # API path prefixes — never serve SPA for these (let 404 pass through)
 _API_PREFIXES = (
-    "/health", "/predict", "/status/", "/jobs", "/models", "/files/", "/docs",
-    "/openapi", "/admin/analytics", "/admin/jobs", "/admin/models", "/admin/system",
+    "/health",
+    "/predict",
+    "/status/",
+    "/jobs",
+    "/models",
+    "/files/",
+    "/docs",
+    "/openapi",
+    "/admin/analytics",
+    "/admin/jobs",
+    "/admin/models",
+    "/admin/system",
     "/internal/",
 )
 

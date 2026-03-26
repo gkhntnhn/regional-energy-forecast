@@ -1,4 +1,4 @@
-.PHONY: install test lint format serve train-catboost train-prophet train-tft train-ensemble prepare-data clean generate-holidays backfill-epias db-up db-down db-migrate db-revision db-downgrade fetch-weather-actuals db-backup promote-model cleanup-old-data cleanup-dry-run seed-db seed-db-full seed-weather seed-all export-weather db-reset mlflow-up mlflow-logs frontend-dev frontend-build help
+.PHONY: install test lint format serve train-catboost train-tft train-tsmixerx train-ensemble prepare-data clean generate-holidays backfill-epias db-up db-down db-migrate db-revision db-downgrade fetch-weather-actuals db-backup promote-model cleanup-old-data cleanup-dry-run seed-db seed-db-full seed-weather seed-all export-weather db-reset mlflow-up mlflow-logs frontend-dev frontend-build help
 
 install: ## Install dependencies
 	uv sync --all-extras
@@ -20,11 +20,11 @@ serve: ## Start FastAPI dev server
 train-catboost: ## Train CatBoost model
 	uv run python -m energy_forecast.training.run --model catboost
 
-train-prophet: ## Train Prophet model
-	uv run python -m energy_forecast.training.run --model prophet
-
 train-tft: ## Train TFT model
 	uv run python -m energy_forecast.training.run --model tft
+
+train-tsmixerx: ## Train TSMixerx model
+	uv run python -m energy_forecast.training.run --model tsmixerx
 
 train-ensemble: ## Train ensemble (all models + weight optimization)
 	uv run python -m energy_forecast.training.run --model ensemble

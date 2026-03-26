@@ -37,8 +37,8 @@ class PredictionServiceConfig(BaseModel, frozen=True):
 
     models_dir: Path = Field(default=Path("models"))
     catboost_path: Path = Field(default=Path("models/catboost/model.cbm"))
-    prophet_path: Path = Field(default=Path("models/prophet"))
     tft_path: Path = Field(default=Path("models/tft"))
+    tsmixerx_path: Path = Field(default=Path("models/tsmixerx"))
     ensemble_dir: Path | None = Field(default=None)
     forecast_horizon: int = Field(default=48, ge=1)
 
@@ -108,11 +108,10 @@ class PredictionService:
                 "active_models": list(self._settings.ensemble.active_models),
                 "weights": {
                     "catboost": self._settings.ensemble.weights.catboost,
-                    "prophet": self._settings.ensemble.weights.prophet,
                     "tft": self._settings.ensemble.weights.tft,
+                    "tsmixerx": self._settings.ensemble.weights.tsmixerx,
                 },
                 "target_col": "consumption",
-                "prophet_regressors": [r.name for r in self._settings.prophet.regressors],
             }
             self._ensemble = EnsembleForecaster(ensemble_config)
 
@@ -131,10 +130,10 @@ class PredictionService:
                 catboost_path=self._config.catboost_path
                 if self._config.catboost_path.exists()
                 else None,
-                prophet_path=self._config.prophet_path
-                if self._config.prophet_path.exists()
-                else None,
                 tft_path=self._config.tft_path if self._config.tft_path.exists() else None,
+                tsmixerx_path=self._config.tsmixerx_path
+                if self._config.tsmixerx_path.exists()
+                else None,
             )
 
             self._models_loaded = True
@@ -236,9 +235,7 @@ class PredictionService:
             # Shared constant — only weather columns, never consumption/EPIAS
             from energy_forecast.utils import WEATHER_FILL_PREFIXES
 
-            weather_cols = [
-                c for c in merged_df.columns if c.startswith(WEATHER_FILL_PREFIXES)
-            ]
+            weather_cols = [c for c in merged_df.columns if c.startswith(WEATHER_FILL_PREFIXES)]
             if weather_cols:
                 merged_df[weather_cols] = merged_df[weather_cols].ffill()
             cat_weather_cols = [
@@ -496,8 +493,8 @@ class PredictionService:
             },
             "model_versions": {
                 "catboost": str(self._config.catboost_path),
-                "prophet": str(self._config.prophet_path),
                 "tft": str(self._config.tft_path),
+                "tsmixerx": str(self._config.tsmixerx_path),
             },
         }
 

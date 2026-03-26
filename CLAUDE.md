@@ -1,7 +1,7 @@
 # Energy Forecast
 
 Uludağ elektrik dağıtım bölgesi (Bursa, Balıkesir, Yalova, Çanakkale) saatlik elektrik tüketimi tahmin sistemi.
-CatBoost + Prophet + TFT ensemble, 48 saat ileri (T + T+1), FastAPI serving, AWS deploy.
+CatBoost + TFT + TSMixerx ensemble, 48 saat ileri (T + T+1), FastAPI serving, AWS deploy.
 
 ## Referans Proje
 Eski proje: C:\Users\pc\Desktop\distributed-energy-forecasting\
@@ -44,8 +44,8 @@ make help                 # Tüm target'ları listele
 
 # Training
 make train-catboost       # CatBoost eğitimi
-make train-prophet        # Prophet eğitimi
 make train-tft            # TFT eğitimi
+make train-tsmixerx       # TSMixerx eğitimi
 make train-ensemble       # Ensemble eğitimi
 ```
 
@@ -59,12 +59,12 @@ make train-ensemble       # Ensemble eğitimi
 uv run python -m energy_forecast.training.run --model catboost
 
 # Önemli flag'ler:
-#   --model {catboost,prophet,tft,ensemble}  # Zorunlu
-#   --config path/to/override.yaml           # Override config (opsiyonel)
-#   --no-mlflow                              # MLflow tracking devre dışı
-#   --n-trials 5                             # Optuna trial sayısı override
-#   --models catboost,prophet                # Ensemble için aktif modeller
-#   --data path/to/features.parquet          # Özel data path
+#   --model {catboost,tft,tsmixerx,ensemble}  # Zorunlu
+#   --config path/to/override.yaml            # Override config (opsiyonel)
+#   --no-mlflow                               # MLflow tracking devre dışı
+#   --n-trials 5                              # Optuna trial sayısı override
+#   --models catboost,tft                     # Ensemble için aktif modeller
+#   --data path/to/features.parquet           # Özel data path
 ```
 
 ## Kod Stili
@@ -88,7 +88,7 @@ uv run python -m energy_forecast.training.run --model catboost
 - Ham EPIAS değerleri pipeline çıkışında her zaman DROP
 - PREDICTION_COL = "consumption_mwh" — tüm modellerin standart output kolon ismi
 - CatBoost categorical_features: 35 adet (catboost.yaml'da tanımlı, 6 grup: Time, Holiday, Interaction, Time-period, Weather, Season/Solar)
-- Prophet regressors: 12 adet (prophet.yaml'da tanımlı, her biri mode bilgisiyle)
+- TSMixerx covariates: 13 adet (tsmixerx.yaml'da tanımlı, NeuralForecast framework)
 - Ensemble ağırlık optimizasyonu: MAPE(y, Σwᵢ·predᵢ) — blended predictions üzerinden
 - TimeSeriesSplitter: shuffle=True → ValueError (zaman serisi CV'de shuffle yasak)
 
@@ -135,7 +135,6 @@ Bu sayede consumption_lag_720 gibi uzun lag'ler forecast'ta doğru hesaplanır.
 ## Güvenlik
 - API: Bearer token authentication (tüm endpoint'ler, /health hariç)
 - API key karşılaştırma: secrets.compare_digest() (timing-safe)
-- Prophet model: pickle SHA256 hash verification (save/load)
 - CORS: config-driven origins (settings.api.cors_origins), wildcard + credentials uyarı logu
 - Timezone: Tüm datetime.now() → datetime.now(tz=TZ_ISTANBUL)
 
@@ -168,8 +167,8 @@ configs/
 ├── api.yaml                # API config (CORS, rate limit)
 ├── models/
 │   ├── catboost.yaml       # CatBoost model config (35 kategorik feature)
-│   ├── prophet.yaml        # Prophet model config (12 regressor)
 │   ├── tft.yaml            # TFT model config (NeuralForecast)
+│   ├── tsmixerx.yaml       # TSMixerx model config (NeuralForecast)
 │   ├── ensemble.yaml       # Ensemble config
 │   └── hyperparameters.yaml # Optuna arama uzayı
 └── features/
@@ -181,7 +180,6 @@ configs/
 
 .github/workflows/ci.yml    # CI pipeline (ruff + mypy + pytest)
 .mailmap                     # Git author normalization
-src/energy_forecast/utils/prophet_utils.py  # Shared to_prophet_format (DRY)
 ```
 
 ## Model Performansı
@@ -195,7 +193,6 @@ src/energy_forecast/utils/prophet_utils.py  # Shared to_prophet_format (DRY)
 | ~~FDPP deprecated~~ | ~~EPIAS API'den artık çekilemiyor~~ | **ÇÖZÜLDÜ**: `region=TR1` parametresi gerekiyormuş, endpoint aktif |
 | EPIAS duplicate timestamps | Cache'te duplicate satırlar olabiliyor | `~df.index.duplicated(keep='first')` ile temizle |
 | Windows cp1254 codec | Unicode box-drawing karakterler çalışmaz | ASCII karakterler kullan |
-| Prophet cmdstanpy | Bazı ortamlarda kurulum sorunu | `pip install cmdstanpy` sonra `cmdstanpy.install_cmdstan()` |
 
 ## Detaylı Bilgi
 @SPEC.md — Proje spesifikasyonu (forecast akışı, model mimarisi, API tasarımı)
@@ -209,9 +206,9 @@ src/energy_forecast/utils/prophet_utils.py  # Shared to_prophet_format (DRY)
 - [x] M3: Feature engineering (5 modül + pipeline orkestratör)
 - [x] M4: Leakage audit
 - [x] M5: CatBoost training (TSCV + Optuna + MLflow)
-- [x] M6: Prophet training (TSCV + Optuna + MLflow)
+- [x] M6: ~~Prophet training~~ Prophet removed, replaced by TSMixerx
 - [x] M7: 2-model ensemble (Faz 1 tamamlanır)
 - [x] M8: TFT training (TSCV + Optuna + MLflow)
-- [x] M9: 3-model ensemble (Faz 2 tamamlanır)
+- [x] M9: 3-model ensemble — CatBoost + TFT + TSMixerx (Faz 2 tamamlanır)
 - [x] M10: API serving (FastAPI + async job processing)
 - [ ] M11: Docker + CI/CD (AWS deploy)

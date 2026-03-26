@@ -208,9 +208,7 @@ class TestEmailService:
         sample_attachment: Path,
     ) -> None:
         """Generic exception in send wraps to EmailDeliveryError."""
-        mock_smtp.return_value.__enter__ = MagicMock(
-            side_effect=RuntimeError("unexpected")
-        )
+        mock_smtp.return_value.__enter__ = MagicMock(side_effect=RuntimeError("unexpected"))
 
         with pytest.raises(EmailDeliveryError, match="Failed to send email"):
             email_service.send_prediction_result(

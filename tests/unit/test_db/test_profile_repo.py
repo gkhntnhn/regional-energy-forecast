@@ -8,7 +8,6 @@ from __future__ import annotations
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pandas as pd
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -34,14 +33,23 @@ class TestBulkUpsert:
             mock_stmt = MagicMock()
             mock_pg.return_value = mock_stmt
             mock_stmt.on_conflict_do_update.return_value = mock_stmt
-            mock_stmt.excluded = {col: col for col in [
-                "profile_residential_lv", "fetched_at",
-            ]}
+            mock_stmt.excluded = {
+                col: col
+                for col in [
+                    "profile_residential_lv",
+                    "fetched_at",
+                ]
+            }
 
             repo = ProfileRepository(mock_session)
-            count = await repo.bulk_upsert([
-                {"datetime": datetime(2026, 1, 1, tzinfo=TZ_ISTANBUL), "profile_residential_lv": 1.0},
-            ])
+            count = await repo.bulk_upsert(
+                [
+                    {
+                        "datetime": datetime(2026, 1, 1, tzinfo=TZ_ISTANBUL),
+                        "profile_residential_lv": 1.0,
+                    },
+                ]
+            )
 
         assert count == 1
         mock_session.execute.assert_awaited_once()

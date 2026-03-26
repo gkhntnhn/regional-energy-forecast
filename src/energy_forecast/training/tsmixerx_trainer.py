@@ -1,13 +1,9 @@
-"""TFT training pipeline: TSCV + Optuna + MLflow.
+"""TSMixerx training pipeline: TSCV + Optuna + MLflow.
 
 Orchestrates hyperparameter optimization via Optuna, cross-validated
 training on calendar-month splits, and final model training on all data.
 
-Uses the same shared infrastructure as CatBoostTrainer and ProphetTrainer:
-- TimeSeriesSplitter for calendar-month TSCV
-- suggest_params for dynamic Optuna search space
-- compute_all / MetricsResult for metrics
-- ExperimentTracker for MLflow logging
+Follows the same pattern as TFTTrainer using shared M5 infrastructure.
 """
 
 from __future__ import annotations
@@ -35,46 +31,43 @@ from optuna.samplers import TPESampler
 os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
 from energy_forecast.config import Settings
-from energy_forecast.models.tft import TFTForecaster
+from energy_forecast.models.tsmixerx import TSMixerxForecaster
 from energy_forecast.training.experiment import ExperimentTracker
 from energy_forecast.training.metrics import compute_all
-from energy_forecast.training.results import SplitResult as TFTSplitResult
+from energy_forecast.training.results import SplitResult as TSMixerxSplitResult
 from energy_forecast.training.search import suggest_params
 from energy_forecast.training.splitter import SplitInfo, TimeSeriesSplitter
 from energy_forecast.training.utils import optuna_storage
 
 
 @dataclass(frozen=True)
-class TFTTrainingResult:
+class TSMixerxTrainingResult:
     """Aggregated result across all CV splits."""
 
-    split_results: list[TFTSplitResult]
+    split_results: list[TSMixerxSplitResult]
     avg_val_mape: float
     avg_test_mape: float
     std_val_mape: float
 
 
 @dataclass(frozen=True)
-class TFTPipelineResult:
+class TSMixerxPipelineResult:
     """Full training pipeline result."""
 
     study: Study
     best_params: dict[str, Any]
-    training_result: TFTTrainingResult
-    final_model: TFTForecaster
+    training_result: TSMixerxTrainingResult
+    final_model: TSMixerxForecaster
     training_time_seconds: float
 
 
 # ---------------------------------------------------------------------------
-# TFTTrainer
+# TSMixerxTrainer
 # ---------------------------------------------------------------------------
 
 
-class TFTTrainer:
-    """TFT training pipeline with TSCV, Optuna, and MLflow.
-
-    Follows the same pattern as CatBoostTrainer and ProphetTrainer,
-    using shared M5 infrastructure.
+class TSMixerxTrainer:
+    """TSMixerx training pipeline with TSCV, Optuna, and MLflow.
 
     Args:
         settings: Full application settings.
@@ -87,9 +80,9 @@ class TFTTrainer:
         tracker: ExperimentTracker | None = None,
     ) -> None:
         self._settings = settings
-        self._tft_config = settings.tft
+        self._tsmixerx_config = settings.tsmixerx
         self._hp_config = settings.hyperparameters
-        self._search_config = settings.hyperparameters.tft
+        self._search_config = settings.hyperparameters.tsmixerx
         self._tracker = tracker or ExperimentTracker(enabled=False)
         self._splitter = TimeSeriesSplitter.from_config(settings.hyperparameters.cross_validation)
         self._target_col = settings.hyperparameters.target_col
@@ -105,65 +98,58 @@ class TFTTrainer:
             self._settings.paths.models_dir,
         )
 
-    # -- Build TFT config with overrides --
+    # -- Build TSMixerx config with overrides --
 
-    def _build_tft_config(self, params: dict[str, Any]) -> Any:
-        """Build TFT config with Optuna-suggested parameters.
+    def _build_tsmixerx_config(self, params: dict[str, Any]) -> Any:
+        """Build TSMixerx config with Optuna-suggested parameters.
 
         Args:
             params: Suggested hyperparameters from Optuna.
 
         Returns:
-            Updated TFTConfig.
+            Updated TSMixerxConfig.
         """
         from energy_forecast.config import (
-            TFTArchitectureConfig,
-            TFTConfig,
-            TFTCovariatesConfig,
-            TFTTrainingConfig,
+            TSMixerxArchitectureConfig,
+            TSMixerxConfig,
+            TSMixerxCovariatesConfig,
+            TSMixerxTrainingConfig,
         )
 
-        base = self._tft_config
+        base = self._tsmixerx_config
 
-        # Override architecture params (NeuralForecast naming)
         arch_params = {
-            "hidden_size": params.get("hidden_size", base.architecture.hidden_size),
-            "n_head": params.get("n_head", base.architecture.n_head),
-            "n_rnn_layers": params.get("n_rnn_layers", base.architecture.n_rnn_layers),
+            "n_block": params.get("n_block", base.architecture.n_block),
+            "ff_dim": params.get("ff_dim", base.architecture.ff_dim),
             "dropout": params.get("dropout", base.architecture.dropout),
+            "input_size": base.architecture.input_size,
+            "revin": base.architecture.revin,
         }
 
-        # Override training params (carry ALL fields from base config)
         train_params = {
-            "encoder_length": base.training.encoder_length,
             "prediction_length": base.training.prediction_length,
+            "max_steps": params.get("max_steps", base.training.max_steps),
             "windows_batch_size": params.get(
                 "windows_batch_size", base.training.windows_batch_size
             ),
-            "max_steps": base.training.max_steps,
             "step_size": base.training.step_size,
             "learning_rate": params.get("learning_rate", base.training.learning_rate),
             "early_stop_patience_steps": base.training.early_stop_patience_steps,
             "val_check_steps": base.training.val_check_steps,
-            "gradient_clip_val": base.training.gradient_clip_val,
             "random_seed": base.training.random_seed,
             "accelerator": base.training.accelerator,
             "num_workers": base.training.num_workers,
             "enable_progress_bar": base.training.enable_progress_bar,
-            "precision": base.training.precision,
             "scaler_type": base.training.scaler_type,
-            "rnn_type": base.training.rnn_type,
         }
 
-        return TFTConfig(
-            architecture=TFTArchitectureConfig(**arch_params),
-            training=TFTTrainingConfig(**train_params),
-            covariates=TFTCovariatesConfig(
-                time_varying_known=list(base.covariates.time_varying_known),
-                time_varying_unknown=list(base.covariates.time_varying_unknown),
+        return TSMixerxConfig(
+            architecture=TSMixerxArchitectureConfig(**arch_params),
+            training=TSMixerxTrainingConfig(**train_params),
+            covariates=TSMixerxCovariatesConfig(
+                futr_exog=list(base.covariates.futr_exog),
+                hist_exog=list(base.covariates.hist_exog),
             ),
-            quantiles=list(base.quantiles),
-            loss=base.loss,
         )
 
     # -- Single split training --
@@ -177,8 +163,8 @@ class TFTTrainer:
         params: dict[str, Any],
         max_steps: int | None = None,
         trial: Trial | None = None,
-    ) -> TFTSplitResult:
-        """Train TFT on a single CV split.
+    ) -> TSMixerxSplitResult:
+        """Train TSMixerx on a single CV split.
 
         Args:
             split_info: Split boundary information.
@@ -190,24 +176,17 @@ class TFTTrainer:
             trial: Optuna trial for step-level pruning callback.
 
         Returns:
-            TFTSplitResult with metrics.
-
-        Raises:
-            TrialPruned: When step-level pruning determines the trial is unpromising.
+            TSMixerxSplitResult with metrics.
         """
-        # Build config with suggested params
-        tft_config = self._build_tft_config(params)
+        config = self._build_tsmixerx_config(params)
 
-        # Create pruning callback for step-level Optuna integration
-        # NeuralForecast reports "valid_loss" (not "val_loss")
         callbacks: list[Any] = []
         if trial is not None:
             from optuna.integration import PyTorchLightningPruningCallback
 
             callbacks.append(PyTorchLightningPruningCallback(trial, monitor="valid_loss"))
 
-        # Create and train model (try/finally ensures GPU memory cleanup on pruning)
-        model = TFTForecaster(tft_config)
+        model = TSMixerxForecaster(config)
         try:
             model.train(
                 train_df,
@@ -217,11 +196,10 @@ class TFTTrainer:
                 callbacks=callbacks or None,
             )
 
-            # Predictions
-            # Train: last 48h is sufficient (quick sanity metric)
+            # Train: last 48h (quick sanity metric)
             train_pred = model.predict(train_df, target_col=self._target_col)
 
-            # Val: rolling prediction — covers full validation period
+            # Val: rolling prediction
             train_val_df = pd.concat([train_df, val_df])
             val_pred = model.rolling_predict(
                 train_val_df,
@@ -230,7 +208,7 @@ class TFTTrainer:
                 target_col=self._target_col,
             )
 
-            # Test: rolling prediction — covers full test period
+            # Test: rolling prediction
             full_df = pd.concat([train_df, val_df, test_df])
             test_pred = model.rolling_predict(
                 full_df,
@@ -239,24 +217,19 @@ class TFTTrainer:
                 target_col=self._target_col,
             )
         finally:
-            # Free GPU/CPU memory from this fold's model
             del model
             gc.collect()
-            # empty_cache evicts ALL GPU cache — unsafe when parallel threads share
-            # the same CUDA context (n_jobs > 1).  Let PyTorch manage memory instead.
-            if torch.cuda.is_available() and self._tft_config.optimization.n_jobs <= 1:
+            if torch.cuda.is_available() and self._tsmixerx_config.optimization.n_jobs <= 1:
                 torch.cuda.empty_cache()
 
         # Align predictions with actuals
+        from energy_forecast.models.base import PREDICTION_COL
+
         y_train = np.asarray(
             train_df[self._target_col].values[-len(train_pred) :], dtype=np.float64
         )
-
-        from energy_forecast.models.base import PREDICTION_COL
-
         train_pred_arr = np.asarray(train_pred[PREDICTION_COL].values, dtype=np.float64)
 
-        # Val/test: align actuals to rolling prediction index
         val_common_idx = val_pred.index.intersection(val_df.index)
         y_val = np.asarray(val_df.loc[val_common_idx, self._target_col].values, dtype=np.float64)
         val_pred_arr = np.asarray(
@@ -269,7 +242,7 @@ class TFTTrainer:
             test_pred.loc[test_common_idx, PREDICTION_COL].values, dtype=np.float64
         )
 
-        return TFTSplitResult(
+        return TSMixerxSplitResult(
             split_idx=split_info.split_idx,
             train_metrics=compute_all(y_train, train_pred_arr),
             val_metrics=compute_all(y_val, val_pred_arr),
@@ -289,7 +262,7 @@ class TFTTrainer:
         df: pd.DataFrame,
         params: dict[str, Any],
         max_steps: int | None = None,
-    ) -> TFTTrainingResult:
+    ) -> TSMixerxTrainingResult:
         """Train on all TSCV splits and aggregate results.
 
         Args:
@@ -298,9 +271,9 @@ class TFTTrainer:
             max_steps: Override max training steps.
 
         Returns:
-            TFTTrainingResult with aggregated metrics.
+            TSMixerxTrainingResult with aggregated metrics.
         """
-        results: list[TFTSplitResult] = []
+        results: list[TSMixerxSplitResult] = []
 
         for info, train_df, val_df, test_df in self._splitter.iter_splits(df):
             result = self._train_split(info, train_df, val_df, test_df, params, max_steps)
@@ -317,30 +290,25 @@ class TFTTrainer:
         val_mapes = [r.val_metrics.mape for r in results]
         test_mapes = [r.test_metrics.mape for r in results]
 
-        return TFTTrainingResult(
+        return TSMixerxTrainingResult(
             split_results=results,
             avg_val_mape=float(np.mean(val_mapes)),
             avg_test_mape=float(np.mean(test_mapes)),
             std_val_mape=float(np.std(val_mapes)),
         )
 
-    # -- Optuna objective (dynamic from YAML) --
+    # -- Optuna objective --
 
     def _create_objective(
         self,
         df: pd.DataFrame,
-    ) -> tuple[Callable[[Trial], float], dict[int, list[TFTSplitResult]]]:
+    ) -> tuple[Callable[[Trial], float], dict[int, list[TSMixerxSplitResult]]]:
         """Create Optuna objective using dynamic YAML search space.
-
-        Uses ``optuna_splits`` CV splits with step-level pruning via
-        ``PyTorchLightningPruningCallback``.  All trials train at full
-        ``max_steps``; bad trials are pruned early by the MedianPruner
-        based on ``valid_loss`` reported every ``val_check_steps``.
 
         Returns:
             Tuple of (objective function, trial split results cache).
         """
-        n_optuna_splits = self._tft_config.optimization.optuna_splits
+        n_optuna_splits = self._tsmixerx_config.optimization.optuna_splits
         search_space = self._search_config.search_space
 
         all_splits = list(self._splitter.iter_splits(df))
@@ -348,7 +316,6 @@ class TFTTrainer:
             msg = "No CV splits available"
             raise ValueError(msg)
 
-        # Use up to n_optuna_splits, evenly spaced across available splits
         if n_optuna_splits >= len(all_splits):
             selected_splits = all_splits
         else:
@@ -356,19 +323,19 @@ class TFTTrainer:
             selected_splits = [all_splits[i] for i in indices]
 
         logger.info(
-            "TFT Optuna: using {}/{} CV splits, step-level pruning active",
+            "TSMixerx Optuna: using {}/{} CV splits, step-level pruning active",
             len(selected_splits),
             len(all_splits),
         )
 
-        trial_results: dict[int, list[TFTSplitResult]] = {}
+        trial_results: dict[int, list[TSMixerxSplitResult]] = {}
         cache_lock = threading.Lock()
 
         def objective(trial: Trial) -> float:
             suggested = suggest_params(trial, search_space)
             val_mapes: list[float] = []
             test_mapes: list[float] = []
-            split_results: list[TFTSplitResult] = []
+            split_results: list[TSMixerxSplitResult] = []
 
             for _fold_idx, (info, train_df, val_df, test_df) in enumerate(selected_splits):
                 try:
@@ -403,33 +370,33 @@ class TFTTrainer:
     def optimize(
         self,
         df: pd.DataFrame,
-    ) -> tuple[Study, TFTTrainingResult]:
+    ) -> tuple[Study, TSMixerxTrainingResult]:
         """Run Optuna hyperparameter optimization.
 
         Args:
             df: Feature-engineered DataFrame.
 
         Returns:
-            Tuple of (study, best_trial_result trained on all splits).
+            Tuple of (study, best_trial_result).
         """
-        storage = self._optuna_storage("tft")
+        storage = self._optuna_storage("tsmixerx")
         study = create_study(
-            study_name="tft",
+            study_name="tsmixerx",
             direction="minimize",
             storage=storage,
             load_if_exists=True,
-            sampler=TPESampler(seed=self._tft_config.training.random_seed),
+            sampler=TPESampler(seed=self._tsmixerx_config.training.random_seed),
             pruner=MedianPruner(
-                n_startup_trials=2,  # First 2 trials run uninterrupted (reference)
-                n_warmup_steps=3,  # First 3 val checks per trial safe (model stabilization)
+                n_startup_trials=2,
+                n_warmup_steps=3,
             ),
         )
 
         objective, trial_results = self._create_objective(df)
 
-        n_jobs = self._tft_config.optimization.n_jobs
+        n_jobs = self._tsmixerx_config.optimization.n_jobs
         logger.info(
-            "TFT Optuna: {} trials, {} parallel job(s)",
+            "TSMixerx Optuna: {} trials, {} parallel job(s)",
             self._search_config.n_trials,
             n_jobs,
         )
@@ -441,13 +408,11 @@ class TFTTrainer:
             study.best_params,
         )
 
-        # Step-level pruning means all trials run at max_steps, so the best
-        # trial's cached results are production-quality — no retrain needed.
         best_trial_num = study.best_trial.number
 
         if best_trial_num in trial_results:
             cached_splits = trial_results[best_trial_num]
-            best_result = TFTTrainingResult(
+            best_result = TSMixerxTrainingResult(
                 split_results=cached_splits,
                 avg_val_mape=study.best_value,
                 avg_test_mape=float(study.best_trial.user_attrs.get("avg_test_mape", float("nan"))),
@@ -456,7 +421,7 @@ class TFTTrainer:
             logger.info("Using cached predictions from trial {}", best_trial_num)
         elif self._skip_validation:
             logger.info("Skipping post-Optuna validation (skip_validation_after_optuna=true)")
-            best_result = TFTTrainingResult(
+            best_result = TSMixerxTrainingResult(
                 split_results=[],
                 avg_val_mape=study.best_value,
                 avg_test_mape=float(study.best_trial.user_attrs.get("avg_test_mape", float("nan"))),
@@ -474,20 +439,17 @@ class TFTTrainer:
         self,
         df: pd.DataFrame,
         params: dict[str, Any],
-    ) -> TFTForecaster:
+    ) -> TSMixerxForecaster:
         """Train final model on all data with best params.
-
-        Uses last portion of data as validation for early stopping.
 
         Args:
             df: Full dataset.
             params: Best hyperparameters from optimization.
 
         Returns:
-            Trained TFTForecaster.
+            Trained TSMixerxForecaster.
         """
-        # Use configured validation size
-        val_size = self._tft_config.optimization.val_size_hours
+        val_size = self._tsmixerx_config.optimization.val_size_hours
         if len(df) > val_size * 2:
             train_df = df.iloc[:-val_size]
             val_df = df.iloc[-val_size:]
@@ -495,11 +457,11 @@ class TFTTrainer:
             train_df = df
             val_df = None
 
-        tft_config = self._build_tft_config(params)
-        model = TFTForecaster(tft_config)
+        config = self._build_tsmixerx_config(params)
+        model = TSMixerxForecaster(config)
         model.train(train_df, val_df, target_col=self._target_col)
 
-        logger.info("Final TFT model trained on {} samples", len(df))
+        logger.info("Final TSMixerx model trained on {} samples", len(df))
         return model
 
     # -- Full pipeline --
@@ -507,22 +469,21 @@ class TFTTrainer:
     def run(
         self,
         df: pd.DataFrame,
-    ) -> TFTPipelineResult:
+    ) -> TSMixerxPipelineResult:
         """Execute full training pipeline: optimize + final model + MLflow.
 
         Args:
             df: Feature-engineered DataFrame (pipeline output).
 
         Returns:
-            TFTPipelineResult with study, final model, and metrics.
+            TSMixerxPipelineResult with study, final model, and metrics.
         """
         start = time.monotonic()
 
-        with self._tracker.start_run("tft_optimization"):
+        with self._tracker.start_run("tsmixerx_optimization"):
             study, best_result = self.optimize(df)
             self._tracker.log_params(study.best_params)
 
-            # Compute std_test_mape from split results
             test_mapes = [sr.test_metrics.mape for sr in best_result.split_results]
             std_test_mape = float(np.std(test_mapes)) if test_mapes else 0.0
 
@@ -536,7 +497,10 @@ class TFTTrainer:
             )
             for sr in best_result.split_results:
                 self._tracker.log_split_metrics(
-                    sr.split_idx, sr.train_metrics, sr.val_metrics, sr.test_metrics
+                    sr.split_idx,
+                    sr.train_metrics,
+                    sr.val_metrics,
+                    sr.test_metrics,
                 )
 
             self._tracker.log_training_meta(
@@ -551,46 +515,49 @@ class TFTTrainer:
                 }
             )
             self._tracker.log_config_snapshot(
-                self._tft_config.model_dump(),
-                "tft_config.yaml",
+                self._tsmixerx_config.model_dump(),
+                "tsmixerx_config.yaml",
             )
             self._tracker.log_params(
                 {
-                    "futr_exog_list": ",".join(self._tft_config.covariates.time_varying_known),
-                    "hist_exog_list": ",".join(self._tft_config.covariates.time_varying_unknown),
+                    "futr_exog_list": ",".join(self._tsmixerx_config.covariates.futr_exog),
+                    "hist_exog_list": ",".join(self._tsmixerx_config.covariates.hist_exog),
                 }
             )
 
-        with self._tracker.start_run("tft_final"):
+        with self._tracker.start_run("tsmixerx_final"):
             final_model = self.train_final(df, study.best_params)
 
-            # Save model to fixed directory (overwrite previous)
-            model_dir = Path(self._settings.paths.models_dir) / "tft"
+            model_dir = Path(self._settings.paths.models_dir) / "tsmixerx"
             model_dir.mkdir(parents=True, exist_ok=True)
             final_model.save(model_dir)
             logger.info("Model saved to {}", model_dir)
-
-            self._tracker.log_tft_model(final_model, "tft_model")
 
             elapsed = time.monotonic() - start
             self._tracker.log_training_meta(
                 {"training_time_seconds": elapsed},
             )
 
-        logger.info("TFT pipeline complete in {:.1f}s", elapsed)
+        logger.info("TSMixerx pipeline complete in {:.1f}s", elapsed)
 
         # Save OOF cache for ensemble
-        from energy_forecast.training.oof_cache import compute_config_hash, save_oof_cache
+        from energy_forecast.training.oof_cache import (
+            compute_config_hash,
+            save_oof_cache,
+        )
 
         try:
-            config_hash = compute_config_hash(self._settings, "tft")
+            config_hash = compute_config_hash(self._settings, "tsmixerx")
             save_oof_cache(
-                "tft", best_result.split_results, self._settings.paths.models_dir, config_hash
+                "tsmixerx",
+                best_result.split_results,
+                self._settings.paths.models_dir,
+                config_hash,
             )
         except Exception as e:
             logger.warning("Failed to save OOF cache (non-fatal): {}", e)
 
-        return TFTPipelineResult(
+        return TSMixerxPipelineResult(
             study=study,
             best_params=study.best_params,
             training_result=best_result,

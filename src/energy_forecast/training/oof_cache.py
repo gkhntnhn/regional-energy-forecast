@@ -224,8 +224,8 @@ def compute_config_hash(settings: Any, model_name: str) -> str:
     # Model-specific config
     model_config_map: dict[str, Any] = {
         "catboost": settings.catboost,
-        "prophet": settings.prophet,
         "tft": settings.tft,
+        "tsmixerx": settings.tsmixerx,
     }
     if model_name in model_config_map:
         parts.append(model_config_map[model_name].model_dump())
@@ -233,8 +233,8 @@ def compute_config_hash(settings: Any, model_name: str) -> str:
     # Hyperparameter search space
     hp_map: dict[str, Any] = {
         "catboost": settings.hyperparameters.catboost,
-        "prophet": settings.hyperparameters.prophet,
         "tft": settings.hyperparameters.tft,
+        "tsmixerx": settings.hyperparameters.tsmixerx,
     }
     if model_name in hp_map:
         parts.append(hp_map[model_name].model_dump())

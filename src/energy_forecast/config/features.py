@@ -492,9 +492,7 @@ class GenerationCompositesConfig(BaseModel, frozen=True):
 
     enabled: bool = True
     renewable_vars: list[str] = Field(default_factory=list)
-    thermal_vars: list[str] = Field(
-        default_factory=lambda: ["gen_natural_gas"]
-    )
+    thermal_vars: list[str] = Field(default_factory=lambda: ["gen_natural_gas"])
     total_var: str = "gen_total"
     lag: int = Field(default=48, ge=48)
 

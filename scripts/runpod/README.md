@@ -6,7 +6,7 @@ Production-level hyperparameter optimization on RunPod cloud GPU.
 
 - TFT (PyTorch) needs GPU — H100 Tensor Cores for fastest training
 - CatBoost `task_type: "GPU"` gives 2-5x speedup
-- 50 CatBoost + 30 Prophet + 20 TFT trials with 12-fold TSCV would take 10+ hours locally
+- 50 CatBoost + 20 TFT + 20 TSMixerx trials with 12-fold TSCV would take 10+ hours locally
 
 ## GPU: H100 PCIe ($1.99/hr)
 
@@ -104,8 +104,8 @@ bash scripts/runpod/apply_prod_config.sh
 
 Changes applied:
 - CatBoost: 50 trials, GPU, iterations 500-3000, 3 loss functions
-- Prophet: 30 trials
 - TFT: 20 trials, hidden 32-128, epochs 50, 4 workers
+- TSMixerx: n_block=2, ff_dim=128, max_steps=3000
 - Cross-validation: 12 splits
 
 ### 6. Start Training
@@ -115,9 +115,9 @@ bash scripts/runpod/run_training.sh
 ```
 
 This starts all 4 trainings in a **tmux** session (SSH-safe):
-1. CatBoost (GPU) — ~30-60 min
-2. Prophet (CPU) — ~45-90 min
-3. TFT (GPU) — ~60-120 min
+1. CatBoost (CPU) — ~30-60 min
+2. TFT (GPU) — ~60-120 min
+3. TSMixerx (GPU) — ~30-60 min
 4. Ensemble — ~10-15 min
 
 ```bash

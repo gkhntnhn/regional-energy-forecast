@@ -212,21 +212,27 @@ async def test_ordering_with_mixed_actions(db_session: AsyncSession) -> None:
     """Mixed action types — each action returns its own most recent entry."""
     now = datetime.now(tz=_TZ_ISTANBUL)
 
-    db_session.add(AuditLogModel(
-        action="predict_request",
-        details={"v": "old_predict"},
-        created_at=now - timedelta(hours=3),
-    ))
-    db_session.add(AuditLogModel(
-        action="job_complete",
-        details={"v": "old_job"},
-        created_at=now - timedelta(hours=2),
-    ))
-    db_session.add(AuditLogModel(
-        action="predict_request",
-        details={"v": "new_predict"},
-        created_at=now - timedelta(hours=1),
-    ))
+    db_session.add(
+        AuditLogModel(
+            action="predict_request",
+            details={"v": "old_predict"},
+            created_at=now - timedelta(hours=3),
+        )
+    )
+    db_session.add(
+        AuditLogModel(
+            action="job_complete",
+            details={"v": "old_job"},
+            created_at=now - timedelta(hours=2),
+        )
+    )
+    db_session.add(
+        AuditLogModel(
+            action="predict_request",
+            details={"v": "new_predict"},
+            created_at=now - timedelta(hours=1),
+        )
+    )
     await db_session.flush()
 
     repo = AuditRepository(db_session)
@@ -248,7 +254,6 @@ async def test_ordering_with_mixed_actions(db_session: AsyncSession) -> None:
 @pytest.mark.asyncio
 async def test_concurrent_rapid_inserts(db_session: AsyncSession) -> None:
     """Two rapid inserts with same timestamp both succeed."""
-    now = datetime.now(tz=_TZ_ISTANBUL)
     repo = AuditRepository(db_session)
 
     entry1 = await repo.log(

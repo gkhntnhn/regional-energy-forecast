@@ -1,4 +1,4 @@
-"""Ensemble training pipeline: CatBoost + Prophet + TFT.
+"""Ensemble training pipeline: CatBoost + TFT + TSMixerx.
 
 Supports two modes:
 - stacking: CatBoost meta-learner with hour/weekday context (default)
@@ -58,18 +58,18 @@ from energy_forecast.training.oof_cache import (
     compute_config_hash,
     load_oof_cache,
 )
-from energy_forecast.training.prophet_trainer import (
-    ProphetPipelineResult,
-    ProphetTrainer,
-)
 from energy_forecast.training.tft_trainer import (
     TFTPipelineResult,
     TFTTrainer,
 )
+from energy_forecast.training.tsmixerx_trainer import (
+    TSMixerxPipelineResult,
+    TSMixerxTrainer,
+)
 
 # Type alias for any model pipeline result
 ModelResult = (
-    CatBoostPipelineResult | ProphetPipelineResult | TFTPipelineResult | CachedPipelineResult
+    CatBoostPipelineResult | TFTPipelineResult | TSMixerxPipelineResult | CachedPipelineResult
 )
 
 # ---------------------------------------------------------------------------
@@ -121,7 +121,7 @@ class EnsemblePipelineResult:
 
 
 class EnsembleTrainer:
-    """Ensemble training pipeline combining CatBoost, Prophet, and TFT.
+    """Ensemble training pipeline combining CatBoost, TFT, and TSMixerx.
 
     Supports stacking (CatBoost meta-learner) and weighted_average modes.
 
@@ -153,7 +153,7 @@ class EnsembleTrainer:
             self._active_models = list(settings.ensemble.active_models)
 
         # Validate active models
-        valid_models = {"catboost", "prophet", "tft"}
+        valid_models = {"catboost", "tft", "tsmixerx"}
         for m in self._active_models:
             if m not in valid_models:
                 msg = f"Unknown model: {m}. Valid: {valid_models}"
@@ -167,12 +167,12 @@ class EnsembleTrainer:
         logger.info("Ensemble active models: {} | mode: {}", self._active_models, self._mode)
 
         # Create sub-trainers in active_models order (first model trains first)
-        _factory: dict[str, Callable[[], CatBoostTrainer | ProphetTrainer | TFTTrainer]] = {
+        _factory: dict[str, Callable[[], CatBoostTrainer | TFTTrainer | TSMixerxTrainer]] = {
             "catboost": lambda: CatBoostTrainer(settings, tracker),
-            "prophet": lambda: ProphetTrainer(settings, tracker),
             "tft": lambda: TFTTrainer(settings, tracker),
+            "tsmixerx": lambda: TSMixerxTrainer(settings, tracker),
         }
-        self._trainers: dict[str, CatBoostTrainer | ProphetTrainer | TFTTrainer] = {}
+        self._trainers: dict[str, CatBoostTrainer | TFTTrainer | TSMixerxTrainer] = {}
         for model_name in self._active_models:
             if model_name in _factory:
                 self._trainers[model_name] = _factory[model_name]()
@@ -217,9 +217,7 @@ class EnsembleTrainer:
                 )
                 self._active_models = successful_models
                 if self._mode == "stacking" and len(self._active_models) < 2:
-                    logger.warning(
-                        "Too few models for stacking, falling back to weighted_average"
-                    )
+                    logger.warning("Too few models for stacking, falling back to weighted_average")
                     self._mode = "weighted_average"
 
         # Collect predictions and compute ensemble metrics

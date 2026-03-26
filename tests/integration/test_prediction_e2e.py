@@ -17,7 +17,6 @@ from energy_forecast.serving.services.prediction_service import (
     PredictionServiceConfig,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -33,16 +32,6 @@ def _make_mock_catboost(n_features: int = 50) -> MagicMock:
     return model
 
 
-def _make_mock_prophet() -> MagicMock:
-    """Create a mock Prophet model that returns fixed predictions."""
-    model = MagicMock()
-    model.predict.side_effect = lambda df: pd.DataFrame(
-        {"yhat": np.full(len(df), 1100.0)},
-        index=df.index,
-    )
-    return model
-
-
 def _build_service(
     tmp_path: Path,
     settings: Any,
@@ -55,7 +44,6 @@ def _build_service(
     config = PredictionServiceConfig(
         models_dir=tmp_path / "models",
         catboost_path=tmp_path / "models" / "catboost" / "model.cbm",
-        prophet_path=tmp_path / "models" / "prophet",
         tft_path=tmp_path / "models" / "tft",
         forecast_horizon=48,
     )
@@ -73,7 +61,6 @@ def excel_path(tmp_path: Path) -> Path:
     """Create a minimal Excel file with 60 days of hourly consumption."""
     rng = np.random.default_rng(42)
     n_days = 60
-    n_hours = n_days * 24
     dates: list[str] = []
     times: list[int] = []
     consumptions: list[float] = []
@@ -100,9 +87,7 @@ def excel_path(tmp_path: Path) -> Path:
 class TestPredictionServiceE2E:
     """E2E integration tests for PredictionService.run_prediction()."""
 
-    def test_run_prediction_not_loaded_raises(
-        self, tmp_path: Path, settings: Any
-    ) -> None:
+    def test_run_prediction_not_loaded_raises(self, tmp_path: Path, settings: Any) -> None:
         """Calling run_prediction before load_models raises ModelNotLoadedError."""
         svc = _build_service(tmp_path, settings)
         with pytest.raises(ModelNotLoadedError):
@@ -130,9 +115,8 @@ class TestPredictionServiceE2E:
 
         ensemble_config = {
             "active_models": ["catboost"],
-            "weights": {"catboost": 1.0, "prophet": 0.0, "tft": 0.0},
+            "weights": {"catboost": 1.0, "tft": 0.0},
             "target_col": "consumption",
-            "prophet_regressors": [],
             "mode": "weighted_average",
         }
         ensemble = EnsembleForecaster(ensemble_config)
@@ -155,45 +139,6 @@ class TestPredictionServiceE2E:
         assert result[PREDICTION_COL].isna().sum() == 0
         assert (result[PREDICTION_COL] > 0).all()
 
-    def test_run_prediction_two_model_ensemble(
-        self, tmp_path: Path, settings: Any, excel_path: Path
-    ) -> None:
-        """E2E with CatBoost + Prophet: weighted average produces valid output."""
-        from energy_forecast.data.loader import DataLoader
-        from energy_forecast.features.pipeline import FeaturePipeline
-        from energy_forecast.models.ensemble import EnsembleForecaster
-
-        svc = _build_service(tmp_path, settings, active_models=["catboost", "prophet"])
-        svc._data_loader = DataLoader(settings.data_loader)
-        svc._feature_pipeline = FeaturePipeline(settings)
-
-        ensemble_config = {
-            "active_models": ["catboost", "prophet"],
-            "weights": {"catboost": 0.6, "prophet": 0.4, "tft": 0.0},
-            "target_col": "consumption",
-            "prophet_regressors": [r.name for r in settings.prophet.regressors],
-            "mode": "weighted_average",
-        }
-        ensemble = EnsembleForecaster(ensemble_config)
-        ensemble._catboost_model = _make_mock_catboost()
-        ensemble._prophet_model = _make_mock_prophet()
-        svc._ensemble = ensemble
-        svc._models_loaded = True
-
-        with (
-            patch.object(svc, "_fetch_epias_data", return_value=pd.DataFrame()),
-            patch.object(svc, "_fetch_generation_data", return_value=pd.DataFrame()),
-            patch.object(svc, "_fetch_weather_data", return_value=pd.DataFrame()),
-        ):
-            result = svc.run_prediction(excel_path)
-
-        assert len(result) == 48
-        assert PREDICTION_COL in result.columns
-        assert result[PREDICTION_COL].isna().sum() == 0
-        # Weighted average of 1200 and 1100 with 0.6/0.4
-        expected = 0.6 * 1200.0 + 0.4 * 1100.0
-        np.testing.assert_allclose(result[PREDICTION_COL].values, expected, atol=1.0)
-
     def test_run_prediction_output_has_datetime_index(
         self, tmp_path: Path, settings: Any, excel_path: Path
     ) -> None:
@@ -208,7 +153,7 @@ class TestPredictionServiceE2E:
 
         ensemble_config = {
             "active_models": ["catboost"],
-            "weights": {"catboost": 1.0, "prophet": 0.0, "tft": 0.0},
+            "weights": {"catboost": 1.0, "tft": 0.0},
             "target_col": "consumption",
             "mode": "weighted_average",
         }
@@ -240,7 +185,7 @@ class TestPredictionServiceE2E:
 
         ensemble_config = {
             "active_models": ["catboost"],
-            "weights": {"catboost": 1.0, "prophet": 0.0, "tft": 0.0},
+            "weights": {"catboost": 1.0, "tft": 0.0},
             "target_col": "consumption",
             "mode": "weighted_average",
         }
@@ -275,7 +220,7 @@ class TestPredictionServiceE2E:
 
         ensemble_config = {
             "active_models": ["catboost"],
-            "weights": {"catboost": 1.0, "prophet": 0.0, "tft": 0.0},
+            "weights": {"catboost": 1.0, "tft": 0.0},
             "target_col": "consumption",
             "mode": "weighted_average",
         }
@@ -291,24 +236,22 @@ class TestPredictionServiceE2E:
             patch.object(svc, "_fetch_generation_data", return_value=pd.DataFrame()),
             patch.object(svc, "_fetch_weather_data", return_value=pd.DataFrame()),
         ):
-            result = svc.run_prediction(
-                excel_path, progress_callback=progress_messages.append
-            )
+            svc.run_prediction(excel_path, progress_callback=progress_messages.append)
 
         assert len(progress_messages) >= 3  # at least loading, features, prediction
         assert any("complete" in m.lower() for m in progress_messages)
 
-    def test_get_model_info_after_setup(
-        self, tmp_path: Path, settings: Any
-    ) -> None:
+    def test_get_model_info_after_setup(self, tmp_path: Path, settings: Any) -> None:
         """get_model_info returns correct data when models are loaded."""
         from energy_forecast.models.ensemble import EnsembleForecaster
 
         svc = _build_service(tmp_path, settings)
-        ensemble = EnsembleForecaster({
-            "active_models": ["catboost"],
-            "weights": {"catboost": 1.0, "prophet": 0.0, "tft": 0.0},
-        })
+        ensemble = EnsembleForecaster(
+            {
+                "active_models": ["catboost"],
+                "weights": {"catboost": 1.0, "tft": 0.0},
+            }
+        )
         svc._ensemble = ensemble
         svc._models_loaded = True
 
@@ -317,9 +260,7 @@ class TestPredictionServiceE2E:
         assert "catboost" in info["active_models"]
         assert info["forecast_horizon"] == 48
 
-    def test_get_model_info_not_loaded(
-        self, tmp_path: Path, settings: Any
-    ) -> None:
+    def test_get_model_info_not_loaded(self, tmp_path: Path, settings: Any) -> None:
         """get_model_info returns loaded=False before setup."""
         svc = _build_service(tmp_path, settings)
         info = svc.get_model_info()

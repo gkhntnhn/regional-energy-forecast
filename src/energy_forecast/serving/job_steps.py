@@ -58,7 +58,10 @@ async def update_status_db(
     async with session_factory() as session:
         repo = JobRepository(session)
         await repo.update_status(
-            job_id, status, result_path=result_path, error=error,
+            job_id,
+            status,
+            result_path=result_path,
+            error=error,
         )
         await session.commit()
 
@@ -151,8 +154,8 @@ async def store_predictions_step(
                 ensemble_dts = {pd.Timestamp(r["forecast_dt"]) for r in pred_rows}
                 model_col_map = {
                     "catboost": "catboost_prediction",
-                    "prophet": "prophet_prediction",
                     "tft": "tft_prediction",
+                    "tsmixerx": "tsmixerx_prediction",
                 }
                 for model_name, col_name in model_col_map.items():
                     if col_name not in raw_preds.columns:

@@ -33,32 +33,6 @@ catboost:
       type: categorical
       choices: ["RMSE","MAE"]   # Fixed — RMSE beat MAE by 0.16% (2.42% vs 2.58%)
 
-prophet:
-  n_trials: 30             # R6 Production HPO
-  search_space:
-    changepoint_prior_scale:
-      type: float
-      low: 0.001
-      high: 0.02          # Narrowed from [0.001, 1.0] — R1 best: 0.003
-      log: true
-    seasonality_prior_scale:
-      type: float
-      low: 0.01
-      high: 1.0           # Narrowed from [0.01, 50.0] — R1 best: 0.038
-      log: true
-    holidays_prior_scale:
-      type: float
-      low: 0.005
-      high: 0.5           # Narrowed from [0.01, 50.0] — R1 best: 0.016
-      log: true
-    n_changepoints:
-      type: int
-      low: 35
-      high: 50            # Narrowed from [15, 50] — R1 best: 46
-    # seasonality_mode removed from search space — energy consumption is
-    # inherently multiplicative (seasonal effects scale with load level).
-    # Fixed in configs/models/prophet.yaml → seasonality.mode: "multiplicative"
-
 tft:
   n_trials: 15             # R6 Production HPO
   search_space:
@@ -79,6 +53,28 @@ tft:
       low: 0.0005
       high: 0.005         # Range around default 0.001
       log: true
+
+tsmixerx:
+  n_trials: 15             # Research-validated
+  search_space:
+    n_block:
+      type: categorical
+      choices: [2, 3, 4]
+    ff_dim:
+      type: categorical
+      choices: [64, 128, 256]
+    dropout:
+      type: float
+      low: 0.05
+      high: 0.3
+    learning_rate:
+      type: float
+      low: 0.0005
+      high: 0.005
+      log: true
+    max_steps:
+      type: categorical
+      choices: [2000, 3000]
 
 cross_validation:
   n_splits: 12             # Production: 12-fold TSCV

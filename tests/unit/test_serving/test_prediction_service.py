@@ -25,7 +25,6 @@ def pred_config(tmp_path: Path) -> PredictionServiceConfig:
     return PredictionServiceConfig(
         models_dir=tmp_path / "models",
         catboost_path=tmp_path / "models" / "catboost" / "model.cbm",
-        prophet_path=tmp_path / "models" / "prophet",
         tft_path=tmp_path / "models" / "tft",
         ensemble_dir=None,
         forecast_horizon=48,
@@ -36,11 +35,9 @@ def pred_config(tmp_path: Path) -> PredictionServiceConfig:
 def mock_settings() -> MagicMock:
     """Create mock settings for PredictionService."""
     settings = MagicMock()
-    settings.ensemble.active_models = ["catboost", "prophet"]
+    settings.ensemble.active_models = ["catboost", "tft"]
     settings.ensemble.weights.catboost = 0.6
-    settings.ensemble.weights.prophet = 0.4
-    settings.ensemble.weights.tft = 0.0
-    settings.prophet.regressors = [MagicMock(name="temperature_2m")]
+    settings.ensemble.weights.tft = 0.4
     settings.env.epias_username = "test"
     settings.env.epias_password = "test"
     settings.env.smtp_server = ""
@@ -95,7 +92,7 @@ class TestPredictionServiceLoadModels:
     ) -> None:
         """Successful model loading sets is_ready to True."""
         mock_ensemble = mock_ensemble_cls.return_value
-        mock_ensemble.active_models = ["catboost", "prophet"]
+        mock_ensemble.active_models = ["catboost", "tft"]
 
         service.load_models()
 
@@ -134,14 +131,14 @@ class TestPredictionServiceLoadModels:
     ) -> None:
         """Model info returns details after successful load."""
         mock_ensemble = mock_ensemble_cls.return_value
-        mock_ensemble.active_models = ["catboost", "prophet"]
-        mock_ensemble.weights = {"catboost": 0.6, "prophet": 0.4}
+        mock_ensemble.active_models = ["catboost", "tft"]
+        mock_ensemble.weights = {"catboost": 0.6, "tft": 0.4}
 
         service.load_models()
         info = service.get_model_info()
 
         assert info["loaded"] is True
-        assert info["active_models"] == ["catboost", "prophet"]
+        assert info["active_models"] == ["catboost", "tft"]
         assert info["forecast_horizon"] == 48
 
 

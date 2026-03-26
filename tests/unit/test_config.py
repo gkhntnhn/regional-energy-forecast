@@ -50,7 +50,6 @@ class TestLoadConfig:
         assert settings.openmeteo is not None
         assert settings.features is not None
         assert settings.catboost is not None
-        assert settings.prophet is not None
         assert settings.tft is not None
         assert settings.hyperparameters is not None
         assert settings.env is not None
@@ -83,10 +82,6 @@ class TestLoadConfig:
         """Data loader paths are set correctly."""
         assert settings.data_loader.paths.raw == Path("data/raw")
         assert settings.data_loader.paths.holidays == Path("data/static/turkish_holidays.parquet")
-
-    def test_prophet_seasonality_mode(self, settings: Settings) -> None:
-        """Prophet uses multiplicative seasonality."""
-        assert settings.prophet.seasonality.mode == "multiplicative"
 
     def test_tft_prediction_length(self, settings: Settings) -> None:
         """TFT prediction length matches forecast horizon."""
@@ -382,17 +377,17 @@ class TestEnsembleConfig:
         """Ensemble weights > 1.0 raises ValidationError."""
         from energy_forecast.config import EnsembleWeightsConfig
 
-        with pytest.raises(ValidationError, match="exceed 1.0"):
-            EnsembleWeightsConfig(catboost=0.6, prophet=0.5, tft=0.0)
+        with pytest.raises(ValidationError, match=r"exceed 1\.0"):
+            EnsembleWeightsConfig(catboost=0.6, tft=0.5)
 
     def test_weights_all_zero_normalizes(self) -> None:
         """All-zero weights normalize to equal weights."""
         from energy_forecast.config import EnsembleWeightsConfig
 
-        cfg = EnsembleWeightsConfig(catboost=0.0, prophet=0.0, tft=0.0)
-        normalized = cfg.get_normalized(["catboost", "prophet"])
+        cfg = EnsembleWeightsConfig(catboost=0.0, tft=0.0)
+        normalized = cfg.get_normalized(["catboost", "tft"])
         assert abs(normalized["catboost"] - 0.5) < 1e-6
-        assert abs(normalized["prophet"] - 0.5) < 1e-6
+        assert abs(normalized["tft"] - 0.5) < 1e-6
 
     def test_unknown_model_in_active_models_raises(self) -> None:
         """Unknown model name in active_models raises ValidationError."""
@@ -405,5 +400,5 @@ class TestEnsembleConfig:
         """Empty active_models raises ValidationError."""
         from energy_forecast.config import EnsembleConfig
 
-        with pytest.raises(ValidationError, match="(?i)at least"):
+        with pytest.raises(ValidationError, match=r"(?i)at least"):
             EnsembleConfig(active_models=[])

@@ -1,0 +1,46 @@
+# TSMixerx configuration — research-validated (2026-03-26)
+# 12-fold TSCV: val 2.12% test 2.23% (313K params)
+# Covariates: same 13 as TFT (6 futr + 7 hist)
+
+architecture:
+  n_block: 2
+  ff_dim: 128
+  dropout: 0.1
+  input_size: 168         # 7 days context
+  revin: true
+
+training:
+  prediction_length: 48   # 48 hours forecast
+  max_steps: 3000
+  windows_batch_size: 64
+  step_size: 12
+  learning_rate: 0.001
+  early_stop_patience_steps: 200
+  val_check_steps: 50
+  random_seed: 42
+  accelerator: "gpu"
+  num_workers: 4
+  enable_progress_bar: true
+  scaler_type: "robust"
+
+optimization:
+  optuna_splits: 12
+  n_jobs: 1
+  val_size_hours: 720     # ~1 month
+
+covariates:
+  futr_exog:              # Known at forecast time
+    - apparent_temperature
+    - holiday_duration
+    - tatil_tipi
+    - day_of_week_sin
+    - wth_hdd
+    - is_weekend
+  hist_exog:              # Only in past (lagged)
+    - consumption_lag_168
+    - consumption_lag_336
+    - consumption_week_ratio
+    - consumption_lag_48
+    - consumption_momentum_168
+    - temperature_2m_window_24_max
+    - consumption_pct_change_168

@@ -153,7 +153,6 @@ class TestJobRepository:
         assert "pending" in stats
         assert stats["pending"] >= 1
 
-
     @pytest.mark.asyncio
     async def test_update_status_nonexistent_noop(self, db_session: AsyncSession) -> None:
         """update_status on nonexistent job is a no-op."""
@@ -184,7 +183,9 @@ class TestJobRepository:
 
     @pytest.mark.asyncio
     async def test_update_metadata_all_fields(
-        self, db_session: AsyncSession, _seed_job: JobModel,
+        self,
+        db_session: AsyncSession,
+        _seed_job: JobModel,
     ) -> None:
         """update_metadata sets model_versions, epias_snapshot, paths, config."""
         await db_session.flush()
@@ -212,13 +213,18 @@ class TestJobRepository:
 
     @pytest.mark.asyncio
     async def test_update_email_status_with_error(
-        self, db_session: AsyncSession, _seed_job: JobModel,
+        self,
+        db_session: AsyncSession,
+        _seed_job: JobModel,
     ) -> None:
         """update_email_status stores error message."""
         await db_session.flush()
         repo = JobRepository(db_session)
         await repo.update_email_status(
-            "repo_test_01", "failed", attempts=3, error="SMTP timeout",
+            "repo_test_01",
+            "failed",
+            attempts=3,
+            error="SMTP timeout",
         )
 
         job = await repo.get_by_id("repo_test_01")

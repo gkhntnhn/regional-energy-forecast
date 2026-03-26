@@ -1,7 +1,7 @@
-"""Temporal Fusion Transformer forecaster with uncertainty quantification.
+"""TSMixerx forecaster for hourly consumption prediction.
 
-Wraps NeuralForecast's TFT model to conform to BaseForecaster interface.
-Handles long-format conversion and quantile prediction output.
+Wraps NeuralForecast's TSMixerx model to conform to BaseForecaster interface.
+Point forecast (MAE loss) — no quantile output unlike TFT.
 """
 
 from __future__ import annotations
@@ -11,36 +11,32 @@ import json
 from pathlib import Path
 from typing import Any
 
-import numpy as np
 import pandas as pd
 from loguru import logger
-from numpy.typing import NDArray
 
-from energy_forecast.config import TFTConfig
+from energy_forecast.config import TSMixerxConfig
 from energy_forecast.models.base import PREDICTION_COL, BaseForecaster
 
 # NeuralForecast long-format constants
 NF_UNIQUE_ID = "uludag"
 
 
-class TFTForecaster(BaseForecaster):
-    """TFT-based hourly consumption forecaster with uncertainty quantification.
+class TSMixerxForecaster(BaseForecaster):
+    """TSMixerx-based hourly consumption forecaster (point forecast).
 
-    Uses NeuralForecast's TFT implementation for efficient GPU-accelerated training
-    with pre-computed tensor windowing.
+    Uses NeuralForecast's TSMixerx (MLP-Mixer for time series) with
+    time-mixing and feature-mixing blocks. Single-series mode (n_series=1).
 
     Args:
-        config: TFT configuration from settings.
+        config: TSMixerx configuration from settings.
     """
 
     METADATA_FILENAME = "metadata.json"
 
-    def __init__(self, config: TFTConfig) -> None:
+    def __init__(self, config: TSMixerxConfig) -> None:
         super().__init__(config.model_dump())
-        self._tft_config = config
+        self._tsmixerx_config = config
         self._nf: Any | None = None  # NeuralForecast instance
-        self._quantiles: list[float] = list(config.quantiles)
-        self._all_quantile_predictions: dict[float, NDArray[np.floating[Any]]] | None = None
         self._last_train_df: pd.DataFrame | None = None  # for predict() context
 
     @property
@@ -70,20 +66,16 @@ class TFTForecaster(BaseForecaster):
         # Detect datetime column name after reset_index
         dt_col = "date" if "date" in nf_df.columns else "index"
         if dt_col not in nf_df.columns:
-            # Try the first column
             dt_col = nf_df.columns[0]
         nf_df = nf_df.rename(columns={dt_col: "ds"})
 
         nf_df["unique_id"] = NF_UNIQUE_ID
         nf_df = nf_df.rename(columns={target_col: "y"})
 
-        # NeuralForecast converts ALL columns to float32, so we must filter
-        # to only keep the required columns + specified covariates.
-        cfg = self._tft_config.covariates
+        # Filter to only specified covariates (NF converts ALL columns to float32)
+        cfg = self._tsmixerx_config.covariates
         covariate_cols = [
-            c
-            for c in list(cfg.time_varying_known) + list(cfg.time_varying_unknown)
-            if c in nf_df.columns
+            c for c in list(cfg.futr_exog) + list(cfg.hist_exog) if c in nf_df.columns
         ]
         keep_cols = ["unique_id", "ds", "y", *covariate_cols]
         nf_df = nf_df[keep_cols]
@@ -110,33 +102,31 @@ class TFTForecaster(BaseForecaster):
         *,
         max_steps: int | None = None,
     ) -> Any:
-        """Build NeuralForecast TFT model from config.
+        """Build NeuralForecast TSMixerx model from config.
 
         Args:
             callbacks: Extra Lightning callbacks (e.g. Optuna pruning).
             max_steps: Override max_steps (for HPO).
 
         Returns:
-            NeuralForecast instance wrapping a TFT model.
+            NeuralForecast instance wrapping a TSMixerx model.
         """
         from neuralforecast import NeuralForecast
-        from neuralforecast.losses.pytorch import MQLoss
-        from neuralforecast.models import TFT
+        from neuralforecast.losses.pytorch import MAE
+        from neuralforecast.models import TSMixerx
 
-        cfg = self._tft_config
+        cfg = self._tsmixerx_config
         arch = cfg.architecture
         train_cfg = cfg.training
 
         steps = max_steps if max_steps is not None else train_cfg.max_steps
 
         # NeuralForecast uses **kwargs to capture extra arguments as trainer_kwargs.
-        # Pass precision/gradient_clip/callbacks as flat kwargs, NOT in a dict.
+        # Pass accelerator/progress bar/logger as flat kwargs, NOT in a dict.
         extra_trainer_kwargs: dict[str, Any] = {
             "accelerator": train_cfg.accelerator,
-            "precision": train_cfg.precision,
-            "gradient_clip_val": train_cfg.gradient_clip_val,
             "enable_progress_bar": train_cfg.enable_progress_bar,
-            "log_every_n_steps": 100,
+            "logger": False,  # Windows tensorboard crash prevention
         }
         # NF defaults devices=-1 (all GPUs); CPU requires devices=1
         if train_cfg.accelerator == "cpu":
@@ -151,15 +141,15 @@ class TFTForecaster(BaseForecaster):
         if callbacks:
             extra_trainer_kwargs["callbacks"] = callbacks
 
-        model = TFT(
+        model = TSMixerx(
             h=train_cfg.prediction_length,
-            input_size=train_cfg.encoder_length,
-            hidden_size=arch.hidden_size,
-            n_head=arch.n_head,
-            n_rnn_layers=arch.n_rnn_layers,
+            input_size=arch.input_size,
+            n_series=1,  # Single time series (Uludag region)
+            n_block=arch.n_block,
+            ff_dim=arch.ff_dim,
             dropout=arch.dropout,
-            rnn_type=train_cfg.rnn_type,
-            loss=MQLoss(quantiles=cfg.quantiles),
+            revin=arch.revin,
+            loss=MAE(),
             learning_rate=train_cfg.learning_rate,
             max_steps=steps,
             val_check_steps=train_cfg.val_check_steps,
@@ -168,8 +158,8 @@ class TFTForecaster(BaseForecaster):
             batch_size=1,  # Single time series
             windows_batch_size=train_cfg.windows_batch_size,
             step_size=train_cfg.step_size,
-            futr_exog_list=list(cfg.covariates.time_varying_known),
-            hist_exog_list=list(cfg.covariates.time_varying_unknown),
+            futr_exog_list=list(cfg.covariates.futr_exog),
+            hist_exog_list=list(cfg.covariates.hist_exog),
             num_lr_decays=-1,
             random_seed=train_cfg.random_seed,
             **extra_trainer_kwargs,
@@ -178,7 +168,7 @@ class TFTForecaster(BaseForecaster):
         nf = NeuralForecast(models=[model], freq="h")
 
         n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-        logger.debug("TFT model built with {} trainable parameters", n_params)
+        logger.debug("TSMixerx model built with {} trainable parameters", n_params)
 
         return nf
 
@@ -188,7 +178,7 @@ class TFTForecaster(BaseForecaster):
         val_df: pd.DataFrame | None = None,
         **kwargs: Any,
     ) -> dict[str, float]:
-        """Train TFT model.
+        """Train TSMixerx model.
 
         Args:
             train_df: Training DataFrame with DatetimeIndex.
@@ -206,7 +196,7 @@ class TFTForecaster(BaseForecaster):
         extra_callbacks: list[Any] | None = kwargs.get("callbacks")
 
         logger.info(
-            "Starting TFT training | samples={} | val={}",
+            "Starting TSMixerx training | samples={} | val={}",
             len(train_df),
             len(val_df) if val_df is not None else 0,
         )
@@ -238,11 +228,11 @@ class TFTForecaster(BaseForecaster):
         # Collect metrics from the underlying Lightning trainer
         metrics: dict[str, float] = {}
         try:
-            tft_model = nf.models[0]
-            if hasattr(tft_model, "trainer") and tft_model.trainer is not None:
+            tsmixerx_model = nf.models[0]
+            if hasattr(tsmixerx_model, "trainer") and tsmixerx_model.trainer is not None:
                 import torch
 
-                for key, value in tft_model.trainer.callback_metrics.items():
+                for key, value in tsmixerx_model.trainer.callback_metrics.items():
                     if isinstance(value, torch.Tensor):
                         metrics[key] = float(value.item())
                     else:
@@ -250,7 +240,7 @@ class TFTForecaster(BaseForecaster):
         except Exception as e:
             logger.debug("Could not extract trainer metrics: {}", e)
 
-        logger.info("TFT training complete | metrics={}", metrics)
+        logger.info("TSMixerx training complete | metrics={}", metrics)
         return metrics
 
     def predict(
@@ -259,7 +249,7 @@ class TFTForecaster(BaseForecaster):
         target_col: str | None = None,
         **kwargs: Any,
     ) -> pd.DataFrame:
-        """Generate predictions using median quantile.
+        """Generate point predictions.
 
         NeuralForecast predicts the next h steps from the end of the provided
         context DataFrame. The last prediction_length timestamps in X are used
@@ -270,7 +260,7 @@ class TFTForecaster(BaseForecaster):
             target_col: Target column name.
 
         Returns:
-            DataFrame with PREDICTION_COL (median prediction) column.
+            DataFrame with PREDICTION_COL column.
         """
         if target_col is None:
             target_col = self._target_col
@@ -278,13 +268,11 @@ class TFTForecaster(BaseForecaster):
             msg = "Model must be trained before prediction"
             raise RuntimeError(msg)
 
-        pred_len = self._tft_config.training.prediction_length
+        pred_len = self._tsmixerx_config.training.prediction_length
 
-        logger.debug("Generating TFT predictions for {} samples", len(X))
+        logger.debug("Generating TSMixerx predictions for {} samples", len(X))
 
-        # Build context DataFrame (everything up to the forecast period)
-        # and future exogenous DataFrame (known covariates for forecast period)
-        enc_len = self._tft_config.training.encoder_length
+        enc_len = self._tsmixerx_config.architecture.input_size
 
         # Determine context and forecast boundaries
         if len(X) > pred_len:
@@ -292,12 +280,11 @@ class TFTForecaster(BaseForecaster):
             context_df = X.iloc[max(0, context_end - enc_len) : context_end]
             forecast_df = X.iloc[context_end:]
         else:
-            # Short input — no explicit context (NeuralForecast uses internal state)
             context_df = None
             forecast_df = X.iloc[-pred_len:]
 
         # Prepare future exogenous DataFrame
-        futr_cols = list(self._tft_config.covariates.time_varying_known)
+        futr_cols = list(self._tsmixerx_config.covariates.futr_exog)
         futr_data: dict[str, Any] = {
             "unique_id": NF_UNIQUE_ID,
             "ds": forecast_df.index,
@@ -315,7 +302,6 @@ class TFTForecaster(BaseForecaster):
                 target_col,
                 drop_target_nan=False,
             )
-            # Fill NaN target in context (forecast rows have NaN consumption)
             if nf_context["y"].isna().any():
                 nf_context = nf_context.copy()
                 nf_context["y"] = nf_context["y"].ffill().bfill()
@@ -326,21 +312,15 @@ class TFTForecaster(BaseForecaster):
             raise RuntimeError(msg)
         preds = self._nf.predict(df=nf_context, futr_df=futr_df)
 
-        # Extract median prediction
-        median_col = "TFT-median"
-        if median_col not in preds.columns:
-            # Fallback: try TFT column (point forecast without quantiles)
-            median_col = "TFT"
-            if median_col not in preds.columns:
-                # Use first available prediction column
-                pred_cols = [c for c in preds.columns if c.startswith("TFT")]
-                median_col = pred_cols[0] if pred_cols else preds.columns[-1]
-
-        # Store all quantile predictions
-        self._store_quantile_predictions(preds)
+        # Extract point prediction — TSMixerx outputs "TSMixerx" column
+        pred_col = "TSMixerx"
+        if pred_col not in preds.columns:
+            # Fallback: use first available prediction column
+            pred_cols = [c for c in preds.columns if "TSMixerx" in c]
+            pred_col = pred_cols[0] if pred_cols else preds.columns[-1]
 
         # Build result DataFrame
-        pred_values = preds[median_col].values
+        pred_values = preds[pred_col].values
         n_preds = len(pred_values)
         result_index = forecast_df.index[-n_preds:]
 
@@ -362,21 +342,18 @@ class TFTForecaster(BaseForecaster):
         """Predict full evaluation period using 48h rolling windows.
 
         Slides a prediction window across the evaluation period, producing
-        predictions for every hour. This is production-faithful: in real use,
-        the model is called daily to forecast the next 48 hours.
+        predictions for every hour. For overlapping windows, the latest
+        prediction wins (production-faithful).
 
         Args:
-            full_df: Full DataFrame including history before eval_start
-                (needed for encoder context). Must have DatetimeIndex.
+            full_df: Full DataFrame including history before eval_start.
             eval_start: Start of evaluation period (inclusive).
             eval_end: End of evaluation period (inclusive).
             target_col: Target column name.
             step_hours: Hours between consecutive prediction origins.
-                24 = one prediction per day (production-faithful).
 
         Returns:
-            DataFrame with PREDICTION_COL column covering eval_start..eval_end.
-            For overlapping windows, the latest prediction wins.
+            DataFrame with PREDICTION_COL covering eval_start..eval_end.
 
         Raises:
             RuntimeError: If model is not fitted.
@@ -390,9 +367,9 @@ class TFTForecaster(BaseForecaster):
             msg = "Model not fitted — call fit() or load() first"
             raise RuntimeError(msg)
 
-        enc_len = self._tft_config.training.encoder_length
-        pred_len = self._tft_config.training.prediction_length
-        futr_cols = list(self._tft_config.covariates.time_varying_known)
+        enc_len = self._tsmixerx_config.architecture.input_size
+        pred_len = self._tsmixerx_config.training.prediction_length
+        futr_cols = list(self._tsmixerx_config.covariates.futr_exog)
         step_delta = pd.Timedelta(hours=step_hours)
         pred_delta = pd.Timedelta(hours=pred_len)
 
@@ -409,7 +386,6 @@ class TFTForecaster(BaseForecaster):
             context_df = full_df.loc[ctx_start : origin - pd.Timedelta(hours=1)]
 
             if len(context_df) < enc_len // 2:
-                # Not enough context — skip this window
                 origin += step_delta
                 continue
 
@@ -440,16 +416,13 @@ class TFTForecaster(BaseForecaster):
             # NF predict
             preds = self._nf.predict(df=nf_context, futr_df=futr_df)
 
-            # Extract median prediction column
-            median_col = "TFT-median"
-            if median_col not in preds.columns:
-                median_col = "TFT"
-                if median_col not in preds.columns:
-                    pred_cols_avail = [c for c in preds.columns if c.startswith("TFT")]
-                    median_col = pred_cols_avail[0] if pred_cols_avail else preds.columns[-1]
+            # Extract point prediction column
+            pred_col = "TSMixerx"
+            if pred_col not in preds.columns:
+                pred_cols_avail = [c for c in preds.columns if "TSMixerx" in c]
+                pred_col = pred_cols_avail[0] if pred_cols_avail else preds.columns[-1]
 
-            pred_values = preds[median_col].values
-            # Map predictions to timestamps (overwrite = last window wins)
+            pred_values = preds[pred_col].values
             for i, ts in enumerate(forecast_df.index[: len(pred_values)]):
                 predictions[ts] = float(pred_values[i])
 
@@ -465,54 +438,17 @@ class TFTForecaster(BaseForecaster):
         if not predictions:
             return pd.DataFrame({PREDICTION_COL: []}, index=pd.DatetimeIndex([]))
 
-        # Build result — sorted by timestamp, filtered to eval period
         result_ts = sorted(predictions.keys())
         result = pd.DataFrame(
             {PREDICTION_COL: [predictions[ts] for ts in result_ts]},
             index=pd.DatetimeIndex(result_ts),
         )
-        # Filter to eval period
         result = result.loc[eval_start:eval_end]
 
         return result
 
-    def _store_quantile_predictions(self, preds: pd.DataFrame) -> None:
-        """Extract and store quantile predictions from NF output.
-
-        NF MQLoss output columns: TFT-median, TFT-lo-96.0, TFT-hi-96.0, etc.
-        Maps back to our quantile format: {0.02: array, 0.10: array, ...}
-        """
-        result: dict[float, NDArray[np.floating[Any]]] = {}
-
-        for q in self._quantiles:
-            # NF naming convention for quantiles
-            level = abs(q - 0.5) * 200  # e.g., q=0.02 → level=96.0
-            if q == 0.5:
-                col = "TFT-median"
-            elif q < 0.5:
-                col = f"TFT-lo-{level:.1f}"
-            else:
-                col = f"TFT-hi-{level:.1f}"
-
-            if col in preds.columns:
-                result[q] = np.asarray(preds[col].values, dtype=np.float64)
-
-        self._all_quantile_predictions = result if result else None
-
-    def get_quantile_predictions(self) -> dict[float, NDArray[np.floating[Any]]]:
-        """Get all quantile predictions from last predict() call.
-
-        Returns:
-            Dict mapping quantile value to predictions array.
-        """
-        if self._all_quantile_predictions is None:
-            msg = "No predictions available. Call predict() first."
-            raise RuntimeError(msg)
-
-        return self._all_quantile_predictions
-
     def save(self, path: Path) -> None:
-        """Save TFT model using NeuralForecast's built-in save.
+        """Save TSMixerx model using NeuralForecast's built-in save.
 
         Args:
             path: Directory to save model files.
@@ -524,9 +460,8 @@ class TFTForecaster(BaseForecaster):
         path = Path(path)
         path.mkdir(parents=True, exist_ok=True)
 
-        logger.info("Saving TFT model to {}", path)
+        logger.info("Saving TSMixerx model to {}", path)
 
-        # NeuralForecast save (handles ckpt + config internally)
         if self._nf is None:
             msg = "Model not fitted — call fit() or load() first"
             raise RuntimeError(msg)
@@ -544,54 +479,52 @@ class TFTForecaster(BaseForecaster):
                 torch.save(ckpt, ckpt_file)
                 logger.debug("Stripped callbacks from {}", ckpt_file.name)
 
-        # Compute checkpoint hashes for integrity verification (Prophet parity)
+        # Compute checkpoint hashes for integrity verification
         ckpt_hashes: dict[str, str] = {}
         for ckpt_file in path.glob("*.ckpt"):
             ckpt_hashes[ckpt_file.name] = hashlib.sha256(ckpt_file.read_bytes()).hexdigest()
 
-        # Save our metadata (quantiles, architecture, covariates, hashes)
+        # Save metadata (architecture, training, covariates, hashes)
         metadata = {
-            "quantiles": self._quantiles,
-            "architecture": self._tft_config.architecture.model_dump(),
+            "architecture": self._tsmixerx_config.architecture.model_dump(),
             "training": {
-                "encoder_length": self._tft_config.training.encoder_length,
-                "prediction_length": self._tft_config.training.prediction_length,
-                "num_workers": self._tft_config.training.num_workers,
-                "scaler_type": self._tft_config.training.scaler_type,
-                "rnn_type": self._tft_config.training.rnn_type,
+                "input_size": self._tsmixerx_config.architecture.input_size,
+                "prediction_length": self._tsmixerx_config.training.prediction_length,
+                "num_workers": self._tsmixerx_config.training.num_workers,
+                "scaler_type": self._tsmixerx_config.training.scaler_type,
             },
-            "covariates": self._tft_config.covariates.model_dump(),
+            "covariates": self._tsmixerx_config.covariates.model_dump(),
             "ckpt_hashes": ckpt_hashes,
         }
         metadata_path = path / self.METADATA_FILENAME
         with open(metadata_path, "w") as f:
             json.dump(metadata, f, indent=2)
 
-        logger.info("TFT model saved successfully")
+        logger.info("TSMixerx model saved successfully")
 
     @classmethod
-    def from_checkpoint(cls, path: Path | str) -> TFTForecaster:
-        """Load a fully functional TFTForecaster from a saved checkpoint.
+    def from_checkpoint(cls, path: Path | str) -> TSMixerxForecaster:
+        """Load a fully functional TSMixerxForecaster from a saved checkpoint.
 
         Args:
             path: Directory containing saved model files.
 
         Returns:
-            TFTForecaster ready for prediction.
+            TSMixerxForecaster ready for prediction.
         """
         from neuralforecast import NeuralForecast
 
         from energy_forecast.config import (
-            TFTArchitectureConfig,
-            TFTConfig,
-            TFTCovariatesConfig,
-            TFTTrainingConfig,
+            TSMixerxArchitectureConfig,
+            TSMixerxConfig,
+            TSMixerxCovariatesConfig,
+            TSMixerxTrainingConfig,
         )
 
         path = Path(path)
-        logger.info("Loading TFT model from checkpoint: {}", path)
+        logger.info("Loading TSMixerx model from checkpoint: {}", path)
 
-        # Load our metadata
+        # Load metadata
         metadata_path = path / cls.METADATA_FILENAME
         if not metadata_path.exists():
             msg = f"Metadata not found: {metadata_path}"
@@ -599,7 +532,7 @@ class TFTForecaster(BaseForecaster):
         with open(metadata_path) as f:
             metadata = json.load(f)
 
-        # Verify checkpoint integrity (hash check — Prophet parity)
+        # Verify checkpoint integrity
         ckpt_hashes = metadata.get("ckpt_hashes", {})
         if ckpt_hashes:
             for ckpt_name, expected_hash in ckpt_hashes.items():
@@ -608,51 +541,46 @@ class TFTForecaster(BaseForecaster):
                     actual_hash = hashlib.sha256(ckpt_file.read_bytes()).hexdigest()
                     if actual_hash != expected_hash:
                         msg = (
-                            f"TFT checkpoint integrity check failed: {ckpt_name} "
-                            f"(expected {expected_hash[:12]}..., got {actual_hash[:12]}...)"
+                            f"TSMixerx checkpoint integrity check failed: {ckpt_name} "
+                            f"(expected {expected_hash[:12]}..., "
+                            f"got {actual_hash[:12]}...)"
                         )
                         raise RuntimeError(msg)
-            logger.debug("TFT checkpoint integrity verified ({} files)", len(ckpt_hashes))
+            logger.debug("TSMixerx checkpoint integrity verified ({} files)", len(ckpt_hashes))
 
         # Load NeuralForecast model
         nf = NeuralForecast.load(path=str(path))
 
-        # Strip training callbacks from checkpoint — not needed for inference
-        # and duplicate EarlyStopping causes crash on predict()
+        # Strip training callbacks from loaded checkpoint
         for model in nf.models:
             if hasattr(model, "hparams") and "callbacks" in model.hparams:
                 model.hparams["callbacks"] = []
                 logger.debug("Cleared training callbacks from loaded checkpoint")
 
-        # Reconstruct TFTConfig
+        # Reconstruct TSMixerxConfig from metadata
         arch_data = metadata.get("architecture", {})
         train_data = metadata.get("training", {})
         cov_data = metadata.get("covariates", {})
-        quantiles = metadata.get("quantiles", [0.02, 0.1, 0.25, 0.5, 0.75, 0.9, 0.98])
 
-        config = TFTConfig(
-            architecture=TFTArchitectureConfig(**arch_data),
-            training=TFTTrainingConfig(
-                encoder_length=train_data.get("encoder_length", 168),
+        config = TSMixerxConfig(
+            architecture=TSMixerxArchitectureConfig(**arch_data),
+            training=TSMixerxTrainingConfig(
                 prediction_length=train_data.get("prediction_length", 48),
                 max_steps=1,  # Not used for inference
                 num_workers=train_data.get("num_workers", 4),
                 scaler_type=train_data.get("scaler_type", "robust"),
-                rnn_type=train_data.get("rnn_type", "lstm"),
             ),
-            covariates=TFTCovariatesConfig(**cov_data),
-            quantiles=quantiles,
+            covariates=TSMixerxCovariatesConfig(**cov_data),
         )
 
         instance = cls(config)
         instance._nf = nf
-        instance._quantiles = quantiles
 
-        logger.info("TFT model loaded successfully — ready for prediction")
+        logger.info("TSMixerx model loaded successfully — ready for prediction")
         return instance
 
     def load(self, path: Path) -> None:
-        """Load TFT model from checkpoint directory.
+        """Load TSMixerx model from checkpoint directory.
 
         Args:
             path: Directory containing saved model files.
@@ -660,9 +588,8 @@ class TFTForecaster(BaseForecaster):
         from neuralforecast import NeuralForecast
 
         path = Path(path)
-        logger.info("Loading TFT model from {}", path)
+        logger.info("Loading TSMixerx model from {}", path)
 
-        # Load NeuralForecast model
         self._nf = NeuralForecast.load(path=str(path))
 
         # Strip training callbacks to prevent duplicate EarlyStopping crash
@@ -674,7 +601,6 @@ class TFTForecaster(BaseForecaster):
         metadata_path = path / self.METADATA_FILENAME
         if metadata_path.exists():
             with open(metadata_path) as f:
-                metadata = json.load(f)
-                self._quantiles = metadata.get("quantiles", self._quantiles)
+                json.load(f)  # validate JSON, no state to restore
 
-        logger.info("TFT model loaded successfully")
+        logger.info("TSMixerx model loaded successfully")

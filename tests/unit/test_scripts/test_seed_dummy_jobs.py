@@ -45,10 +45,19 @@ class TestRealisticWeather:
     def test_returns_dict_with_expected_keys(self) -> None:
         w = _realistic_weather(hour=12, month=7)
         expected_keys = {
-            "temperature_2m", "apparent_temperature", "relative_humidity_2m",
-            "dew_point_2m", "precipitation", "snow_depth", "surface_pressure",
-            "wind_speed_10m", "wind_direction_10m", "shortwave_radiation",
-            "weather_code", "wth_hdd", "wth_cdd",
+            "temperature_2m",
+            "apparent_temperature",
+            "relative_humidity_2m",
+            "dew_point_2m",
+            "precipitation",
+            "snow_depth",
+            "surface_pressure",
+            "wind_speed_10m",
+            "wind_direction_10m",
+            "shortwave_radiation",
+            "weather_code",
+            "wth_hdd",
+            "wth_cdd",
         }
         assert set(w.keys()) == expected_keys
 
@@ -115,4 +124,5 @@ class TestMainDryRun:
         mock_args.return_value = MagicMock(days=5, dry_run=False)
         with patch.dict("os.environ", {}, clear=True):
             from scripts.seed_dummy_jobs import main
+
             main()  # should not raise, just log error

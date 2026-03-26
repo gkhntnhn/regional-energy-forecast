@@ -44,7 +44,7 @@ Yeni Excel'deki gercek tuketim (T-1 23:00'a kadar) ile
 
 ```
 Excel parse -> EPIAS cek -> OpenMeteo cek -> Feature pipeline ->
-CatBoost + Prophet + TFT -> Ensemble -> 48 saatlik tahmin
+CatBoost + TFT + TSMixerx -> Ensemble -> 48 saatlik tahmin
 ```
 
 | Veri | Nerede | Detay |
@@ -62,7 +62,7 @@ Bu adimda DB'ye yazilmaz, RAM'de tutulur. Sonraki adimda persist edilir.
 | Veri | Nerede | Detay |
 |------|--------|-------|
 | Ensemble tahminleri | PostgreSQL `predictions` | 24 satir (T+1): model_source="ensemble" |
-| Per-model tahminleri | PostgreSQL `predictions` | 24 satir x N model: model_source="catboost"/"prophet"/"tft" |
+| Per-model tahminleri | PostgreSQL `predictions` | 24 satir x N model: model_source="catboost"/"tft"/"tsmixerx" |
 | Hava durumu tahmini | PostgreSQL `weather_snapshots` | ~48 satir: is_actual=false, temperature, humidity, wind, hdd, cdd |
 | EPIAS snapshot | PostgreSQL `jobs.metadata_` (JSONB) | data_range, last_values, row_count, nan_summary |
 | Feature importance | PostgreSQL `jobs.metadata_` (JSONB) | `feature_importance_top15`: top-15 CatBoost feature + importance |
@@ -228,7 +228,7 @@ Yeni veri yazmaz, mevcut DB kayitlarini sorgular ve gorsellestirir.
 |------|:----------:|:-------------:|:------------:|
 | Job kaydi (durum, email, tarih) | `jobs` | — | — |
 | Ensemble tahminleri (T+1 MWh) | `predictions` | — | — |
-| Per-model tahminleri (catboost/prophet/tft) | `predictions` | — | — |
+| Per-model tahminleri (catboost/tft/tsmixerx) | `predictions` | — | — |
 | Tahmin dogruluk (MAPE) | `predictions.error_pct` | — | — |
 | Feature importance (top-15) | `jobs.metadata_` (JSONB) | — | — |
 | EPIAS piyasa snapshot | `jobs.metadata_` (JSONB) | — | — |
@@ -288,7 +288,7 @@ audit_logs (6 kolon)
 
 model_runs (13 kolon)
   ├── id (PK, auto)
-  ├── model_type (catboost/prophet/tft/ensemble)
+  ├── model_type (catboost/tft/tsmixerx/ensemble)
   ├── status (running/completed/failed)
   ├── val_mape, test_mape
   ├── n_trials, n_splits, best_params (JSONB)
@@ -312,7 +312,7 @@ Background Job
   ├─ Onceki tahminleri dogrula ──► [PostgreSQL] predictions (GUNCELLE)
   ├─ Pipeline calistir ──────────► [RAM] gecici
   ├─ Ensemble tahminleri kaydet ─► [PostgreSQL] predictions (model_source=ensemble)
-  ├─ Per-model tahminleri kaydet ► [PostgreSQL] predictions (catboost/prophet/tft)
+  ├─ Per-model tahminleri kaydet ► [PostgreSQL] predictions (catboost/tft/tsmixerx)
   ├─ Hava verisini kaydet ───────► [PostgreSQL] weather_snapshots
   ├─ EPIAS + Feature imp kaydet ─► [PostgreSQL] jobs.metadata_ (JSONB)
   ├─ Drift detection calistir ──► [PostgreSQL] audit_logs (drift alert)

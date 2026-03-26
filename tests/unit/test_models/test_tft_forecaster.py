@@ -338,9 +338,7 @@ class TestTFTForecasterRollingPredict:
         eval_start = sample_df.index[200]
         eval_end = sample_df.index[-1]
 
-        result = model.rolling_predict(
-            sample_df, eval_start=eval_start, eval_end=eval_end
-        )
+        result = model.rolling_predict(sample_df, eval_start=eval_start, eval_end=eval_end)
 
         assert isinstance(result, pd.DataFrame)
         assert "consumption_mwh" in result.columns
@@ -363,9 +361,7 @@ class TestTFTForecasterRollingPredict:
         eval_start = sample_df.index[200]
         eval_end = sample_df.index[-1]
 
-        result = model.rolling_predict(
-            sample_df, eval_start=eval_start, eval_end=eval_end
-        )
+        result = model.rolling_predict(sample_df, eval_start=eval_start, eval_end=eval_end)
 
         assert result.index.min() >= eval_start
         assert result.index.max() <= eval_end
