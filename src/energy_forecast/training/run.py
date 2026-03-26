@@ -429,9 +429,11 @@ def main(argv: list[str] | None = None) -> None:
         catboost_config = settings.hyperparameters.catboost
         prophet_config = settings.hyperparameters.prophet
         tft_config = settings.hyperparameters.tft
+        tsmixerx_config = settings.hyperparameters.tsmixerx
         object.__setattr__(catboost_config, "n_trials", args.n_trials)
         object.__setattr__(prophet_config, "n_trials", args.n_trials)
         object.__setattr__(tft_config, "n_trials", args.n_trials)
+        object.__setattr__(tsmixerx_config, "n_trials", args.n_trials)
         logger.info("Overriding n_trials to {}", args.n_trials)
 
     # Use CLI data path or config default
@@ -448,6 +450,7 @@ def main(argv: list[str] | None = None) -> None:
         "catboost": lambda: run_catboost(settings, data, no_mlflow=args.no_mlflow),
         "prophet": lambda: run_prophet(settings, data, no_mlflow=args.no_mlflow),
         "tft": lambda: run_tft(settings, data, no_mlflow=args.no_mlflow),
+        "tsmixerx": lambda: run_tsmixerx(settings, data, no_mlflow=args.no_mlflow),
         "ensemble": lambda: run_ensemble(
             settings,
             data,
@@ -462,7 +465,7 @@ def main(argv: list[str] | None = None) -> None:
         logger.error("Unknown model: {}", args.model)
         sys.exit(1)
 
-    if args.model in ("tft", "ensemble"):
+    if args.model in ("tft", "tsmixerx", "ensemble"):
         from energy_forecast.utils.logging import suppress_training_noise
 
         suppress_training_noise()
@@ -498,6 +501,7 @@ def _get_n_trials(settings: Settings, model: str) -> int:
         "catboost": settings.hyperparameters.catboost.n_trials,
         "prophet": settings.hyperparameters.prophet.n_trials,
         "tft": settings.hyperparameters.tft.n_trials,
+        "tsmixerx": settings.hyperparameters.tsmixerx.n_trials,
         "ensemble": 0,
     }
     return trial_map.get(model, 0)
