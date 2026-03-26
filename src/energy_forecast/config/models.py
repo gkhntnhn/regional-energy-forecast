@@ -349,7 +349,7 @@ class EnsembleWeightsConfig(BaseModel, frozen=True):
     """
 
     catboost: float = Field(default=0.45, ge=0.0, le=1.0)
-    prophet: float = Field(default=0.30, ge=0.0, le=1.0)
+    prophet: float = Field(default=0.0, ge=0.0, le=1.0)
     tft: float = Field(default=0.25, ge=0.0, le=1.0)
 
     @model_validator(mode="after")

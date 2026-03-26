@@ -14,6 +14,7 @@ active_models:
 # Prophet excluded: optimizer assigned 0.000 weight
 weights:
   catboost: 0.48
+  prophet: 0.0
   tft: 0.52
 
 # Weight optimization settings (used when mode=weighted_average)

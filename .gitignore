@@ -137,3 +137,7 @@ docs/PLATFORM_COMPARISON.md
 configs/smoke_override.yaml
 runpod_processed.tar.gz
 .gitignore
+
+# Research experiments (local only)
+research/
+results.tar.gz
