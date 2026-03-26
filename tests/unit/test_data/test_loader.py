@@ -165,7 +165,6 @@ class TestLoadExcel:
         with pytest.raises(DataValidationError, match="Missing consumption ratio"):
             loader.load_excel(path)
 
-
     def test_above_max_consumption_raises(
         self,
         loader: DataLoader,

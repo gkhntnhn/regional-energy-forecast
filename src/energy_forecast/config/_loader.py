@@ -164,9 +164,7 @@ def _build_settings_dict(config_dir: Path) -> dict[str, Any]:
             },
             "tsmixerx": {
                 "n_trials": hyperparams_data.get("tsmixerx", {}).get("n_trials", 15),
-                "search_space": hyperparams_data.get("tsmixerx", {}).get(
-                    "search_space", {}
-                ),
+                "search_space": hyperparams_data.get("tsmixerx", {}).get("search_space", {}),
             },
             "cross_validation": hyperparams_data.get("cross_validation", {}),
             "target_col": hyperparams_data.get("target_col", "consumption"),

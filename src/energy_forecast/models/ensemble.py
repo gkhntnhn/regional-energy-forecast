@@ -283,17 +283,13 @@ class EnsembleForecaster(BaseForecaster):
                 context = history.iloc[-enc_len:]
                 full_df = pd.concat([context, X])
                 full_df = full_df[~full_df.index.duplicated(keep="last")].sort_index()
-                tsmixerx_result = self._tsmixerx_model.predict(
-                    full_df, target_col=self._target_col
-                )
+                tsmixerx_result = self._tsmixerx_model.predict(full_df, target_col=self._target_col)
                 tsmixerx_aligned = tsmixerx_result.reindex(X.index)
                 predictions["tsmixerx"] = np.asarray(
                     tsmixerx_aligned[PREDICTION_COL].values, dtype=np.float64
                 )
             else:
-                tsmixerx_result = self._tsmixerx_model.predict(
-                    X, target_col=self._target_col
-                )
+                tsmixerx_result = self._tsmixerx_model.predict(X, target_col=self._target_col)
                 predictions["tsmixerx"] = np.asarray(
                     tsmixerx_result[PREDICTION_COL].values, dtype=np.float64
                 )
@@ -353,7 +349,6 @@ class EnsembleForecaster(BaseForecaster):
 
         ensemble_pred = sum(normalized_weights[m] * predictions[m] for m in predictions)
         return np.asarray(ensemble_pred, dtype=np.float64)
-
 
     def save(self, path: Path) -> None:
         """Save ensemble configuration, weights, and meta-learner.

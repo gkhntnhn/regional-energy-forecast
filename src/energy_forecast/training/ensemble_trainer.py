@@ -167,9 +167,7 @@ class EnsembleTrainer:
         logger.info("Ensemble active models: {} | mode: {}", self._active_models, self._mode)
 
         # Create sub-trainers in active_models order (first model trains first)
-        _factory: dict[
-            str, Callable[[], CatBoostTrainer | TFTTrainer | TSMixerxTrainer]
-        ] = {
+        _factory: dict[str, Callable[[], CatBoostTrainer | TFTTrainer | TSMixerxTrainer]] = {
             "catboost": lambda: CatBoostTrainer(settings, tracker),
             "tft": lambda: TFTTrainer(settings, tracker),
             "tsmixerx": lambda: TSMixerxTrainer(settings, tracker),
@@ -219,9 +217,7 @@ class EnsembleTrainer:
                 )
                 self._active_models = successful_models
                 if self._mode == "stacking" and len(self._active_models) < 2:
-                    logger.warning(
-                        "Too few models for stacking, falling back to weighted_average"
-                    )
+                    logger.warning("Too few models for stacking, falling back to weighted_average")
                     self._mode = "weighted_average"
 
         # Collect predictions and compute ensemble metrics

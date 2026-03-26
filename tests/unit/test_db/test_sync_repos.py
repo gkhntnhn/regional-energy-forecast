@@ -420,10 +420,7 @@ class TestUpsertMocked:
         mock_stmt = MagicMock()
         mock_pg.return_value = mock_stmt
         mock_stmt.on_conflict_do_update.return_value = mock_stmt
-        mock_stmt.excluded = {
-            col: col
-            for col in ["gen_total", "gen_natural_gas", "fetched_at"]
-        }
+        mock_stmt.excluded = {col: col for col in ["gen_total", "gen_natural_gas", "fetched_at"]}
 
         dao._session = MagicMock()
         rows: list[dict[str, Any]] = [{"datetime": datetime(2024, 1, 1), "gen_total": 50000.0}]
@@ -443,10 +440,7 @@ class TestUpsertMocked:
         mock_stmt = MagicMock()
         mock_pg.return_value = mock_stmt
         mock_stmt.on_conflict_do_update.return_value = mock_stmt
-        mock_stmt.excluded = {
-            col: col
-            for col in ["temperature_2m", "fetched_at"]
-        }
+        mock_stmt.excluded = {col: col for col in ["temperature_2m", "fetched_at"]}
 
         dao._session = MagicMock()
         rows: list[dict[str, Any]] = [

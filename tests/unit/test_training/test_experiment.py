@@ -6,7 +6,6 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import numpy as np
-
 import pytest
 
 from energy_forecast.training.experiment import ExperimentTracker
@@ -180,7 +179,6 @@ class TestEnabledTracker:
 
     def test_log_predictions_summary_when_enabled(self, mock_mlflow: MagicMock) -> None:
         """log_predictions_summary logs residual statistics."""
-        import numpy as np
 
         tracker = ExperimentTracker(enabled=False)
         tracker._enabled = True
@@ -210,7 +208,6 @@ class TestEnabledTracker:
         tracker.log_config_snapshot({"n_trials": 50})
 
     def test_disabled_log_predictions_summary(self) -> None:
-        import numpy as np
 
         tracker = ExperimentTracker(enabled=False)
         tracker.log_predictions_summary(np.array([1.0]), np.array([1.0]))

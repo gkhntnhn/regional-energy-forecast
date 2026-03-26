@@ -2,7 +2,7 @@
 # 3-model ensemble: CB + TFT + TSMixerx
 # Stacking < weighted_average — simpler is better
 
-# Ensemble mode: "weighted_average" (R6 optimal) or "stacking" (fallback)
+# Ensemble mode: "weighted_average" or "stacking"
 mode: "weighted_average"
 
 # Active models (can be overridden via CLI --models flag)

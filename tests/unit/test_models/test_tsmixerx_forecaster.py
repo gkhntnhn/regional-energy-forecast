@@ -29,11 +29,8 @@ def sample_df() -> pd.DataFrame:
                 + 200 * np.sin(np.arange(n_samples) * 2 * np.pi / 24)
                 + rng.standard_normal(n_samples) * 50
             ),
-            "apparent_temperature": 15
-            + 10 * np.sin((np.arange(n_samples) % 24 - 14) * np.pi / 12),
-            "day_of_week_sin": np.sin(
-                np.arange(n_samples) // 24 % 7 * 2 * np.pi / 7
-            ),
+            "apparent_temperature": 15 + 10 * np.sin((np.arange(n_samples) % 24 - 14) * np.pi / 12),
+            "day_of_week_sin": np.sin(np.arange(n_samples) // 24 % 7 * 2 * np.pi / 7),
             "wth_hdd": rng.random(n_samples) * 5,
         },
         index=dates,

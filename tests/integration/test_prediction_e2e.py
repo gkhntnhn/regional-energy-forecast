@@ -17,7 +17,6 @@ from energy_forecast.serving.services.prediction_service import (
     PredictionServiceConfig,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -62,7 +61,6 @@ def excel_path(tmp_path: Path) -> Path:
     """Create a minimal Excel file with 60 days of hourly consumption."""
     rng = np.random.default_rng(42)
     n_days = 60
-    n_hours = n_days * 24
     dates: list[str] = []
     times: list[int] = []
     consumptions: list[float] = []
@@ -89,9 +87,7 @@ def excel_path(tmp_path: Path) -> Path:
 class TestPredictionServiceE2E:
     """E2E integration tests for PredictionService.run_prediction()."""
 
-    def test_run_prediction_not_loaded_raises(
-        self, tmp_path: Path, settings: Any
-    ) -> None:
+    def test_run_prediction_not_loaded_raises(self, tmp_path: Path, settings: Any) -> None:
         """Calling run_prediction before load_models raises ModelNotLoadedError."""
         svc = _build_service(tmp_path, settings)
         with pytest.raises(ModelNotLoadedError):
@@ -240,24 +236,22 @@ class TestPredictionServiceE2E:
             patch.object(svc, "_fetch_generation_data", return_value=pd.DataFrame()),
             patch.object(svc, "_fetch_weather_data", return_value=pd.DataFrame()),
         ):
-            result = svc.run_prediction(
-                excel_path, progress_callback=progress_messages.append
-            )
+            svc.run_prediction(excel_path, progress_callback=progress_messages.append)
 
         assert len(progress_messages) >= 3  # at least loading, features, prediction
         assert any("complete" in m.lower() for m in progress_messages)
 
-    def test_get_model_info_after_setup(
-        self, tmp_path: Path, settings: Any
-    ) -> None:
+    def test_get_model_info_after_setup(self, tmp_path: Path, settings: Any) -> None:
         """get_model_info returns correct data when models are loaded."""
         from energy_forecast.models.ensemble import EnsembleForecaster
 
         svc = _build_service(tmp_path, settings)
-        ensemble = EnsembleForecaster({
-            "active_models": ["catboost"],
-            "weights": {"catboost": 1.0, "tft": 0.0},
-        })
+        ensemble = EnsembleForecaster(
+            {
+                "active_models": ["catboost"],
+                "weights": {"catboost": 1.0, "tft": 0.0},
+            }
+        )
         svc._ensemble = ensemble
         svc._models_loaded = True
 
@@ -266,9 +260,7 @@ class TestPredictionServiceE2E:
         assert "catboost" in info["active_models"]
         assert info["forecast_horizon"] == 48
 
-    def test_get_model_info_not_loaded(
-        self, tmp_path: Path, settings: Any
-    ) -> None:
+    def test_get_model_info_not_loaded(self, tmp_path: Path, settings: Any) -> None:
         """get_model_info returns loaded=False before setup."""
         svc = _build_service(tmp_path, settings)
         info = svc.get_model_info()

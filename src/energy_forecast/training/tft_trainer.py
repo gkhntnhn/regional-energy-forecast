@@ -264,9 +264,7 @@ class TFTTrainer:
         )
 
         test_common_idx = test_pred.index.intersection(test_df.index)
-        y_test = np.asarray(
-            test_df.loc[test_common_idx, self._target_col].values, dtype=np.float64
-        )
+        y_test = np.asarray(test_df.loc[test_common_idx, self._target_col].values, dtype=np.float64)
         test_pred_arr = np.asarray(
             test_pred.loc[test_common_idx, PREDICTION_COL].values, dtype=np.float64
         )

@@ -84,17 +84,13 @@ class TSMixerxTrainer:
         self._hp_config = settings.hyperparameters
         self._search_config = settings.hyperparameters.tsmixerx
         self._tracker = tracker or ExperimentTracker(enabled=False)
-        self._splitter = TimeSeriesSplitter.from_config(
-            settings.hyperparameters.cross_validation
-        )
+        self._splitter = TimeSeriesSplitter.from_config(settings.hyperparameters.cross_validation)
         self._target_col = settings.hyperparameters.target_col
         self._skip_validation = settings.hyperparameters.skip_validation_after_optuna
 
     # -- Optuna storage --
 
-    def _optuna_storage(
-        self, model_name: str
-    ) -> optuna.storages.RDBStorage | str | None:
+    def _optuna_storage(self, model_name: str) -> optuna.storages.RDBStorage | str | None:
         """Return Optuna storage (delegates to shared ``optuna_storage``)."""
         return optuna_storage(
             self._search_config.n_trials,
@@ -188,9 +184,7 @@ class TSMixerxTrainer:
         if trial is not None:
             from optuna.integration import PyTorchLightningPruningCallback
 
-            callbacks.append(
-                PyTorchLightningPruningCallback(trial, monitor="valid_loss")
-            )
+            callbacks.append(PyTorchLightningPruningCallback(trial, monitor="valid_loss"))
 
         model = TSMixerxForecaster(config)
         try:
@@ -225,10 +219,7 @@ class TSMixerxTrainer:
         finally:
             del model
             gc.collect()
-            if (
-                torch.cuda.is_available()
-                and self._tsmixerx_config.optimization.n_jobs <= 1
-            ):
+            if torch.cuda.is_available() and self._tsmixerx_config.optimization.n_jobs <= 1:
                 torch.cuda.empty_cache()
 
         # Align predictions with actuals
@@ -237,22 +228,16 @@ class TSMixerxTrainer:
         y_train = np.asarray(
             train_df[self._target_col].values[-len(train_pred) :], dtype=np.float64
         )
-        train_pred_arr = np.asarray(
-            train_pred[PREDICTION_COL].values, dtype=np.float64
-        )
+        train_pred_arr = np.asarray(train_pred[PREDICTION_COL].values, dtype=np.float64)
 
         val_common_idx = val_pred.index.intersection(val_df.index)
-        y_val = np.asarray(
-            val_df.loc[val_common_idx, self._target_col].values, dtype=np.float64
-        )
+        y_val = np.asarray(val_df.loc[val_common_idx, self._target_col].values, dtype=np.float64)
         val_pred_arr = np.asarray(
             val_pred.loc[val_common_idx, PREDICTION_COL].values, dtype=np.float64
         )
 
         test_common_idx = test_pred.index.intersection(test_df.index)
-        y_test = np.asarray(
-            test_df.loc[test_common_idx, self._target_col].values, dtype=np.float64
-        )
+        y_test = np.asarray(test_df.loc[test_common_idx, self._target_col].values, dtype=np.float64)
         test_pred_arr = np.asarray(
             test_pred.loc[test_common_idx, PREDICTION_COL].values, dtype=np.float64
         )
@@ -291,9 +276,7 @@ class TSMixerxTrainer:
         results: list[TSMixerxSplitResult] = []
 
         for info, train_df, val_df, test_df in self._splitter.iter_splits(df):
-            result = self._train_split(
-                info, train_df, val_df, test_df, params, max_steps
-            )
+            result = self._train_split(info, train_df, val_df, test_df, params, max_steps)
             results.append(result)
             logger.info(
                 "Split {} | val={} MAPE={:.2f}% | test={} MAPE={:.2f}%",
@@ -336,9 +319,7 @@ class TSMixerxTrainer:
         if n_optuna_splits >= len(all_splits):
             selected_splits = all_splits
         else:
-            indices = np.linspace(
-                0, len(all_splits) - 1, n_optuna_splits, dtype=int
-            )
+            indices = np.linspace(0, len(all_splits) - 1, n_optuna_splits, dtype=int)
             selected_splits = [all_splits[i] for i in indices]
 
         logger.info(
@@ -356,9 +337,7 @@ class TSMixerxTrainer:
             test_mapes: list[float] = []
             split_results: list[TSMixerxSplitResult] = []
 
-            for _fold_idx, (info, train_df, val_df, test_df) in enumerate(
-                selected_splits
-            ):
+            for _fold_idx, (info, train_df, val_df, test_df) in enumerate(selected_splits):
                 try:
                     result = self._train_split(
                         info,
@@ -374,9 +353,7 @@ class TSMixerxTrainer:
                 except TrialPruned:
                     raise
                 except Exception as e:
-                    logger.warning(
-                        "Trial split {} failed: {}", info.split_idx, e
-                    )
+                    logger.warning("Trial split {} failed: {}", info.split_idx, e)
                     return float("inf")
 
             avg_mape = float(np.mean(val_mapes))
@@ -423,9 +400,7 @@ class TSMixerxTrainer:
             self._search_config.n_trials,
             n_jobs,
         )
-        study.optimize(
-            objective, n_trials=self._search_config.n_trials, n_jobs=n_jobs
-        )
+        study.optimize(objective, n_trials=self._search_config.n_trials, n_jobs=n_jobs)
 
         logger.info(
             "Optimization done — best val MAPE: {:.2f}%, params: {}",
@@ -440,25 +415,16 @@ class TSMixerxTrainer:
             best_result = TSMixerxTrainingResult(
                 split_results=cached_splits,
                 avg_val_mape=study.best_value,
-                avg_test_mape=float(
-                    study.best_trial.user_attrs.get("avg_test_mape", float("nan"))
-                ),
-                std_val_mape=float(
-                    np.std([sr.val_metrics.mape for sr in cached_splits])
-                ),
+                avg_test_mape=float(study.best_trial.user_attrs.get("avg_test_mape", float("nan"))),
+                std_val_mape=float(np.std([sr.val_metrics.mape for sr in cached_splits])),
             )
             logger.info("Using cached predictions from trial {}", best_trial_num)
         elif self._skip_validation:
-            logger.info(
-                "Skipping post-Optuna validation "
-                "(skip_validation_after_optuna=true)"
-            )
+            logger.info("Skipping post-Optuna validation (skip_validation_after_optuna=true)")
             best_result = TSMixerxTrainingResult(
                 split_results=[],
                 avg_val_mape=study.best_value,
-                avg_test_mape=float(
-                    study.best_trial.user_attrs.get("avg_test_mape", float("nan"))
-                ),
+                avg_test_mape=float(study.best_trial.user_attrs.get("avg_test_mape", float("nan"))),
                 std_val_mape=0.0,
             )
         else:
@@ -518,9 +484,7 @@ class TSMixerxTrainer:
             study, best_result = self.optimize(df)
             self._tracker.log_params(study.best_params)
 
-            test_mapes = [
-                sr.test_metrics.mape for sr in best_result.split_results
-            ]
+            test_mapes = [sr.test_metrics.mape for sr in best_result.split_results]
             std_test_mape = float(np.std(test_mapes)) if test_mapes else 0.0
 
             self._tracker.log_metrics(
@@ -556,12 +520,8 @@ class TSMixerxTrainer:
             )
             self._tracker.log_params(
                 {
-                    "futr_exog_list": ",".join(
-                        self._tsmixerx_config.covariates.futr_exog
-                    ),
-                    "hist_exog_list": ",".join(
-                        self._tsmixerx_config.covariates.hist_exog
-                    ),
+                    "futr_exog_list": ",".join(self._tsmixerx_config.covariates.futr_exog),
+                    "hist_exog_list": ",".join(self._tsmixerx_config.covariates.hist_exog),
                 }
             )
 

@@ -141,9 +141,7 @@ class CalendarFeatureEngineer(BaseFeatureEngineer):
 
         return df
 
-    def _resolve_holidays_source(
-        self, h_cfg: dict[str, Any]
-    ) -> pd.DataFrame | None:
+    def _resolve_holidays_source(self, h_cfg: dict[str, Any]) -> pd.DataFrame | None:
         """Load holidays from DB (injected) or parquet fallback."""
         if self._holidays_df is not None and len(self._holidays_df) > 0:
             logger.info("[DB READ] Holidays from DB ({} entries)", len(self._holidays_df))
@@ -168,9 +166,7 @@ class CalendarFeatureEngineer(BaseFeatureEngineer):
         # Ramadan
         if h_cfg.get("include_ramadan", True) and "is_ramadan" in holidays_df.columns:
             ram_dates = set(
-                holidays_df.loc[holidays_df["is_ramadan"] == 1, "date"]
-                .pipe(pd.to_datetime)
-                .dt.date
+                holidays_df.loc[holidays_df["is_ramadan"] == 1, "date"].pipe(pd.to_datetime).dt.date
             )
             df["is_ramadan"] = date_series.isin(ram_dates).astype(int)
         else:
@@ -187,9 +183,7 @@ class CalendarFeatureEngineer(BaseFeatureEngineer):
             )
             df["bayram_gun_no"] = date_series.map(bayram_map).fillna(0).astype(int)
             bayram_dates = sorted(
-                pd.to_datetime(
-                    holidays_df.loc[holidays_df["bayram_gun_no"] == 1, "date"]
-                ).dt.date
+                pd.to_datetime(holidays_df.loc[holidays_df["bayram_gun_no"] == 1, "date"]).dt.date
             )
         else:
             df["bayram_gun_no"] = 0

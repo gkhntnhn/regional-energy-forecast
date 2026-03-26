@@ -75,9 +75,7 @@ class TSMixerxForecaster(BaseForecaster):
         # Filter to only specified covariates (NF converts ALL columns to float32)
         cfg = self._tsmixerx_config.covariates
         covariate_cols = [
-            c
-            for c in list(cfg.futr_exog) + list(cfg.hist_exog)
-            if c in nf_df.columns
+            c for c in list(cfg.futr_exog) + list(cfg.hist_exog) if c in nf_df.columns
         ]
         keep_cols = ["unique_id", "ds", "y", *covariate_cols]
         nf_df = nf_df[keep_cols]
@@ -139,9 +137,7 @@ class TSMixerxForecaster(BaseForecaster):
             from pytorch_lightning.callbacks import TQDMProgressBar
 
             progress_callbacks = [TQDMProgressBar(refresh_rate=100)]
-            callbacks = (
-                list(callbacks) + progress_callbacks if callbacks else progress_callbacks
-            )
+            callbacks = list(callbacks) + progress_callbacks if callbacks else progress_callbacks
         if callbacks:
             extra_trainer_kwargs["callbacks"] = callbacks
 
@@ -402,9 +398,7 @@ class TSMixerxForecaster(BaseForecaster):
                 continue
 
             # Build NF context
-            nf_context = self._to_nf_format(
-                context_df, target_col, drop_target_nan=False
-            )
+            nf_context = self._to_nf_format(context_df, target_col, drop_target_nan=False)
             if nf_context["y"].isna().any():
                 nf_context = nf_context.copy()
                 nf_context["y"] = nf_context["y"].ffill().bfill()
@@ -426,9 +420,7 @@ class TSMixerxForecaster(BaseForecaster):
             pred_col = "TSMixerx"
             if pred_col not in preds.columns:
                 pred_cols_avail = [c for c in preds.columns if "TSMixerx" in c]
-                pred_col = (
-                    pred_cols_avail[0] if pred_cols_avail else preds.columns[-1]
-                )
+                pred_col = pred_cols_avail[0] if pred_cols_avail else preds.columns[-1]
 
             pred_values = preds[pred_col].values
             for i, ts in enumerate(forecast_df.index[: len(pred_values)]):
@@ -490,9 +482,7 @@ class TSMixerxForecaster(BaseForecaster):
         # Compute checkpoint hashes for integrity verification
         ckpt_hashes: dict[str, str] = {}
         for ckpt_file in path.glob("*.ckpt"):
-            ckpt_hashes[ckpt_file.name] = hashlib.sha256(
-                ckpt_file.read_bytes()
-            ).hexdigest()
+            ckpt_hashes[ckpt_file.name] = hashlib.sha256(ckpt_file.read_bytes()).hexdigest()
 
         # Save metadata (architecture, training, covariates, hashes)
         metadata = {
@@ -556,9 +546,7 @@ class TSMixerxForecaster(BaseForecaster):
                             f"got {actual_hash[:12]}...)"
                         )
                         raise RuntimeError(msg)
-            logger.debug(
-                "TSMixerx checkpoint integrity verified ({} files)", len(ckpt_hashes)
-            )
+            logger.debug("TSMixerx checkpoint integrity verified ({} files)", len(ckpt_hashes))
 
         # Load NeuralForecast model
         nf = NeuralForecast.load(path=str(path))

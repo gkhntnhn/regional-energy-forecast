@@ -39,9 +39,7 @@ class TestMigration008:
         with patch.object(self.mod, "op", mock_op):
             self.mod.upgrade()
 
-        mock_op.drop_constraint.assert_called_once_with(
-            "ck_jobs_status", "jobs", type_="check"
-        )
+        mock_op.drop_constraint.assert_called_once_with("ck_jobs_status", "jobs", type_="check")
         mock_op.create_check_constraint.assert_called_once_with(
             "ck_jobs_status",
             "jobs",
@@ -71,9 +69,7 @@ class TestMigration008:
         with patch.object(self.mod, "op", mock_op):
             self.mod.downgrade()
 
-        mock_op.drop_constraint.assert_called_once_with(
-            "ck_jobs_status", "jobs", type_="check"
-        )
+        mock_op.drop_constraint.assert_called_once_with("ck_jobs_status", "jobs", type_="check")
         mock_op.create_check_constraint.assert_called_once_with(
             "ck_jobs_status",
             "jobs",

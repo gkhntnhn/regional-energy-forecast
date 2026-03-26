@@ -1373,7 +1373,6 @@ class TestRunDriftCheck:
     @pytest.mark.asyncio
     async def test_drift_check_no_config_file(self, db_session_factory: Any) -> None:
         """Test _run_drift_check uses defaults when config file missing."""
-        from unittest.mock import AsyncMock, patch
 
         from energy_forecast.serving.job_manager import _run_drift_check
 
@@ -1391,7 +1390,6 @@ class TestRunDriftCheck:
     @pytest.mark.asyncio
     async def test_drift_check_disabled(self, db_session_factory: Any) -> None:
         """Test _run_drift_check returns early when drift is disabled."""
-        from unittest.mock import AsyncMock, patch
 
         from energy_forecast.serving.job_manager import _run_drift_check
 
@@ -1418,7 +1416,6 @@ class TestRunDriftCheck:
     @pytest.mark.asyncio
     async def test_drift_check_exception_nonfatal(self, db_session_factory: Any) -> None:
         """Test _run_drift_check swallows exceptions gracefully."""
-        from unittest.mock import AsyncMock, patch
 
         from energy_forecast.serving.job_manager import _run_drift_check
 
@@ -1435,7 +1432,6 @@ class TestRunDriftCheck:
     @pytest.mark.asyncio
     async def test_drift_check_with_alerts_logs_warning(self, db_session_factory: Any) -> None:
         """Test _run_drift_check logs warnings when alerts are returned."""
-        from unittest.mock import AsyncMock, patch
 
         from energy_forecast.serving.job_manager import _run_drift_check
 
@@ -1648,7 +1644,8 @@ class TestUpdateProgressDb:
 
     @pytest.mark.asyncio
     async def test_update_progress_db_updates_job(
-        self, db_session_factory: Any,
+        self,
+        db_session_factory: Any,
     ) -> None:
         """_update_progress_db writes progress to DB via real SQLite."""
         from energy_forecast.db.models import JobModel
@@ -1656,19 +1653,23 @@ class TestUpdateProgressDb:
 
         # Seed a job
         async with db_session_factory() as session:
-            session.add(JobModel(
-                id="prog_test1",
-                email="t@t.com",
-                status="running",
-                excel_path="/tmp/t.xlsx",
-                file_stem="stem",
-                email_status="pending",
-            ))
+            session.add(
+                JobModel(
+                    id="prog_test1",
+                    email="t@t.com",
+                    status="running",
+                    excel_path="/tmp/t.xlsx",
+                    file_stem="stem",
+                    email_status="pending",
+                )
+            )
             await session.commit()
 
         # Act
         await JobManager._update_progress_db(
-            db_session_factory, "prog_test1", "Step 2/8",
+            db_session_factory,
+            "prog_test1",
+            "Step 2/8",
         )
 
         # Assert
@@ -1684,25 +1685,30 @@ class TestUpdateStatusDb:
 
     @pytest.mark.asyncio
     async def test_update_status_db_sets_status(
-        self, db_session_factory: Any,
+        self,
+        db_session_factory: Any,
     ) -> None:
         """_update_status_db changes job status in DB."""
         from energy_forecast.db.models import JobModel
         from energy_forecast.db.repositories.job_repo import JobRepository
 
         async with db_session_factory() as session:
-            session.add(JobModel(
-                id="stat_test1",
-                email="t@t.com",
-                status="running",
-                excel_path="/tmp/t.xlsx",
-                file_stem="stem",
-                email_status="pending",
-            ))
+            session.add(
+                JobModel(
+                    id="stat_test1",
+                    email="t@t.com",
+                    status="running",
+                    excel_path="/tmp/t.xlsx",
+                    file_stem="stem",
+                    email_status="pending",
+                )
+            )
             await session.commit()
 
         await JobManager._update_status_db(
-            db_session_factory, "stat_test1", "completed",
+            db_session_factory,
+            "stat_test1",
+            "completed",
         )
 
         async with db_session_factory() as session:
@@ -1713,25 +1719,30 @@ class TestUpdateStatusDb:
 
     @pytest.mark.asyncio
     async def test_update_status_db_with_result_path(
-        self, db_session_factory: Any,
+        self,
+        db_session_factory: Any,
     ) -> None:
         """_update_status_db stores result_path in DB."""
         from energy_forecast.db.models import JobModel
         from energy_forecast.db.repositories.job_repo import JobRepository
 
         async with db_session_factory() as session:
-            session.add(JobModel(
-                id="stat_test2",
-                email="t@t.com",
-                status="running",
-                excel_path="/tmp/t.xlsx",
-                file_stem="stem",
-                email_status="pending",
-            ))
+            session.add(
+                JobModel(
+                    id="stat_test2",
+                    email="t@t.com",
+                    status="running",
+                    excel_path="/tmp/t.xlsx",
+                    file_stem="stem",
+                    email_status="pending",
+                )
+            )
             await session.commit()
 
         await JobManager._update_status_db(
-            db_session_factory, "stat_test2", "completed",
+            db_session_factory,
+            "stat_test2",
+            "completed",
             result_path="/tmp/out.xlsx",
         )
 
@@ -1743,25 +1754,30 @@ class TestUpdateStatusDb:
 
     @pytest.mark.asyncio
     async def test_update_status_db_with_error(
-        self, db_session_factory: Any,
+        self,
+        db_session_factory: Any,
     ) -> None:
         """_update_status_db stores error message in DB."""
         from energy_forecast.db.models import JobModel
         from energy_forecast.db.repositories.job_repo import JobRepository
 
         async with db_session_factory() as session:
-            session.add(JobModel(
-                id="stat_test3",
-                email="t@t.com",
-                status="running",
-                excel_path="/tmp/t.xlsx",
-                file_stem="stem",
-                email_status="pending",
-            ))
+            session.add(
+                JobModel(
+                    id="stat_test3",
+                    email="t@t.com",
+                    status="running",
+                    excel_path="/tmp/t.xlsx",
+                    file_stem="stem",
+                    email_status="pending",
+                )
+            )
             await session.commit()
 
         await JobManager._update_status_db(
-            db_session_factory, "stat_test3", "failed",
+            db_session_factory,
+            "stat_test3",
+            "failed",
             error="Something broke",
         )
 

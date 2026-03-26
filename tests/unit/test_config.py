@@ -377,7 +377,7 @@ class TestEnsembleConfig:
         """Ensemble weights > 1.0 raises ValidationError."""
         from energy_forecast.config import EnsembleWeightsConfig
 
-        with pytest.raises(ValidationError, match="exceed 1.0"):
+        with pytest.raises(ValidationError, match=r"exceed 1\.0"):
             EnsembleWeightsConfig(catboost=0.6, tft=0.5)
 
     def test_weights_all_zero_normalizes(self) -> None:
@@ -400,5 +400,5 @@ class TestEnsembleConfig:
         """Empty active_models raises ValidationError."""
         from energy_forecast.config import EnsembleConfig
 
-        with pytest.raises(ValidationError, match="(?i)at least"):
+        with pytest.raises(ValidationError, match=r"(?i)at least"):
             EnsembleConfig(active_models=[])

@@ -686,9 +686,7 @@ class AnalyticsRepository:
                     "progress": j.progress,
                     "created_at": j.created_at.isoformat(),
                     "completed_at": (j.completed_at.isoformat() if j.completed_at else None),
-                    "result_file": (
-                        Path(j.result_path).name if j.result_path else None
-                    ),
+                    "result_file": (Path(j.result_path).name if j.result_path else None),
                 }
                 for j in jobs
             ],

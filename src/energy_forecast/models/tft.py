@@ -422,9 +422,7 @@ class TFTForecaster(BaseForecaster):
                 continue
 
             # Build NF context
-            nf_context = self._to_nf_format(
-                context_df, target_col, drop_target_nan=False
-            )
+            nf_context = self._to_nf_format(context_df, target_col, drop_target_nan=False)
             if nf_context["y"].isna().any():
                 nf_context = nf_context.copy()
                 nf_context["y"] = nf_context["y"].ffill().bfill()
@@ -447,12 +445,8 @@ class TFTForecaster(BaseForecaster):
             if median_col not in preds.columns:
                 median_col = "TFT"
                 if median_col not in preds.columns:
-                    pred_cols_avail = [
-                        c for c in preds.columns if c.startswith("TFT")
-                    ]
-                    median_col = (
-                        pred_cols_avail[0] if pred_cols_avail else preds.columns[-1]
-                    )
+                    pred_cols_avail = [c for c in preds.columns if c.startswith("TFT")]
+                    median_col = pred_cols_avail[0] if pred_cols_avail else preds.columns[-1]
 
             pred_values = preds[median_col].values
             # Map predictions to timestamps (overwrite = last window wins)
@@ -553,9 +547,7 @@ class TFTForecaster(BaseForecaster):
         # Compute checkpoint hashes for integrity verification (Prophet parity)
         ckpt_hashes: dict[str, str] = {}
         for ckpt_file in path.glob("*.ckpt"):
-            ckpt_hashes[ckpt_file.name] = hashlib.sha256(
-                ckpt_file.read_bytes()
-            ).hexdigest()
+            ckpt_hashes[ckpt_file.name] = hashlib.sha256(ckpt_file.read_bytes()).hexdigest()
 
         # Save our metadata (quantiles, architecture, covariates, hashes)
         metadata = {

@@ -9,7 +9,6 @@ from __future__ import annotations
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pandas as pd
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -35,14 +34,24 @@ class TestUpsertMarket:
             mock_stmt = MagicMock()
             mock_pg.return_value = mock_stmt
             mock_stmt.on_conflict_do_update.return_value = mock_stmt
-            mock_stmt.excluded = {col: col for col in [
-                "fdpp", "rtc", "dam_purchase", "bilateral", "load_forecast", "fetched_at",
-            ]}
+            mock_stmt.excluded = {
+                col: col
+                for col in [
+                    "fdpp",
+                    "rtc",
+                    "dam_purchase",
+                    "bilateral",
+                    "load_forecast",
+                    "fetched_at",
+                ]
+            }
 
             repo = EpiasRepository(mock_session)
-            count = await repo.upsert_market([
-                {"datetime": datetime(2026, 1, 1, tzinfo=TZ_ISTANBUL), "rtc": 100.0},
-            ])
+            count = await repo.upsert_market(
+                [
+                    {"datetime": datetime(2026, 1, 1, tzinfo=TZ_ISTANBUL), "rtc": 100.0},
+                ]
+            )
 
         assert count == 1
         mock_session.execute.assert_awaited_once()
@@ -66,14 +75,21 @@ class TestUpsertGeneration:
             mock_stmt = MagicMock()
             mock_pg.return_value = mock_stmt
             mock_stmt.on_conflict_do_update.return_value = mock_stmt
-            mock_stmt.excluded = {col: col for col in [
-                "gen_total", "gen_natural_gas", "fetched_at",
-            ]}
+            mock_stmt.excluded = {
+                col: col
+                for col in [
+                    "gen_total",
+                    "gen_natural_gas",
+                    "fetched_at",
+                ]
+            }
 
             repo = EpiasRepository(mock_session)
-            count = await repo.upsert_generation([
-                {"datetime": datetime(2026, 1, 1, tzinfo=TZ_ISTANBUL), "gen_total": 50000.0},
-            ])
+            count = await repo.upsert_generation(
+                [
+                    {"datetime": datetime(2026, 1, 1, tzinfo=TZ_ISTANBUL), "gen_total": 50000.0},
+                ]
+            )
 
         assert count == 1
         mock_session.execute.assert_awaited_once()

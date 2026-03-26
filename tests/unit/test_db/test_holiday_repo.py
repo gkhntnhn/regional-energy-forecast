@@ -32,16 +32,18 @@ class TestBulkUpsert:
         """bulk_upsert with rows calls session.execute."""
         mock_session = AsyncMock(spec=AsyncSession)
 
-        with patch(
-            "energy_forecast.db.repositories.holiday_repo.pg_insert"
-        ) as mock_pg:
+        with patch("energy_forecast.db.repositories.holiday_repo.pg_insert") as mock_pg:
             mock_stmt = MagicMock()
             mock_pg.return_value = mock_stmt
             mock_stmt.on_conflict_do_update.return_value = mock_stmt
             mock_stmt.excluded = {
-                col: col for col in [
-                    "holiday_name", "raw_holiday_name",
-                    "is_ramadan", "bayram_gun_no", "bayrama_kalan_gun",
+                col: col
+                for col in [
+                    "holiday_name",
+                    "raw_holiday_name",
+                    "is_ramadan",
+                    "bayram_gun_no",
+                    "bayrama_kalan_gun",
                 ]
             }
 
@@ -66,16 +68,18 @@ class TestBulkUpsert:
         """bulk_upsert returns correct count for multiple rows."""
         mock_session = AsyncMock(spec=AsyncSession)
 
-        with patch(
-            "energy_forecast.db.repositories.holiday_repo.pg_insert"
-        ) as mock_pg:
+        with patch("energy_forecast.db.repositories.holiday_repo.pg_insert") as mock_pg:
             mock_stmt = MagicMock()
             mock_pg.return_value = mock_stmt
             mock_stmt.on_conflict_do_update.return_value = mock_stmt
             mock_stmt.excluded = {
-                col: col for col in [
-                    "holiday_name", "raw_holiday_name",
-                    "is_ramadan", "bayram_gun_no", "bayrama_kalan_gun",
+                col: col
+                for col in [
+                    "holiday_name",
+                    "raw_holiday_name",
+                    "is_ramadan",
+                    "bayram_gun_no",
+                    "bayrama_kalan_gun",
                 ]
             }
 

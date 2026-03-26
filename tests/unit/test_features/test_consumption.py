@@ -210,4 +210,3 @@ class TestDisabledFeatures:
         result = engineer.fit_transform(consumption_df)
         te_cols = [c for c in result.columns if "te_" in c]
         assert len(te_cols) == 0
-

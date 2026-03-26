@@ -58,7 +58,10 @@ async def update_status_db(
     async with session_factory() as session:
         repo = JobRepository(session)
         await repo.update_status(
-            job_id, status, result_path=result_path, error=error,
+            job_id,
+            status,
+            result_path=result_path,
+            error=error,
         )
         await session.commit()
 

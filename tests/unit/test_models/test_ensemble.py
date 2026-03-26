@@ -194,9 +194,7 @@ class TestPredict:
         mock_cb.predict.return_value = np.array([1000.0] * 48)
 
         mock_tft = MagicMock()
-        mock_tft.predict.return_value = pd.DataFrame(
-            {"consumption_mwh": np.array([500.0] * 48)}
-        )
+        mock_tft.predict.return_value = pd.DataFrame({"consumption_mwh": np.array([500.0] * 48)})
 
         forecaster.set_models(catboost_model=mock_cb, tft_model=mock_tft)
 
@@ -219,9 +217,7 @@ class TestPredict:
         mock_cb.predict.return_value = np.array([1000.0] * 48)
 
         mock_tft = MagicMock()
-        mock_tft.predict.return_value = pd.DataFrame(
-            {"consumption_mwh": np.array([500.0] * 48)}
-        )
+        mock_tft.predict.return_value = pd.DataFrame({"consumption_mwh": np.array([500.0] * 48)})
 
         # Only set catboost and tft
         forecaster.set_models(catboost_model=mock_cb, tft_model=mock_tft)

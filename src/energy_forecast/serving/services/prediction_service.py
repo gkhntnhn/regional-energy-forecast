@@ -235,9 +235,7 @@ class PredictionService:
             # Shared constant — only weather columns, never consumption/EPIAS
             from energy_forecast.utils import WEATHER_FILL_PREFIXES
 
-            weather_cols = [
-                c for c in merged_df.columns if c.startswith(WEATHER_FILL_PREFIXES)
-            ]
+            weather_cols = [c for c in merged_df.columns if c.startswith(WEATHER_FILL_PREFIXES)]
             if weather_cols:
                 merged_df[weather_cols] = merged_df[weather_cols].ffill()
             cat_weather_cols = [
