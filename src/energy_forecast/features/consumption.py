@@ -50,6 +50,7 @@ class ConsumptionFeatureEngineer(BaseFeatureEngineer):
         df = self._add_trend_ratio(df)
         df = self._add_week_ratio(df)
         df = self._add_target_encoding(df, min_lag)
+        df = self._add_interaction_features(df, min_lag)
         return df
 
     # ------------------------------------------------------------------
@@ -205,4 +206,43 @@ class ConsumptionFeatureEngineer(BaseFeatureEngineer):
             .transform(lambda g: g.expanding().mean().shift(min_lag))
         )
         df["consumption_hourly_profile"] = profile
+        return df
+
+    # ------------------------------------------------------------------
+    # Interaction features (OOF analysis-driven)
+    # ------------------------------------------------------------------
+
+    def _add_interaction_features(self, df: pd.DataFrame, min_lag: int) -> pd.DataFrame:
+        """Add interaction features for CB bias reduction.
+
+        Driven by R6 OOF analysis: CB aksam under-prediction (-27 MWh),
+        holiday MAPE gap (3.7%).
+        """
+        i_cfg: dict[str, Any] = self.config.get("interactions", {})
+
+        # F3: hour x consumption_lag_168 (normalized)
+        if i_cfg.get("hour_x_lag_168", False) and "consumption_lag_168" in df.columns:
+            idx = cast(pd.DatetimeIndex, df.index)
+            df["hour_x_consumption_lag_168"] = idx.hour * df["consumption_lag_168"] / 24
+
+        # F4-ALT: weekend / weekday consumption ratio (last week window)
+        if i_cfg.get("weekend_ratio", False) and "consumption" in df.columns:
+            idx = cast(pd.DatetimeIndex, df.index)
+            is_wknd = idx.dayofweek >= 5
+            shifted = df["consumption"].shift(min_lag)
+            wknd_mean = shifted.where(is_wknd).rolling(168, min_periods=48).mean()
+            wkday_mean = shifted.where(~is_wknd).rolling(168, min_periods=48).mean()
+            safe_wkday = wkday_mean.where(wkday_mean > 0, other=1.0)
+            df["consumption_weekend_ratio"] = wknd_mean / safe_wkday
+
+        # F5: holiday consumption ratio (actual lag / expected profile)
+        if (
+            i_cfg.get("holiday_consumption_ratio", False)
+            and "consumption_lag_48" in df.columns
+            and "consumption_hourly_profile" in df.columns
+        ):
+                profile = df["consumption_hourly_profile"]
+                safe_profile = profile.where(profile > 0, other=1.0)
+                df["holiday_consumption_ratio"] = df["consumption_lag_48"] / safe_profile
+
         return df

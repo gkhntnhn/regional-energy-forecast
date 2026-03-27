@@ -117,6 +117,8 @@ class CatBoostConfig(BaseModel, frozen=True):
             "is_cooling_season",
             "is_heating_season",
             "sol_is_daylight",
+            "is_new_year",
+            "dst_transition",
         ]
     )
     nan_handling: CatBoostNanHandling = Field(default_factory=CatBoostNanHandling)
@@ -172,6 +174,8 @@ class TFTCovariatesConfig(BaseModel, frozen=True):
             "day_of_week_sin",
             "wth_hdd",
             "is_weekend",
+            "is_new_year",
+            "dst_transition",
         ]
     )
     time_varying_unknown: list[str] = Field(
@@ -256,6 +260,8 @@ class TSMixerxCovariatesConfig(BaseModel, frozen=True):
             "day_of_week_sin",
             "wth_hdd",
             "is_weekend",
+            "is_new_year",
+            "dst_transition",
         ]
     )
     hist_exog: list[str] = Field(

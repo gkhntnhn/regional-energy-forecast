@@ -61,3 +61,10 @@ target_encoding:
   # Hour×DayOfWeek expanding mean (168 unique patterns: Mon 00:00 ... Sun 23:00)
   # Explicit profile gives CatBoost a head start on the most important interaction
   enabled: true
+
+# OOF analysis-driven interaction features (2026-03-27)
+# Source: R6 OOF — CB aksam bias -27 MWh, holiday gap 3.7%
+interactions:
+  hour_x_lag_168: true         # F3: saate ozel haftalik pattern
+  weekend_ratio: true          # F4-ALT: hafta sonu/ici tuketim orani
+  holiday_consumption_ratio: true  # F5: tatil/profil orani

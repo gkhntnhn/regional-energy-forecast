@@ -58,6 +58,9 @@ categorical_features:
   - is_cooling_season
   - is_heating_season      # Re-enabled
   - sol_is_daylight        # Re-enabled
+  # OOF analysis-driven
+  - is_new_year
+  - dst_transition
   # NOTE: wth_severity (0-3 int) and sol_cloud_proxy (float) are numeric, NOT categorical
 
 nan_handling:

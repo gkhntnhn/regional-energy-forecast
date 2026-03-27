@@ -42,6 +42,8 @@ covariates:
     - day_of_week_sin             # 0.94% — weekly cycle
     - wth_hdd                     # heating degree days — winter demand signal
     - is_weekend                  # 0.30% — weekday/weekend split
+    - is_new_year                 # OOF: 1 Ocak %37 MAPE outlier
+    - dst_transition              # OOF: saat gecisi %28 MAPE outlier
 
   # Observed only in past (lagged >= 48h) — enters ONLY encoder
   time_varying_unknown:

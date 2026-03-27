@@ -53,6 +53,7 @@ class CalendarFeatureEngineer(BaseFeatureEngineer):
         df = self._add_holiday_anticipation(df)
         df = self._add_holiday_duration(df)
         df = self._add_business_features(df)
+        df = self._add_special_day_features(df)
         return df
 
     # ------------------------------------------------------------------
@@ -504,4 +505,43 @@ class CalendarFeatureEngineer(BaseFeatureEngineer):
         if "is_heating_season" not in disabled:
             df["is_heating_season"] = month.isin([11, 12, 1, 2, 3]).astype(int)
         df["is_cooling_season"] = month.isin([6, 7, 8, 9]).astype(int)
+        return df
+
+    # ------------------------------------------------------------------
+    # Special day features (OOF analysis-driven)
+    # ------------------------------------------------------------------
+
+    def _add_special_day_features(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Add is_new_year and DST transition flags.
+
+        Driven by R6 OOF analysis: 1 Ocak worst-case (%37 MAPE),
+        DST transition week (%28 MAPE).
+        """
+        cfg: dict[str, Any] = self.config.get("special_days", {})
+        idx = cast(pd.DatetimeIndex, df.index)
+
+        if cfg.get("is_new_year", False):
+            df["is_new_year"] = ((idx.month == 1) & (idx.day == 1)).astype(int)
+
+        if cfg.get("dst_transition", False):
+            # EU DST: last Sunday of March (spring forward) / October (fall back)
+            # Turkey abolished DST in 2016, but regional effects remain
+            df["dst_transition"] = 0
+            for year in idx.year.unique():
+                # Spring forward: last Sunday of March ± 12h
+                mar31 = pd.Timestamp(year, 3, 31)
+                mar_last_sun = mar31 - pd.Timedelta(days=(mar31.dayofweek + 1) % 7)
+                spring_start = mar_last_sun - pd.Timedelta(hours=12)
+                spring_end = mar_last_sun + pd.Timedelta(hours=36)
+                spring_mask = (idx >= spring_start) & (idx < spring_end)
+                df.loc[spring_mask, "dst_transition"] = 1
+
+                # Fall back: last Sunday of October ± 12h
+                oct31 = pd.Timestamp(year, 10, 31)
+                oct_last_sun = oct31 - pd.Timedelta(days=(oct31.dayofweek + 1) % 7)
+                fall_start = oct_last_sun - pd.Timedelta(hours=12)
+                fall_end = oct_last_sun + pd.Timedelta(hours=36)
+                fall_mask = (idx >= fall_start) & (idx < fall_end)
+                df.loc[fall_mask, "dst_transition"] = 2
+
         return df

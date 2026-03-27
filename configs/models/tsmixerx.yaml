@@ -36,6 +36,8 @@ covariates:
     - day_of_week_sin
     - wth_hdd
     - is_weekend
+    - is_new_year
+    - dst_transition
   hist_exog:              # Only in past (lagged)
     - consumption_lag_168
     - consumption_lag_336

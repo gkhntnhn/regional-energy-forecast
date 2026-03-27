@@ -42,5 +42,11 @@ business_hours:
   peak_start: 17
   peak_end: 22
 
+# OOF analysis-driven features (2026-03-27)
+# Source: R6 OOF analysis — 1 Ocak %37 MAPE, DST transition %28 MAPE
+special_days:
+  is_new_year: true
+  dst_transition: true    # 0=normal, 1=spring_forward_week, 2=fall_back_week
+
 # Re-enabled for broader ensemble feature set
 disabled_features: []
