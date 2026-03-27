@@ -138,6 +138,7 @@ class EnsembleTrainer:
         active_models_override: list[str] | None = None,
         *,
         no_cache: bool = False,
+        force_hpo: bool = False,
     ) -> None:
         self._settings = settings
         self._ensemble_config = settings.ensemble
@@ -145,6 +146,7 @@ class EnsembleTrainer:
         self._meta_model: CatBoostRegressor | None = None
         self._mode = self._ensemble_config.mode
         self._no_cache = no_cache
+        self._force_hpo = force_hpo
 
         # Determine active models
         if active_models_override is not None:
@@ -168,9 +170,9 @@ class EnsembleTrainer:
 
         # Create sub-trainers in active_models order (first model trains first)
         _factory: dict[str, Callable[[], CatBoostTrainer | TFTTrainer | TSMixerxTrainer]] = {
-            "catboost": lambda: CatBoostTrainer(settings, tracker),
-            "tft": lambda: TFTTrainer(settings, tracker),
-            "tsmixerx": lambda: TSMixerxTrainer(settings, tracker),
+            "catboost": lambda: CatBoostTrainer(settings, tracker, force_hpo=self._force_hpo),
+            "tft": lambda: TFTTrainer(settings, tracker, force_hpo=self._force_hpo),
+            "tsmixerx": lambda: TSMixerxTrainer(settings, tracker, force_hpo=self._force_hpo),
         }
         self._trainers: dict[str, CatBoostTrainer | TFTTrainer | TSMixerxTrainer] = {}
         for model_name in self._active_models:

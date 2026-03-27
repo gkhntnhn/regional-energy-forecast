@@ -228,7 +228,7 @@ def compute_config_hash(settings: Any, model_name: str) -> str:
         "tsmixerx": settings.tsmixerx,
     }
     if model_name in model_config_map:
-        parts.append(model_config_map[model_name].model_dump())
+        parts.append(model_config_map[model_name].model_dump(exclude={"best_params"}))
 
     # Hyperparameter search space
     hp_map: dict[str, Any] = {

@@ -44,3 +44,6 @@ covariates:
     - consumption_momentum_168
     - temperature_2m_window_24_max
     - consumption_pct_change_168
+
+# Populated after first HPO run
+best_params: {}

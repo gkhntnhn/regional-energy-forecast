@@ -49,7 +49,7 @@ class TrainingResult:
 class PipelineResult:
     """Full training pipeline result."""
 
-    study: Study
+    study: Study | None
     best_params: dict[str, Any]
     training_result: TrainingResult
     final_model: CatBoostRegressor
@@ -73,6 +73,8 @@ class CatBoostTrainer:
         self,
         settings: Settings,
         tracker: ExperimentTracker | None = None,
+        *,
+        force_hpo: bool = False,
     ) -> None:
         self._settings = settings
         self._cb_config = settings.catboost
@@ -83,6 +85,7 @@ class CatBoostTrainer:
         self._target_col = settings.hyperparameters.target_col
         self._skip_validation = settings.hyperparameters.skip_validation_after_optuna
         self._selected_features = self._load_selected_features()
+        self._force_hpo = force_hpo
 
     # -- Feature selection --
 
@@ -353,7 +356,159 @@ class CatBoostTrainer:
     # -- Full pipeline --
 
     def run(self, df: pd.DataFrame) -> PipelineResult:
-        """Execute full training pipeline: optimize + final model + MLflow.
+        """Execute full training pipeline: fixed params or Optuna HPO.
+
+        Automatically selects mode based on ``best_params`` in catboost.yaml:
+        - best_params populated and ``--force-hpo`` not set -> fixed mode
+        - best_params empty or ``--force-hpo`` set -> Optuna HPO
+
+        Args:
+            df: Feature-engineered DataFrame (pipeline output).
+
+        Returns:
+            PipelineResult with study, final model, and metrics.
+        """
+        has_best = bool(self._cb_config.best_params)
+        if has_best and not self._force_hpo:
+            logger.info("best_params found in catboost.yaml — using fixed mode")
+            return self._run_fixed(df)
+        if has_best and self._force_hpo:
+            logger.info("--force-hpo: ignoring best_params, running Optuna")
+        return self._run_optuna(df)
+
+    def _run_fixed(self, df: pd.DataFrame) -> PipelineResult:
+        """Skip Optuna, use best_params from YAML config.
+
+        Runs 12-fold CV for OOF predictions, then trains final model.
+
+        Args:
+            df: Feature-engineered DataFrame (pipeline output).
+
+        Returns:
+            PipelineResult with study=None.
+        """
+        start = time.monotonic()
+
+        best = dict(self._cb_config.best_params)
+        avg_iter = best.pop("avg_best_iteration", None)
+        params = {**self._get_fixed_params(), **best}
+
+        logger.info("Fixed params: {}", params)
+
+        with self._tracker.start_run("catboost_fixed"):
+            # 12-fold CV (OOF predictions for ensemble)
+            best_result = self._train_all_splits(df, params)
+
+            # Compute std_test_mape from split results
+            test_mapes = [sr.test_metrics.mape for sr in best_result.split_results]
+            std_test_mape = float(np.std(test_mapes)) if test_mapes else 0.0
+
+            self._tracker.log_params(best)
+            self._tracker.log_metrics(
+                {
+                    "avg_val_mape": best_result.avg_val_mape,
+                    "avg_test_mape": best_result.avg_test_mape,
+                    "std_val_mape": best_result.std_val_mape,
+                    "std_test_mape": std_test_mape,
+                }
+            )
+            for sr in best_result.split_results:
+                self._tracker.log_split_metrics(
+                    sr.split_idx, sr.train_metrics, sr.val_metrics, sr.test_metrics
+                )
+
+            self._tracker.log_training_meta(
+                {
+                    "data_rows": len(df),
+                    "data_cols": len(df.columns),
+                    "n_splits": self._hp_config.cross_validation.n_splits,
+                    "mode": "fixed",
+                    "python_version": sys.version,
+                    "platform": sys.platform,
+                }
+            )
+            self._tracker.log_config_snapshot(
+                self._settings.catboost.model_dump(),
+                "catboost_config.yaml",
+            )
+
+        with self._tracker.start_run("catboost_final"):
+            # Final model — use avg_best_iteration from YAML or from CV results
+            n_iter = int(avg_iter) if avg_iter is not None else best_result.avg_best_iteration
+            final_model = self.train_final(df, best, n_iter)
+
+            # Save model to fixed directory (overwrite previous)
+            model_dir = Path(self._settings.paths.models_dir) / "catboost"
+            model_dir.mkdir(parents=True, exist_ok=True)
+            model_path = model_dir / "model.cbm"
+            final_model.save_model(str(model_path))
+            logger.info("Model saved to {}", model_path)
+
+            self._tracker.log_model(final_model, artifact_path="catboost_model")
+
+            importance = dict(
+                zip(
+                    best_result.feature_names,
+                    [float(v) for v in final_model.get_feature_importance()],
+                    strict=True,
+                )
+            )
+            self._tracker.log_feature_importance(importance)
+
+            # Log ALL feature importances as artifact (JSON)
+            with tempfile.TemporaryDirectory() as tmpdir:
+                fi_path = Path(tmpdir) / "feature_importance_all.json"
+                sorted_fi = dict(sorted(importance.items(), key=lambda x: x[1], reverse=True))
+                fi_path.write_text(
+                    json.dumps(sorted_fi, indent=2),
+                    encoding="utf-8",
+                )
+                self._tracker.log_artifact(str(fi_path))
+
+            # Log predictions summary from last split
+            if best_result.split_results:
+                last_sr = best_result.split_results[-1]
+                if last_sr.val_predictions is not None and last_sr.val_actuals is not None:
+                    self._tracker.log_predictions_summary(
+                        last_sr.val_actuals,
+                        last_sr.val_predictions,
+                        prefix="final_val",
+                    )
+                if last_sr.test_predictions is not None and last_sr.test_actuals is not None:
+                    self._tracker.log_predictions_summary(
+                        last_sr.test_actuals,
+                        last_sr.test_predictions,
+                        prefix="final_test",
+                    )
+
+            elapsed = time.monotonic() - start
+            self._tracker.log_training_meta(
+                {"training_time_seconds": elapsed},
+            )
+
+        logger.info("Pipeline complete (fixed mode) in {:.1f}s", elapsed)
+
+        # Save OOF cache for ensemble
+        from energy_forecast.training.oof_cache import compute_config_hash, save_oof_cache
+
+        try:
+            config_hash = compute_config_hash(self._settings, "catboost")
+            save_oof_cache(
+                "catboost", best_result.split_results, self._settings.paths.models_dir, config_hash
+            )
+        except Exception as e:
+            logger.warning("Failed to save OOF cache (non-fatal): {}", e)
+
+        return PipelineResult(
+            study=None,
+            best_params=best,
+            training_result=best_result,
+            final_model=final_model,
+            training_time_seconds=elapsed,
+        )
+
+    def _run_optuna(self, df: pd.DataFrame) -> PipelineResult:
+        """Execute Optuna HPO training pipeline: optimize + final model + MLflow.
 
         Args:
             df: Feature-engineered DataFrame (pipeline output).

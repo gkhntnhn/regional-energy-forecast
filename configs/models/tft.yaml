@@ -63,3 +63,10 @@ quantiles:
   - 0.98
 
 loss: "quantile"
+
+# R6 HPO best params (Trial #1, Val 2.19%, Test 2.30%)
+best_params:
+  n_head: 4
+  dropout: 0.14016725176148134
+  n_rnn_layers: 1
+  learning_rate: 0.004665303012212832

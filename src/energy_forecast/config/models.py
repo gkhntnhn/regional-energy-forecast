@@ -120,6 +120,7 @@ class CatBoostConfig(BaseModel, frozen=True):
         ]
     )
     nan_handling: CatBoostNanHandling = Field(default_factory=CatBoostNanHandling)
+    best_params: dict[str, Any] = Field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
@@ -234,6 +235,7 @@ class TFTConfig(BaseModel, frozen=True):
         default_factory=lambda: [0.02, 0.10, 0.25, 0.50, 0.75, 0.90, 0.98],
     )
     loss: str = "quantile"
+    best_params: dict[str, Any] = Field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
@@ -315,6 +317,7 @@ class TSMixerxConfig(BaseModel, frozen=True):
     optimization: TSMixerxOptimizationConfig = Field(
         default_factory=TSMixerxOptimizationConfig,
     )
+    best_params: dict[str, Any] = Field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------

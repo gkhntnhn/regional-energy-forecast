@@ -62,3 +62,13 @@ categorical_features:
 
 nan_handling:
   categorical: "missing"
+
+# R6 HPO best params (Trial #17, Val 2.47%, Test 2.97%)
+best_params:
+  learning_rate: 0.11905749590096461
+  depth: 6
+  l2_leaf_reg: 2.0915938573471005
+  min_child_samples: 82
+  subsample: 0.7146458682627068
+  loss_function: RMSE
+  avg_best_iteration: 585

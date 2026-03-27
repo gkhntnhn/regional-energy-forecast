@@ -81,6 +81,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Force retrain even if OOF cache exists (ensemble only).",
     )
+    parser.add_argument(
+        "--force-hpo",
+        action="store_true",
+        help="Force Optuna HPO even if best_params exists in model YAML.",
+    )
     return parser.parse_args(argv)
 
 
@@ -196,16 +201,20 @@ def _run_model(
     data: pd.DataFrame,
     *,
     no_mlflow: bool = False,
+    force_hpo: bool = False,
 ) -> dict[str, Any]:
     """Run a single-model training pipeline (CatBoost, TFT, or TSMixerx).
 
     Shared logic for tracker creation, training, logging, and result formatting.
+    If the model's YAML has ``best_params`` populated and *force_hpo* is False,
+    Optuna is skipped and the stored params are used directly (fixed mode).
 
     Args:
-        model_name: One of "catboost", "prophet", "tft".
+        model_name: One of "catboost", "tft", "tsmixerx".
         settings: Full application settings.
         data: Feature-engineered DataFrame.
         no_mlflow: If True, disable MLflow tracking.
+        force_hpo: If True, run Optuna HPO even when best_params exists.
 
     Returns:
         Dict with metrics and model_path for DB recording.
@@ -237,7 +246,7 @@ def _run_model(
         tracking_uri=settings.env.mlflow_tracking_uri,
         enabled=not no_mlflow,
     )
-    trainer = trainer_cls(settings, tracker)
+    trainer = trainer_cls(settings, tracker, force_hpo=force_hpo)
     result = trainer.run(data)
 
     logger.info("Best val MAPE: {:.2f}%", result.training_result.avg_val_mape)
@@ -260,18 +269,10 @@ def run_catboost(
     data: pd.DataFrame,
     *,
     no_mlflow: bool = False,
+    force_hpo: bool = False,
 ) -> dict[str, Any]:
-    """Run CatBoost training pipeline.
-
-    Args:
-        settings: Full application settings.
-        data: Feature-engineered DataFrame.
-        no_mlflow: If True, disable MLflow tracking.
-
-    Returns:
-        Dict with metrics and model_path for DB recording.
-    """
-    return _run_model("catboost", settings, data, no_mlflow=no_mlflow)
+    """Run CatBoost training pipeline."""
+    return _run_model("catboost", settings, data, no_mlflow=no_mlflow, force_hpo=force_hpo)
 
 
 def run_tsmixerx(
@@ -279,18 +280,10 @@ def run_tsmixerx(
     data: pd.DataFrame,
     *,
     no_mlflow: bool = False,
+    force_hpo: bool = False,
 ) -> dict[str, Any]:
-    """Run TSMixerx training pipeline.
-
-    Args:
-        settings: Full application settings.
-        data: Feature-engineered DataFrame.
-        no_mlflow: If True, disable MLflow tracking.
-
-    Returns:
-        Dict with metrics and model_path for DB recording.
-    """
-    return _run_model("tsmixerx", settings, data, no_mlflow=no_mlflow)
+    """Run TSMixerx training pipeline."""
+    return _run_model("tsmixerx", settings, data, no_mlflow=no_mlflow, force_hpo=force_hpo)
 
 
 def run_tft(
@@ -298,18 +291,10 @@ def run_tft(
     data: pd.DataFrame,
     *,
     no_mlflow: bool = False,
+    force_hpo: bool = False,
 ) -> dict[str, Any]:
-    """Run TFT training pipeline.
-
-    Args:
-        settings: Full application settings.
-        data: Feature-engineered DataFrame.
-        no_mlflow: If True, disable MLflow tracking.
-
-    Returns:
-        Dict with metrics and model_path for DB recording.
-    """
-    return _run_model("tft", settings, data, no_mlflow=no_mlflow)
+    """Run TFT training pipeline."""
+    return _run_model("tft", settings, data, no_mlflow=no_mlflow, force_hpo=force_hpo)
 
 
 def run_ensemble(
@@ -319,6 +304,7 @@ def run_ensemble(
     no_mlflow: bool = False,
     active_models_override: list[str] | None = None,
     no_cache: bool = False,
+    force_hpo: bool = False,
 ) -> dict[str, Any]:
     """Run Ensemble training pipeline (CatBoost + TFT + TSMixerx).
 
@@ -328,6 +314,7 @@ def run_ensemble(
         no_mlflow: If True, disable MLflow tracking.
         active_models_override: Override active models from config.
         no_cache: If True, force retrain even if OOF cache exists.
+        force_hpo: If True, run Optuna HPO even when best_params exists.
 
     Returns:
         Dict with metrics and model_path for DB recording.
@@ -343,7 +330,11 @@ def run_ensemble(
         enabled=not no_mlflow,
     )
     trainer = EnsembleTrainer(
-        settings, tracker, active_models_override=active_models_override, no_cache=no_cache
+        settings,
+        tracker,
+        active_models_override=active_models_override,
+        no_cache=no_cache,
+        force_hpo=force_hpo,
     )
     result = trainer.run(data)
 
@@ -421,15 +412,22 @@ def main(argv: list[str] | None = None) -> None:
         logger.info("Active models override: {}", active_models_override)
 
     model_runners: dict[str, Any] = {
-        "catboost": lambda: run_catboost(settings, data, no_mlflow=args.no_mlflow),
-        "tft": lambda: run_tft(settings, data, no_mlflow=args.no_mlflow),
-        "tsmixerx": lambda: run_tsmixerx(settings, data, no_mlflow=args.no_mlflow),
+        "catboost": lambda: run_catboost(
+            settings, data, no_mlflow=args.no_mlflow, force_hpo=args.force_hpo
+        ),
+        "tft": lambda: run_tft(
+            settings, data, no_mlflow=args.no_mlflow, force_hpo=args.force_hpo
+        ),
+        "tsmixerx": lambda: run_tsmixerx(
+            settings, data, no_mlflow=args.no_mlflow, force_hpo=args.force_hpo
+        ),
         "ensemble": lambda: run_ensemble(
             settings,
             data,
             no_mlflow=args.no_mlflow,
             active_models_override=active_models_override,
             no_cache=args.no_cache,
+            force_hpo=args.force_hpo,
         ),
     }
 

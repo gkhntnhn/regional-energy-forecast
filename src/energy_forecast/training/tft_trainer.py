@@ -58,7 +58,7 @@ class TFTTrainingResult:
 class TFTPipelineResult:
     """Full training pipeline result."""
 
-    study: Study
+    study: Study | None
     best_params: dict[str, Any]
     training_result: TFTTrainingResult
     final_model: TFTForecaster
@@ -85,6 +85,8 @@ class TFTTrainer:
         self,
         settings: Settings,
         tracker: ExperimentTracker | None = None,
+        *,
+        force_hpo: bool = False,
     ) -> None:
         self._settings = settings
         self._tft_config = settings.tft
@@ -94,6 +96,7 @@ class TFTTrainer:
         self._splitter = TimeSeriesSplitter.from_config(settings.hyperparameters.cross_validation)
         self._target_col = settings.hyperparameters.target_col
         self._skip_validation = settings.hyperparameters.skip_validation_after_optuna
+        self._force_hpo = force_hpo
 
     # -- Optuna storage --
 
@@ -504,18 +507,82 @@ class TFTTrainer:
 
     # -- Full pipeline --
 
-    def run(
-        self,
-        df: pd.DataFrame,
-    ) -> TFTPipelineResult:
-        """Execute full training pipeline: optimize + final model + MLflow.
+    def run(self, df: pd.DataFrame) -> TFTPipelineResult:
+        """Execute training pipeline — auto-selects fixed or Optuna mode.
 
-        Args:
-            df: Feature-engineered DataFrame (pipeline output).
-
-        Returns:
-            TFTPipelineResult with study, final model, and metrics.
+        If ``best_params`` is populated in tft.yaml and ``--force-hpo`` is not
+        set, skips Optuna and uses stored params directly (fixed mode).
         """
+        has_best = bool(self._tft_config.best_params)
+        if has_best and not self._force_hpo:
+            logger.info("best_params found in tft.yaml — using fixed mode")
+            return self._run_fixed(df)
+        if has_best and self._force_hpo:
+            logger.info("--force-hpo: ignoring best_params, running Optuna")
+        return self._run_optuna(df)
+
+    def _run_fixed(self, df: pd.DataFrame) -> TFTPipelineResult:
+        """Train with stored best_params — skip Optuna entirely."""
+        start = time.monotonic()
+        best_params = dict(self._tft_config.best_params)
+        logger.info("Fixed params: {}", best_params)
+
+        with self._tracker.start_run("tft_fixed"):
+            self._tracker.log_params(best_params)
+
+            # Train all splits with stored params (_train_split calls _build_tft_config internally)
+            best_result = self._train_all_splits(df, best_params)
+
+            test_mapes = [sr.test_metrics.mape for sr in best_result.split_results]
+            std_test_mape = float(np.std(test_mapes)) if test_mapes else 0.0
+
+            self._tracker.log_metrics(
+                {
+                    "avg_val_mape": best_result.avg_val_mape,
+                    "avg_test_mape": best_result.avg_test_mape,
+                    "std_val_mape": best_result.std_val_mape,
+                    "std_test_mape": std_test_mape,
+                }
+            )
+            self._tracker.log_params({"mode": "fixed"})
+
+        with self._tracker.start_run("tft_final"):
+            final_model = self.train_final(df, best_params)
+
+            model_dir = Path(self._settings.paths.models_dir) / "tft"
+            model_dir.mkdir(parents=True, exist_ok=True)
+            final_model.save(model_dir)
+            logger.info("Model saved to {}", model_dir)
+
+            self._tracker.log_tft_model(final_model, "tft_model")
+
+            elapsed = time.monotonic() - start
+            self._tracker.log_training_meta(
+                {"training_time_seconds": elapsed},
+            )
+
+        logger.info("TFT fixed-params pipeline complete in {:.1f}s", elapsed)
+
+        from energy_forecast.training.oof_cache import compute_config_hash, save_oof_cache
+
+        try:
+            config_hash = compute_config_hash(self._settings, "tft")
+            save_oof_cache(
+                "tft", best_result.split_results, self._settings.paths.models_dir, config_hash
+            )
+        except Exception as e:
+            logger.warning("Failed to save OOF cache (non-fatal): {}", e)
+
+        return TFTPipelineResult(
+            study=None,
+            best_params=best_params,
+            training_result=best_result,
+            final_model=final_model,
+            training_time_seconds=elapsed,
+        )
+
+    def _run_optuna(self, df: pd.DataFrame) -> TFTPipelineResult:
+        """Execute full Optuna HPO pipeline (original run() logic)."""
         start = time.monotonic()
 
         with self._tracker.start_run("tft_optimization"):
