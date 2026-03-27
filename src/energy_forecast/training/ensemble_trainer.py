@@ -382,10 +382,18 @@ class EnsembleTrainer:
         model_results: dict[str, ModelResult],
         df: pd.DataFrame,
     ) -> EnsembleTrainingResult:
-        """Compute ensemble predictions and optimize weights or train meta-learner."""
+        """Compute ensemble predictions and optimize weights or train meta-learner.
+
+        When mode is "auto", runs both weighted_average and stacking,
+        then selects the one with lower val MAPE.
+        """
         split_results = self._collect_split_metrics(model_results)
         default_weights = self._ensemble_config.weights.get_normalized(self._active_models)
 
+        if self._mode == "auto":
+            return self._compute_auto_ensemble(
+                model_results, split_results, default_weights, df
+            )
         if self._mode == "stacking":
             return self._compute_stacking_ensemble(
                 model_results, split_results, default_weights, df
@@ -393,6 +401,45 @@ class EnsembleTrainer:
         return self._compute_weighted_average_ensemble(
             model_results, split_results, default_weights
         )
+
+    def _compute_auto_ensemble(
+        self,
+        model_results: dict[str, ModelResult],
+        split_results: list[EnsembleSplitResult],
+        default_weights: dict[str, float],
+        df: pd.DataFrame,
+    ) -> EnsembleTrainingResult:
+        """Run both modes and select the best by val MAPE."""
+        logger.info("Auto mode: running both weighted_average and stacking...")
+
+        wa_result = self._compute_weighted_average_ensemble(
+            model_results, split_results, default_weights
+        )
+        logger.info("  weighted_average: val={:.2f}% test={:.2f}%",
+                     wa_result.avg_val_mape, wa_result.avg_test_mape)
+
+        try:
+            st_result = self._compute_stacking_ensemble(
+                model_results, split_results, default_weights, df
+            )
+            logger.info("  stacking: val={:.2f}% test={:.2f}%",
+                         st_result.avg_val_mape, st_result.avg_test_mape)
+        except Exception as e:
+            logger.warning("Stacking failed ({}), using weighted_average", e)
+            self._mode = "weighted_average"
+            return wa_result
+
+        if st_result.avg_val_mape < wa_result.avg_val_mape:
+            logger.info("Auto selected: stacking (val {:.2f}% < {:.2f}%)",
+                         st_result.avg_val_mape, wa_result.avg_val_mape)
+            self._mode = "stacking"
+            return st_result
+
+        logger.info("Auto selected: weighted_average (val {:.2f}% <= {:.2f}%)",
+                     wa_result.avg_val_mape, st_result.avg_val_mape)
+        self._mode = "weighted_average"
+        self._meta_model = None
+        return wa_result
 
     def _compute_stacking_ensemble(
         self,

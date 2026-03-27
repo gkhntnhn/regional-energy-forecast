@@ -408,7 +408,7 @@ class StackingConfig(BaseModel, frozen=True):
 class EnsembleConfig(BaseModel, frozen=True):
     """Ensemble model configuration."""
 
-    mode: str = "stacking"
+    mode: Literal["weighted_average", "stacking", "auto"] = "auto"
     active_models: list[str] = Field(default_factory=lambda: ["catboost", "tft", "tsmixerx"])
     weights: EnsembleWeightsConfig = Field(default_factory=EnsembleWeightsConfig)
     optimization: EnsembleOptimizationConfig = Field(

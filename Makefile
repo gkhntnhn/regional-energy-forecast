@@ -1,4 +1,4 @@
-.PHONY: install test lint format serve train-catboost train-tft train-tsmixerx train-ensemble prepare-data clean generate-holidays backfill-epias db-up db-down db-migrate db-revision db-downgrade fetch-weather-actuals db-backup promote-model cleanup-old-data cleanup-dry-run seed-db seed-db-full seed-weather seed-all export-weather db-reset mlflow-up mlflow-logs frontend-dev frontend-build help
+.PHONY: install test lint format serve train-catboost train-tft train-tsmixerx train-ensemble prepare-data clean generate-holidays backfill-epias db-up db-down db-migrate db-revision db-downgrade fetch-weather-actuals db-backup promote-model cleanup-old-data cleanup-dry-run seed-db seed-db-full seed-weather seed-all export-weather db-reset mlflow-up mlflow-logs frontend-dev frontend-build fresh-start help
 
 install: ## Install dependencies
 	uv sync --all-extras
@@ -83,6 +83,11 @@ seed-all: ## Seed everything: static data + weather cache
 
 export-weather: ## Export weather_cache DB to yearly parquet files
 	uv run python scripts/export_weather.py
+
+fresh-start: ## DB reset + prepare data (clean slate for training)
+	$(MAKE) db-reset
+	$(MAKE) prepare-data
+	@echo "Fresh start complete: DB reset + 457 features ready"
 
 db-reset: ## Full DB reset: destroy volumes, recreate, migrate, seed everything
 	docker compose down -v
