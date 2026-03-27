@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 
 from loguru import logger
@@ -41,7 +42,7 @@ def setup_logger(level: str = "INFO", log_file: str | None = None) -> None:
             rotation="50 MB",
             retention=5,
             backtrace=True,
-            diagnose=True,
+            diagnose=os.getenv("APP_ENV", "development") != "production",
         )
 
 

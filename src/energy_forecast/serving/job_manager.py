@@ -509,11 +509,13 @@ class JobManager:
         except Exception as e:
             error_msg = str(e)
             logger.opt(exception=True).error("Job {} failed: {}", job_id, error_msg)
+            # Sanitize error for user — strip internal paths and DB details
+            safe_msg = error_msg.split("\n")[0][:200] if error_msg else "Internal error"
             await update_status_db(
                 session_factory,
                 job_id,
                 "failed",
-                error=error_msg,
+                error=safe_msg,
             )
 
             # Audit: job_failed (non-fatal)

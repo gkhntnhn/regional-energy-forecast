@@ -506,7 +506,34 @@ class TSMixerxTrainer:
                     "std_test_mape": std_test_mape,
                 }
             )
-            self._tracker.log_params({"mode": "fixed"})
+            for sr in best_result.split_results:
+                self._tracker.log_split_metrics(
+                    sr.split_idx,
+                    sr.train_metrics,
+                    sr.val_metrics,
+                    sr.test_metrics,
+                )
+
+            self._tracker.log_training_meta(
+                {
+                    "data_rows": len(df),
+                    "data_cols": len(df.columns),
+                    "n_splits": self._hp_config.cross_validation.n_splits,
+                    "mode": "fixed",
+                    "python_version": sys.version,
+                    "platform": sys.platform,
+                }
+            )
+            self._tracker.log_config_snapshot(
+                self._tsmixerx_config.model_dump(),
+                "tsmixerx_config.yaml",
+            )
+            self._tracker.log_params(
+                {
+                    "futr_exog_list": ",".join(self._tsmixerx_config.covariates.futr_exog),
+                    "hist_exog_list": ",".join(self._tsmixerx_config.covariates.hist_exog),
+                }
+            )
 
         with self._tracker.start_run("tsmixerx_final"):
             final_model = self.train_final(df, best_params)

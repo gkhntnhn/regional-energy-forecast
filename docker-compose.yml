@@ -6,7 +6,7 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD env var is required}
       POSTGRES_DB: energy_forecast
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/01-init.sql
@@ -23,7 +23,7 @@ services:
       db:
         condition: service_healthy
     ports:
-      - "5000:5000"
+      - "127.0.0.1:5000:5000"
     environment:
       MLFLOW_BACKEND_STORE_URI: postgresql+psycopg2://forecast_user:${DB_PASSWORD:?DB_PASSWORD env var is required}@db:5432/mlflow
       MLFLOW_DEFAULT_ARTIFACT_ROOT: /mlartifacts

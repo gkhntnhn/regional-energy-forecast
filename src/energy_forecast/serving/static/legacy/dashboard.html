@@ -417,7 +417,7 @@
                 if (job.status === 'completed') {
                     html += `<div class="alert alert-success py-2 mb-2">
                         <i class="fas fa-check-circle me-2"></i>
-                        <strong>${shortId}</strong> — Tahmin tamamlandi! Sonuclar ${job.email} adresine gonderildi.
+                        <strong>${shortId}</strong> — Tahmin tamamlandi! Sonuclar ${escapeHtml(job.email || '')} adresine gonderildi.
                     </div>`;
                 } else if (job.status === 'failed') {
                     html += `<div class="alert alert-danger py-2 mb-2">

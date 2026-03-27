@@ -538,6 +538,8 @@ class TFTForecaster(BaseForecaster):
 
         ckpt_files = list(path.glob("*.ckpt"))
         for ckpt_file in ckpt_files:
+            # weights_only=False needed to access hyper_parameters dict for callback strip.
+            # Risk mitigated: only loads our own checkpoints, SHA256 verified in from_checkpoint()
             ckpt = torch.load(ckpt_file, map_location="cpu", weights_only=False)
             if "hyper_parameters" in ckpt and "callbacks" in ckpt["hyper_parameters"]:
                 ckpt["hyper_parameters"]["callbacks"] = []
