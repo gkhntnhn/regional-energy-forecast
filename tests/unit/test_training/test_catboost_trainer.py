@@ -446,3 +446,69 @@ class TestDataclasses:
         )
         with pytest.raises(AttributeError):
             tr.avg_val_mape = 10.0  # type: ignore[misc]
+
+
+# ---------------------------------------------------------------------------
+# Fixed Mode Dispatch Tests
+# ---------------------------------------------------------------------------
+
+
+class TestFixedModeDispatch:
+    """Tests for run() auto-dispatch between fixed and Optuna modes."""
+
+    @patch("energy_forecast.training.catboost_trainer.CatBoostRegressor")
+    @patch("energy_forecast.training.catboost_trainer.Pool")
+    def test_empty_best_params_runs_optuna(
+        self, mock_pool: MagicMock, mock_cb: MagicMock
+    ) -> None:
+        """Empty best_params → _run_optuna."""
+        settings = _get_test_settings()
+        trainer = CatBoostTrainer(settings, ExperimentTracker(enabled=False))
+        with patch.object(trainer, "_run_optuna") as mock_optuna:
+            mock_optuna.return_value = MagicMock()
+            trainer.run(pd.DataFrame())
+            mock_optuna.assert_called_once()
+
+    @patch("energy_forecast.training.catboost_trainer.CatBoostRegressor")
+    @patch("energy_forecast.training.catboost_trainer.Pool")
+    def test_filled_best_params_runs_fixed(
+        self, mock_pool: MagicMock, mock_cb: MagicMock
+    ) -> None:
+        """Filled best_params → _run_fixed."""
+        settings = _get_test_settings()
+        object.__setattr__(
+            settings.catboost,
+            "best_params",
+            {"learning_rate": 0.05, "depth": 6, "loss_function": "RMSE"},
+        )
+        trainer = CatBoostTrainer(settings, ExperimentTracker(enabled=False))
+        with patch.object(trainer, "_run_fixed") as mock_fixed:
+            mock_fixed.return_value = MagicMock()
+            trainer.run(pd.DataFrame())
+            mock_fixed.assert_called_once()
+
+    @patch("energy_forecast.training.catboost_trainer.CatBoostRegressor")
+    @patch("energy_forecast.training.catboost_trainer.Pool")
+    def test_force_hpo_ignores_best_params(
+        self, mock_pool: MagicMock, mock_cb: MagicMock
+    ) -> None:
+        """--force-hpo → _run_optuna even when best_params exists."""
+        settings = _get_test_settings()
+        object.__setattr__(
+            settings.catboost,
+            "best_params",
+            {"learning_rate": 0.05, "depth": 6},
+        )
+        trainer = CatBoostTrainer(
+            settings, ExperimentTracker(enabled=False), force_hpo=True
+        )
+        with patch.object(trainer, "_run_optuna") as mock_optuna:
+            mock_optuna.return_value = MagicMock()
+            trainer.run(pd.DataFrame())
+            mock_optuna.assert_called_once()
+
+    def test_force_hpo_default_false(self) -> None:
+        """force_hpo defaults to False."""
+        settings = _get_test_settings()
+        trainer = CatBoostTrainer(settings, ExperimentTracker(enabled=False))
+        assert trainer._force_hpo is False

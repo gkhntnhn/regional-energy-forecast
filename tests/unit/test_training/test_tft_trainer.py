@@ -954,3 +954,82 @@ class TestRun:
         assert mock_tracker.log_metrics.call_count >= 1
         mock_tracker.log_split_metrics.assert_called_once()
         mock_tracker.log_tft_model.assert_called_once_with(mock_model, "tft_model")
+
+
+# ---------------------------------------------------------------------------
+# Fixed Mode Dispatch Tests
+# ---------------------------------------------------------------------------
+
+
+class TestFixedModeDispatch:
+    """Tests for run() auto-dispatch between fixed and Optuna modes."""
+
+    def test_empty_best_params_runs_optuna(self, mock_settings: MagicMock) -> None:
+        """Empty best_params → _run_optuna (normal HPO)."""
+        from energy_forecast.training.tft_trainer import TFTTrainer
+
+        mock_settings.tft = TFTConfig(
+            architecture=TFTArchitectureConfig(hidden_size=16, n_head=1),
+            training=TFTTrainingConfig(
+                encoder_length=48, prediction_length=24, max_steps=10,
+                accelerator="cpu", num_workers=0, precision="32-true",
+            ),
+            covariates=TFTCovariatesConfig(
+                time_varying_known=["hour_sin"], time_varying_unknown=[],
+            ),
+            best_params={},
+        )
+        trainer = TFTTrainer(mock_settings)
+        with patch.object(trainer, "_run_optuna") as mock_optuna:
+            mock_optuna.return_value = MagicMock()
+            trainer.run(pd.DataFrame())
+            mock_optuna.assert_called_once()
+
+    def test_filled_best_params_runs_fixed(self, mock_settings: MagicMock) -> None:
+        """Filled best_params → _run_fixed (skip Optuna)."""
+        from energy_forecast.training.tft_trainer import TFTTrainer
+
+        mock_settings.tft = TFTConfig(
+            architecture=TFTArchitectureConfig(hidden_size=16, n_head=1),
+            training=TFTTrainingConfig(
+                encoder_length=48, prediction_length=24, max_steps=10,
+                accelerator="cpu", num_workers=0, precision="32-true",
+            ),
+            covariates=TFTCovariatesConfig(
+                time_varying_known=["hour_sin"], time_varying_unknown=[],
+            ),
+            best_params={"n_head": 4, "learning_rate": 0.005},
+        )
+        trainer = TFTTrainer(mock_settings)
+        with patch.object(trainer, "_run_fixed") as mock_fixed:
+            mock_fixed.return_value = MagicMock()
+            trainer.run(pd.DataFrame())
+            mock_fixed.assert_called_once()
+
+    def test_force_hpo_ignores_best_params(self, mock_settings: MagicMock) -> None:
+        """--force-hpo → _run_optuna even when best_params exists."""
+        from energy_forecast.training.tft_trainer import TFTTrainer
+
+        mock_settings.tft = TFTConfig(
+            architecture=TFTArchitectureConfig(hidden_size=16, n_head=1),
+            training=TFTTrainingConfig(
+                encoder_length=48, prediction_length=24, max_steps=10,
+                accelerator="cpu", num_workers=0, precision="32-true",
+            ),
+            covariates=TFTCovariatesConfig(
+                time_varying_known=["hour_sin"], time_varying_unknown=[],
+            ),
+            best_params={"n_head": 4, "learning_rate": 0.005},
+        )
+        trainer = TFTTrainer(mock_settings, force_hpo=True)
+        with patch.object(trainer, "_run_optuna") as mock_optuna:
+            mock_optuna.return_value = MagicMock()
+            trainer.run(pd.DataFrame())
+            mock_optuna.assert_called_once()
+
+    def test_force_hpo_default_false(self, mock_settings: MagicMock) -> None:
+        """force_hpo defaults to False."""
+        from energy_forecast.training.tft_trainer import TFTTrainer
+
+        trainer = TFTTrainer(mock_settings)
+        assert trainer._force_hpo is False
