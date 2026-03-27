@@ -130,6 +130,7 @@ class CalendarConfig(BaseModel, frozen=True):
         default_factory=SplineSeasonalityConfig,
     )
     business_hours: BusinessHoursConfig = Field(default_factory=BusinessHoursConfig)
+    special_days: dict[str, bool] = Field(default_factory=dict)
     disabled_features: list[str] = Field(default_factory=list)
 
 
@@ -230,6 +231,7 @@ class ConsumptionConfig(BaseModel, frozen=True):
     quantile: QuantileConfig = Field(default_factory=QuantileConfig)
     trend_ratio: TrendRatioConfig = Field(default_factory=TrendRatioConfig)
     target_encoding: TargetEncodingConfig = Field(default_factory=TargetEncodingConfig)
+    interactions: dict[str, bool] = Field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
