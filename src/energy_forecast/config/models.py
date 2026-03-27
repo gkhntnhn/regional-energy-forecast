@@ -134,9 +134,9 @@ class CatBoostConfig(BaseModel, frozen=True):
 class TFTArchitectureConfig(BaseModel, frozen=True):
     """TFT network architecture (NeuralForecast API)."""
 
-    hidden_size: int = Field(default=128, ge=1)
-    n_head: int = Field(default=2, ge=1)
-    n_rnn_layers: int = Field(default=1, ge=1)
+    hidden_size: int = Field(default=64, ge=1)
+    n_head: int = Field(default=4, ge=1)
+    n_rnn_layers: int = Field(default=2, ge=1)
     dropout: float = Field(default=0.1, ge=0.0, lt=1.0)
 
 
@@ -145,8 +145,8 @@ class TFTTrainingConfig(BaseModel, frozen=True):
 
     encoder_length: int = Field(default=168, ge=1)
     prediction_length: int = Field(default=48, ge=1)
-    max_steps: int = Field(default=10000, ge=1)
-    windows_batch_size: int = Field(default=1024, ge=1)
+    max_steps: int = Field(default=3000, ge=1)
+    windows_batch_size: int = Field(default=64, ge=1)
     step_size: int = Field(default=12, ge=1)
     learning_rate: float = Field(default=0.001, gt=0.0)
     early_stop_patience_steps: int = Field(default=200, ge=-1)  # -1 disables
@@ -166,48 +166,23 @@ class TFTCovariatesConfig(BaseModel, frozen=True):
 
     time_varying_known: list[str] = Field(
         default_factory=lambda: [
-            "hour_cos",
-            "day_of_week_sin",
-            "day_of_week_cos",
-            "month_sin",
-            "day_of_year_sin",
-            "day_of_year_cos",
-            "is_weekend",
-            "is_sunday",
-            "is_bridge_day",
-            "tatil_tipi",
-            "holiday_duration",
-            "bayrama_kalan_gun",
-            "bayram_gun_no",
-            "days_since_holiday",
-            "days_until_holiday",
-            "temperature_2m",
             "apparent_temperature",
-            "shortwave_radiation",
-            "sol_elevation",
-            "wth_cdd",
+            "holiday_duration",
+            "tatil_tipi",
+            "day_of_week_sin",
             "wth_hdd",
-            "hdd_x_hour",
-            "temp_x_hour",
-            "cdd_x_hour",
+            "is_weekend",
         ]
     )
     time_varying_unknown: list[str] = Field(
         default_factory=lambda: [
-            "consumption_lag_48",
             "consumption_lag_168",
             "consumption_lag_336",
             "consumption_week_ratio",
+            "consumption_lag_48",
             "consumption_momentum_168",
-            "consumption_pct_change_168",
-            "consumption_trend_ratio_168_336",
-            "consumption_trend_ratio_48_168",
-            "consumption_window_720_std",
-            "consumption_window_48_max",
-            "consumption_window_336_max",
             "temperature_2m_window_24_max",
-            "temperature_2m_window_12_max",
-            "temperature_2m_window_6_mean",
+            "consumption_pct_change_168",
         ]
     )
 
@@ -331,9 +306,9 @@ class EnsembleWeightsConfig(BaseModel, frozen=True):
     Weights are auto-normalized to sum=1 based on active models at runtime.
     """
 
-    catboost: float = Field(default=0.45, ge=0.0, le=1.0)
-    tft: float = Field(default=0.25, ge=0.0, le=1.0)
-    tsmixerx: float = Field(default=0.0, ge=0.0, le=1.0)
+    catboost: float = Field(default=0.33, ge=0.0, le=1.0)
+    tft: float = Field(default=0.34, ge=0.0, le=1.0)
+    tsmixerx: float = Field(default=0.33, ge=0.0, le=1.0)
 
     @model_validator(mode="after")
     def _weights_sum_valid(self) -> Self:
@@ -372,7 +347,7 @@ class EnsembleWeightBoundsConfig(BaseModel, frozen=True):
     """Per-model weight bounds for optimization."""
 
     catboost: tuple[float, float] = (0.2, 0.7)
-    tft: tuple[float, float] = (0.1, 0.5)
+    tft: tuple[float, float] = (0.2, 0.7)
     tsmixerx: tuple[float, float] = (0.1, 0.5)
 
 

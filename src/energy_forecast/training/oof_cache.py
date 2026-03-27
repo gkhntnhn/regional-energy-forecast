@@ -47,8 +47,8 @@ class CachedTrainingResult:
 class CachedPipelineResult:
     """Lightweight pipeline result from OOF cache.
 
-    Duck-type compatible with CatBoostPipelineResult / ProphetPipelineResult /
-    TFTPipelineResult — only exposes fields that ensemble actually reads.
+    Duck-type compatible with CatBoostPipelineResult / TFTPipelineResult /
+    TSMixerxPipelineResult — only exposes fields that ensemble actually reads.
     """
 
     training_result: CachedTrainingResult
@@ -68,7 +68,7 @@ def save_oof_cache(
     """Save split results (OOF predictions + metrics) to disk.
 
     Args:
-        model_name: Model identifier (catboost/prophet/tft).
+        model_name: Model identifier (catboost/tft/tsmixerx).
         split_results: List of SplitResult from training.
         models_dir: Base models directory.
         config_hash: SHA256 hash of model config for staleness check.
@@ -214,7 +214,7 @@ def compute_config_hash(settings: Any, model_name: str) -> str:
 
     Args:
         settings: Full Settings object.
-        model_name: Model identifier (catboost/prophet/tft).
+        model_name: Model identifier (catboost/tft/tsmixerx).
 
     Returns:
         Hex digest string.

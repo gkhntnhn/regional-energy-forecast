@@ -1,6 +1,6 @@
 """Shared training result dataclasses.
 
-Provides the common SplitResult used by CatBoost, Prophet, and TFT trainers,
+Provides the common SplitResult used by CatBoost, TFT, and TSMixerx trainers,
 eliminating triple-duplication of nearly identical frozen dataclasses.
 """
 
@@ -19,7 +19,7 @@ class SplitResult:
     """Result from a single CV split.
 
     Used by all three trainers. CatBoost sets ``best_iteration`` to the actual
-    early-stopping iteration; Prophet and TFT leave it at the default (0).
+    early-stopping iteration; TFT and TSMixerx leave it at the default (0).
     """
 
     split_idx: int

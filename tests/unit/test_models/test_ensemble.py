@@ -57,9 +57,9 @@ class TestEnsembleForecasterInit:
         config: dict[str, Any] = {}
         forecaster = EnsembleForecaster(config)
         assert forecaster.weights == {
-            "catboost": 0.45,
-            "tft": 0.25,
-            "tsmixerx": 0.0,
+            "catboost": 0.33,
+            "tft": 0.34,
+            "tsmixerx": 0.33,
         }
 
     def test_default_active_models(self) -> None:
@@ -82,7 +82,7 @@ class TestEnsembleForecasterInit:
         forecaster = EnsembleForecaster(config)
         weights = forecaster.weights
         weights["catboost"] = 0.99
-        assert forecaster.weights["catboost"] == 0.45
+        assert forecaster.weights["catboost"] == 0.33
 
     def test_active_models_property_returns_copy(self) -> None:
         config: dict[str, Any] = {}

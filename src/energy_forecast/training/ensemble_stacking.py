@@ -41,7 +41,7 @@ def build_oof_dataframe(
         context_features: List of context feature names for stacking.
 
     Returns:
-        DataFrame: ``[pred_catboost, pred_prophet, ..., hour, dow, ..., y_true]``
+        DataFrame: ``[pred_catboost, pred_tft, ..., hour, dow, ..., y_true]``
     """
     splitter = TimeSeriesSplitter.from_config(cv_config)
 

@@ -25,7 +25,7 @@ class SplitInfo:
 class TimeSeriesSplitter:
     """Calendar-month aligned expanding-window TSCV splitter.
 
-    All models (CatBoost, Prophet, TFT) use this same splitter.
+    All models (CatBoost, TFT, TSMixerx) use this same splitter.
 
     Each split has val and test periods aligned to full calendar months.
     Train always starts from data beginning and expands (backward-anchored).

@@ -1,6 +1,6 @@
 """Shared training utilities.
 
-Provides common helper functions used across CatBoost, Prophet, and TFT
+Provides common helper functions used across CatBoost, TFT, and TSMixerx
 training pipelines (e.g. Optuna storage selection).
 """
 

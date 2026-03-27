@@ -4,7 +4,7 @@ Reads the search_space dict from YAML config and automatically generates
 the appropriate trial.suggest_* calls. Adding a new parameter to YAML
 requires NO code change.
 
-All models (CatBoost, Prophet, TFT) use this same function.
+All models (CatBoost, TFT, TSMixerx) use this same function.
 """
 
 from __future__ import annotations

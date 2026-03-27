@@ -93,15 +93,15 @@ class TestEnsembleConfig:
 
     def test_default_catboost_weight(self) -> None:
         settings = get_default_config()
-        assert settings.ensemble.weights.catboost == 0.45
+        assert settings.ensemble.weights.catboost == 0.33
 
     def test_default_tft_weight(self) -> None:
         settings = get_default_config()
-        assert settings.ensemble.weights.tft == 0.25
+        assert settings.ensemble.weights.tft == 0.34
 
     def test_default_tsmixerx_weight(self) -> None:
         settings = get_default_config()
-        assert settings.ensemble.weights.tsmixerx == 0.0
+        assert settings.ensemble.weights.tsmixerx == 0.33
 
     def test_optimization_enabled_by_default(self) -> None:
         settings = get_default_config()
@@ -119,16 +119,16 @@ class TestEnsembleConfig:
         settings = get_default_config()
         normalized = settings.ensemble.weights.get_normalized(["catboost", "tft"])
         assert abs(sum(normalized.values()) - 1.0) < 1e-6
-        assert normalized["catboost"] == pytest.approx(0.45 / 0.70)
-        assert normalized["tft"] == pytest.approx(0.25 / 0.70)
+        assert normalized["catboost"] == pytest.approx(0.33 / 0.67)
+        assert normalized["tft"] == pytest.approx(0.34 / 0.67)
 
     def test_weight_normalization_two_models(self) -> None:
         settings = get_default_config()
-        # catboost=0.45, tsmixerx=0.0 → catboost gets all weight
+        # catboost=0.33, tsmixerx=0.33 → equal weights normalized
         normalized = settings.ensemble.weights.get_normalized(["catboost", "tsmixerx"])
         assert abs(sum(normalized.values()) - 1.0) < 1e-6
-        assert normalized["catboost"] == pytest.approx(1.0)
-        assert normalized["tsmixerx"] == pytest.approx(0.0)
+        assert normalized["catboost"] == pytest.approx(0.5)
+        assert normalized["tsmixerx"] == pytest.approx(0.5)
 
 
 # ---------------------------------------------------------------------------

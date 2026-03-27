@@ -3,7 +3,7 @@
 Orchestrates hyperparameter optimization via Optuna, cross-validated
 training on calendar-month splits, and final model training on all data.
 
-Uses the same shared infrastructure as CatBoostTrainer and ProphetTrainer:
+Uses the same shared infrastructure as CatBoostTrainer and TSMixerxTrainer:
 - TimeSeriesSplitter for calendar-month TSCV
 - suggest_params for dynamic Optuna search space
 - compute_all / MetricsResult for metrics
@@ -73,7 +73,7 @@ class TFTPipelineResult:
 class TFTTrainer:
     """TFT training pipeline with TSCV, Optuna, and MLflow.
 
-    Follows the same pattern as CatBoostTrainer and ProphetTrainer,
+    Follows the same pattern as CatBoostTrainer and TSMixerxTrainer,
     using shared M5 infrastructure.
 
     Args:

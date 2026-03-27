@@ -546,7 +546,7 @@ class TFTForecaster(BaseForecaster):
                 torch.save(ckpt, ckpt_file)
                 logger.debug("Stripped callbacks from {}", ckpt_file.name)
 
-        # Compute checkpoint hashes for integrity verification (Prophet parity)
+        # Compute checkpoint hashes for integrity verification
         ckpt_hashes: dict[str, str] = {}
         for ckpt_file in path.glob("*.ckpt"):
             ckpt_hashes[ckpt_file.name] = hashlib.sha256(ckpt_file.read_bytes()).hexdigest()
@@ -601,7 +601,7 @@ class TFTForecaster(BaseForecaster):
         with open(metadata_path) as f:
             metadata = json.load(f)
 
-        # Verify checkpoint integrity (hash check — Prophet parity)
+        # Verify checkpoint integrity (hash check)
         ckpt_hashes = metadata.get("ckpt_hashes", {})
         if ckpt_hashes:
             for ckpt_name, expected_hash in ckpt_hashes.items():
