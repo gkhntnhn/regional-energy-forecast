@@ -155,7 +155,7 @@ class TestTFTTrainerBuildConfig:
 
         trainer = TFTTrainer(mock_settings)
         params = {"hidden_size": 32, "learning_rate": 0.005}
-        new_config = trainer._build_tft_config(params)
+        new_config = trainer._build_nf_config(params)
 
         assert new_config.architecture.hidden_size == 32
         assert new_config.training.learning_rate == 0.005
@@ -168,7 +168,7 @@ class TestTFTTrainerBuildConfig:
 
         trainer = TFTTrainer(mock_settings)
         params = {"n_head": 2, "n_rnn_layers": 2, "windows_batch_size": 512}
-        new_config = trainer._build_tft_config(params)
+        new_config = trainer._build_nf_config(params)
 
         assert new_config.architecture.n_head == 2
         assert new_config.architecture.n_rnn_layers == 2
@@ -256,7 +256,7 @@ class TestTFTOptunaObjective:
 
         # Patch suggest_params to return simple params
         with patch(
-            "energy_forecast.training.tft_trainer.suggest_params",
+            "energy_forecast.training.nf_base_trainer.suggest_params",
             return_value={"hidden_size": 16, "learning_rate": 0.005},
         ):
             result = objective(mock_trial)
@@ -546,7 +546,7 @@ class TestCreateObjectiveEdgeCases:
         # _train_split raises a generic exception (not TrialPruned)
         with (
             patch(
-                "energy_forecast.training.tft_trainer.suggest_params",
+                "energy_forecast.training.nf_base_trainer.suggest_params",
                 return_value={"hidden_size": 16},
             ),
             patch.object(
@@ -583,7 +583,7 @@ class TestCreateObjectiveEdgeCases:
 
         with (
             patch(
-                "energy_forecast.training.tft_trainer.suggest_params",
+                "energy_forecast.training.nf_base_trainer.suggest_params",
                 return_value={"hidden_size": 16},
             ),
             patch.object(
@@ -638,7 +638,7 @@ class TestOptimize:
 
         with (
             patch(
-                "energy_forecast.training.tft_trainer.create_study",
+                "energy_forecast.training.nf_base_trainer.create_study",
                 return_value=mock_study,
             ),
             patch.object(
@@ -671,7 +671,7 @@ class TestOptimize:
 
         with (
             patch(
-                "energy_forecast.training.tft_trainer.create_study",
+                "energy_forecast.training.nf_base_trainer.create_study",
                 return_value=mock_study,
             ),
             patch.object(
@@ -711,7 +711,7 @@ class TestOptimize:
 
         with (
             patch(
-                "energy_forecast.training.tft_trainer.create_study",
+                "energy_forecast.training.nf_base_trainer.create_study",
                 return_value=mock_study,
             ),
             patch.object(
