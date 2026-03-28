@@ -396,7 +396,11 @@ class NeuralForecastTrainer(ABC):
             direction="minimize",
             storage=storage,
             load_if_exists=True,
-            sampler=TPESampler(seed=self._model_config.training.random_seed),
+            sampler=TPESampler(
+                multivariate=True,
+                n_startup_trials=5,
+                seed=self._model_config.training.random_seed,
+            ),
             pruner=MedianPruner(
                 n_startup_trials=2,
                 n_warmup_steps=3,

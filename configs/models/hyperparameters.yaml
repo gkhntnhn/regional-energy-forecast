@@ -55,7 +55,7 @@ tft:
       log: true
 
 tsmixerx:
-  n_trials: 15             # Research-validated
+  n_trials: 30             # R7 Production HPO (expanded from 15)
   search_space:
     n_block:
       type: categorical
