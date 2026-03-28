@@ -928,3 +928,145 @@ class TestEndpointRouting:
 
         called_url = mock_api.call_args_list[0][0][0]
         assert "historical-forecast-api" in called_url
+
+
+# ---------------------------------------------------------------------------
+# Tests: Spatial variance features
+# ---------------------------------------------------------------------------
+
+
+class TestSpatialVariance:
+    """Tests for spatial variance features in grid mode."""
+
+    def test_grid_mode_produces_spatial_columns(self, tmp_path: Path) -> None:
+        """Grid mode adds spatial variance columns to output."""
+        config = OpenMeteoConfig(
+            variables=["temperature_2m", "precipitation", "surface_pressure"],
+            cache=WeatherCacheConfig(path=str(tmp_path / "sp_cache.db")),
+        )
+        region = _make_grid_region()
+        client = OpenMeteoClient(config=config, region=region)
+
+        hours = 24
+        time_start = 1704067200 - 10800
+        time_end = time_start + hours * 3600
+
+        def _make_3var_response(
+            temp: float, precip: float, press: float,
+        ) -> MockWeatherResponse:
+            return MockWeatherResponse(
+                hourly=MockHourly(
+                    variables=[
+                        np.full(hours, temp, dtype=np.float32),
+                        np.full(hours, precip, dtype=np.float32),
+                        np.full(hours, press, dtype=np.float32),
+                    ],
+                    time_start=time_start, time_end=time_end,
+                )
+            )
+
+        resp1 = _make_3var_response(10.0, 0.0, 1013.0)
+        resp2 = _make_3var_response(20.0, 2.0, 1010.0)
+        resp3 = _make_3var_response(15.0, 0.0, 1015.0)
+
+        with patch.object(
+            client._client,
+            "weather_api",
+            side_effect=[[resp1], [resp2], [resp3]],
+        ):
+            df = client.fetch_historical("2024-01-01", "2024-01-01")
+
+        assert "wth_temp_spread" in df.columns
+        assert "wth_precip_coverage" in df.columns
+        assert "wth_temp_gradient_ns" in df.columns
+        assert "wth_pressure_spread" in df.columns
+
+    def test_temp_spread_correct(self, tmp_path: Path) -> None:
+        """temp_spread = max - min temperature across points."""
+        config = OpenMeteoConfig(
+            variables=["temperature_2m", "precipitation", "surface_pressure"],
+            cache=WeatherCacheConfig(path=str(tmp_path / "ts_cache.db")),
+        )
+        region = _make_grid_region()
+        client = OpenMeteoClient(config=config, region=region)
+
+        hours = 24
+        ts = 1704067200 - 10800
+        te = ts + hours * 3600
+
+        r1 = MockWeatherResponse(hourly=MockHourly(
+            variables=[np.full(hours, 10.0, dtype=np.float32),
+                       np.zeros(hours, dtype=np.float32),
+                       np.full(hours, 1013.0, dtype=np.float32)],
+            time_start=ts, time_end=te))
+        r2 = MockWeatherResponse(hourly=MockHourly(
+            variables=[np.full(hours, 25.0, dtype=np.float32),
+                       np.zeros(hours, dtype=np.float32),
+                       np.full(hours, 1013.0, dtype=np.float32)],
+            time_start=ts, time_end=te))
+        r3 = MockWeatherResponse(hourly=MockHourly(
+            variables=[np.full(hours, 15.0, dtype=np.float32),
+                       np.zeros(hours, dtype=np.float32),
+                       np.full(hours, 1013.0, dtype=np.float32)],
+            time_start=ts, time_end=te))
+
+        with patch.object(
+            client._client, "weather_api",
+            side_effect=[[r1], [r2], [r3]],
+        ):
+            df = client.fetch_historical("2024-01-01", "2024-01-01")
+
+        # max=25, min=10 -> spread=15
+        assert abs(df["wth_temp_spread"].iloc[0] - 15.0) < 0.01
+
+    def test_precip_coverage_fraction(self, tmp_path: Path) -> None:
+        """precip_coverage = fraction of points with precip > 0."""
+        config = OpenMeteoConfig(
+            variables=["temperature_2m", "precipitation", "surface_pressure"],
+            cache=WeatherCacheConfig(path=str(tmp_path / "pc_cache.db")),
+        )
+        region = _make_grid_region()
+        client = OpenMeteoClient(config=config, region=region)
+
+        hours = 24
+        ts = 1704067200 - 10800
+        te = ts + hours * 3600
+
+        # Point 1: no precip, Point 2: precip, Point 3: no precip -> 1/3
+        r1 = MockWeatherResponse(hourly=MockHourly(
+            variables=[np.full(hours, 10.0, dtype=np.float32),
+                       np.zeros(hours, dtype=np.float32),
+                       np.full(hours, 1013.0, dtype=np.float32)],
+            time_start=ts, time_end=te))
+        r2 = MockWeatherResponse(hourly=MockHourly(
+            variables=[np.full(hours, 10.0, dtype=np.float32),
+                       np.full(hours, 5.0, dtype=np.float32),
+                       np.full(hours, 1013.0, dtype=np.float32)],
+            time_start=ts, time_end=te))
+        r3 = MockWeatherResponse(hourly=MockHourly(
+            variables=[np.full(hours, 10.0, dtype=np.float32),
+                       np.zeros(hours, dtype=np.float32),
+                       np.full(hours, 1013.0, dtype=np.float32)],
+            time_start=ts, time_end=te))
+
+        with patch.object(
+            client._client, "weather_api",
+            side_effect=[[r1], [r2], [r3]],
+        ):
+            df = client.fetch_historical("2024-01-01", "2024-01-01")
+
+        assert abs(df["wth_precip_coverage"].iloc[0] - 1.0 / 3.0) < 0.01
+
+    def test_legacy_mode_no_spatial(self, client: OpenMeteoClient) -> None:
+        """Legacy mode does NOT produce spatial columns."""
+        resp_a = _make_mock_response(temp_base=10.0)
+        resp_b = _make_mock_response(temp_base=20.0)
+
+        with patch.object(
+            client._client, "weather_api",
+            side_effect=[[resp_a], [resp_b]],
+        ):
+            df = client.fetch_historical("2024-01-01", "2024-01-01")
+
+        assert "wth_temp_spread" not in df.columns
+        assert "wth_precip_coverage" not in df.columns

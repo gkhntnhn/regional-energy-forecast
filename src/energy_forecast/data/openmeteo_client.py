@@ -547,6 +547,81 @@ class OpenMeteoClient:
                 var,
             )
 
+        # --- Spatial variance features (grid mode only) ---
+        if self.region.mode == "grid" and len(city_dfs) > 1:
+            result = self._add_spatial_variance(result, city_dfs)
+
+        return result
+
+    def _add_spatial_variance(
+        self,
+        result: pd.DataFrame,
+        location_dfs: list[tuple[CityConfig, pd.DataFrame]],
+    ) -> pd.DataFrame:
+        """Compute spatial variance metrics across grid points.
+
+        Added as extra columns to the weighted-average DataFrame.
+        These are NOT leakage — weather forecast data is available at
+        prediction time from OpenMeteo.
+
+        Args:
+            result: Weighted-average DataFrame to augment.
+            location_dfs: Per-location (CityConfig, DataFrame) pairs.
+
+        Returns:
+            DataFrame with spatial columns appended.
+        """
+        base_index = result.index
+
+        # Temperature spread: max - min across all grid points
+        if "temperature_2m" in result.columns:
+            all_temps = pd.DataFrame(
+                {loc.name: df.reindex(base_index)["temperature_2m"]
+                 for loc, df in location_dfs if "temperature_2m" in df.columns}
+            )
+            if not all_temps.empty:
+                result["wth_temp_spread"] = all_temps.max(axis=1) - all_temps.min(axis=1)
+
+        # Precipitation coverage: fraction of points with precip > 0
+        if "precipitation" in result.columns:
+            all_precip = pd.DataFrame(
+                {loc.name: df.reindex(base_index)["precipitation"]
+                 for loc, df in location_dfs if "precipitation" in df.columns}
+            )
+            if not all_precip.empty:
+                result["wth_precip_coverage"] = (
+                    (all_precip > 0).sum(axis=1) / all_precip.shape[1]
+                )
+
+        # N-S temperature gradient (northern vs southern points)
+        if "temperature_2m" in result.columns:
+            median_lat = np.median([loc.latitude for loc, _ in location_dfs])
+            north = [
+                df.reindex(base_index)["temperature_2m"]
+                for loc, df in location_dfs
+                if loc.latitude > median_lat and "temperature_2m" in df.columns
+            ]
+            south = [
+                df.reindex(base_index)["temperature_2m"]
+                for loc, df in location_dfs
+                if loc.latitude <= median_lat and "temperature_2m" in df.columns
+            ]
+            if north and south:
+                north_mean = pd.concat(north, axis=1).mean(axis=1)
+                south_mean = pd.concat(south, axis=1).mean(axis=1)
+                result["wth_temp_gradient_ns"] = north_mean - south_mean
+
+        # Pressure spread (frontal activity indicator)
+        if "surface_pressure" in result.columns:
+            all_press = pd.DataFrame(
+                {loc.name: df.reindex(base_index)["surface_pressure"]
+                 for loc, df in location_dfs if "surface_pressure" in df.columns}
+            )
+            if not all_press.empty:
+                result["wth_pressure_spread"] = (
+                    all_press.max(axis=1) - all_press.min(axis=1)
+                )
+
         return result
 
     @staticmethod
