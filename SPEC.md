@@ -669,7 +669,7 @@ DATABASE_URL=postgresql+asyncpg://user:pass@host:5432/db
 | Hızlı test | YAML'da değer düşür → run.py çalıştır → geri al |
 | Coverage hedefi | %85+ |
 | Mock kuralı | Sadece external API'ler mock'lanır (EPİAŞ, OpenMeteo) |
-| Test sayısı | 966 non-slow / 983 toplam |
+| Test sayısı | 1105 non-slow / 1122 toplam |
 
 ### 10.3 Git Workflow
 

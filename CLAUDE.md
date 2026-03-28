@@ -151,7 +151,7 @@ Bu sayede consumption_lag_720 gibi uzun lag'ler forecast'ta doğru hesaplanır.
 ## CI/CD
 - GitHub Actions (.github/workflows/ci.yml)
 - Push/PR → ruff check + mypy + pytest (-m "not slow")
-- Tests: 966 non-slow / 983 toplam, coverage ~84%
+- Tests: 1105 non-slow / 1122 toplam, coverage 89%
 - Optuna persistence: n_trials > 3 → SQLite storage, ≤3 → in-memory
 
 ## Dosya Yapısı
