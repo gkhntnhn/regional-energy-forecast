@@ -692,10 +692,10 @@ Commit format: `feat(scope): description` / `fix(scope): description`
 |--------|-------|--------|
 | Tahmin üretme süresi | < 30 saniye | Ölçülüyor (latency_ms metadata'da) |
 | API response time | < 60 saniye | — |
-| CatBoost Val MAPE | < %3 | R6: Val 2.47%, Test 2.97% (30t, RMSE) |
-| TFT Val MAPE | < %3 | R6: Val 2.19%, Test 2.30% (15t, MQLoss) |
-| TSMixerx Val MAPE | < %3 | R6: Val 2.12%, Test 2.23% (15t, MAE) |
-| Ensemble Val MAPE | < %2.5 (hedef) | Smoke: Val 2.11%, Test 2.20% (auto mode) |
+| CatBoost Val MAPE | < %3 | R7: Val 2.47%, Test 2.97% (fixed, RMSE) |
+| TFT Val MAPE | < %3 | R7: Val 2.40%, Test 2.52% (fixed, MQLoss) |
+| TSMixerx Val MAPE | < %3 | R7: Val 1.96%, Test 2.04% (30t HPO, MAE) |
+| Ensemble Val MAPE | < %2.5 (hedef) | R7: Val 1.75%, Test 1.82% (weighted_avg) |
 
 ### 11.2 Güvenilirlik
 

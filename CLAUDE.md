@@ -198,16 +198,14 @@ configs/
 .mailmap                     # Git author normalization
 ```
 
-## Model Performansı (R6 HPO, 12-fold TSCV)
+## Model Performansı (R7 HPO, 12-fold TSCV)
 
 | Model | Val MAPE | Test MAPE | Not |
 |-------|----------|-----------|-----|
-| CatBoost | 2.47% | 2.97% | 30 trial, RMSE loss, 229 feature |
-| TFT | 2.19% | 2.30% | 15 trial, MQLoss, ~600K params |
-| TSMixerx | 2.12% | 2.23% | 15 trial (araştırma), MAE loss, ~313K params |
-| Ensemble (auto) | 2.11% | 2.20% | weighted_avg: CB=0.37 TSM=0.43 TFT=0.20 |
-
-> Production HPO (#139) sonrası güncellenecek. Hedef: ensemble < 2.3%
+| CatBoost | 2.47% | 2.97% | fixed R6 params, RMSE loss, 229 feature |
+| TFT | 2.40% | 2.52% | fixed R6 params, MQLoss, ~600K params |
+| TSMixerx | 1.96% | 2.04% | 30 trial HPO, MAE loss, n_block=3 ff_dim=64 |
+| Ensemble (auto) | 1.75% | 1.82% | weighted_avg: TSM=0.50 CB=0.27 TFT=0.23 |
 
 ## Bilinen Sorunlar
 
