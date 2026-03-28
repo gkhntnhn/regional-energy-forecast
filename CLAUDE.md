@@ -49,9 +49,14 @@ make train-tsmixerx       # TSMixerx eğitimi
 make train-ensemble       # Ensemble eğitimi
 ```
 
-> **Test için:** Model YAML'ında (configs/models/*.yaml veya configs/models/hyperparameters.yaml)
-> `n_splits`, `n_trials`, `max_steps` değerlerini geçici olarak düşür, çalıştır, sonra geri al.
-> Ayrı smoke/test config dosyası yok — tek YAML, tek pipeline.
+> **Hızlı test:** Smoke override config'lerini `--config` flag ile kullan:
+> - `configs/smoke_override.yaml`: Baseline smoke test (1 trial, 12 splits, ~30 min)
+> - `configs/smoke_override_quick.yaml`: Hızlı smoke test (~10 min, 3 splits)
+> - `configs/smoke_override_val2.yaml`: Validation window karşılaştırma testi
+>
+> ```bash
+> uv run python -m energy_forecast.training.run --model catboost --config configs/smoke_override_quick.yaml --force-hpo --no-mlflow
+> ```
 
 ## Training CLI
 ```bash
@@ -61,9 +66,12 @@ uv run python -m energy_forecast.training.run --model catboost
 # Önemli flag'ler:
 #   --model {catboost,tft,tsmixerx,ensemble}  # Zorunlu
 #   --config path/to/override.yaml            # Override config (opsiyonel)
+#   --configs path/to/configs/dir             # Config directory (default: configs)
 #   --no-mlflow                               # MLflow tracking devre dışı
+#   --no-cache                                # Force retrain OOF cache (ensemble only)
+#   --force-hpo                               # Force Optuna HPO even if best_params exists
 #   --n-trials 5                              # Optuna trial sayısı override
-#   --models catboost,tft                     # Ensemble için aktif modeller
+#   --models catboost,tft,tsmixerx            # Ensemble için aktif modeller
 #   --data path/to/features.parquet           # Özel data path
 ```
 
@@ -88,7 +96,9 @@ uv run python -m energy_forecast.training.run --model catboost
 - Ham EPIAS değerleri pipeline çıkışında her zaman DROP
 - PREDICTION_COL = "consumption_mwh" — tüm modellerin standart output kolon ismi
 - CatBoost categorical_features: 35 adet (catboost.yaml'da tanımlı, 6 grup: Time, Holiday, Interaction, Time-period, Weather, Season/Solar)
-- TSMixerx covariates: 13 adet (tsmixerx.yaml'da tanımlı, NeuralForecast framework)
+- TSMixerx/TFT covariates: 15 adet (8 futr_exog + 7 hist_exog, YAML'da tanımlı, NeuralForecast)
+- TSMixerx loss: config-driven (MAE/MSE/RMSE/Huber) — tsmixerx.yaml'da `loss` field
+- Ensemble mode: "auto" (weighted_average + stacking dener, en iyisini seçer) | "weighted_average" | "stacking"
 - Ensemble ağırlık optimizasyonu: MAPE(y, Σwᵢ·predᵢ) — blended predictions üzerinden
 - TimeSeriesSplitter: shuffle=True → ValueError (zaman serisi CV'de shuffle yasak)
 
@@ -141,6 +151,7 @@ Bu sayede consumption_lag_720 gibi uzun lag'ler forecast'ta doğru hesaplanır.
 ## CI/CD
 - GitHub Actions (.github/workflows/ci.yml)
 - Push/PR → ruff check + mypy + pytest (-m "not slow")
+- Tests: 966 non-slow / 983 toplam, coverage ~84%
 - Optuna persistence: n_trials > 3 → SQLite storage, ≤3 → in-memory
 
 ## Dosya Yapısı
@@ -149,8 +160,8 @@ data/
 ├── raw/
 │   └── Consumption_Input_Format.xlsx    # Ham tüketim verisi
 ├── processed/
-│   ├── features_historical.parquet      # Training için (~48K satır, ~475 feature)
-│   └── features_forecast.parquet        # Prediction için (48 satır, ~475 feature)
+│   ├── features_historical.parquet      # Training için (~48K satır, 457 feature)
+│   └── features_forecast.parquet        # Prediction için (48 satır, 457 feature)
 ├── static/
 │   └── turkish_holidays.parquet         # Tatil verileri
 └── external/
@@ -165,26 +176,38 @@ configs/
 ├── data_loader.yaml        # Excel yükleme
 ├── openmeteo.yaml          # Hava durumu
 ├── api.yaml                # API config (CORS, rate limit)
+├── monitoring.yaml         # Monitoring ve drift detection
 ├── models/
 │   ├── catboost.yaml       # CatBoost model config (35 kategorik feature)
 │   ├── tft.yaml            # TFT model config (NeuralForecast)
 │   ├── tsmixerx.yaml       # TSMixerx model config (NeuralForecast)
-│   ├── ensemble.yaml       # Ensemble config
-│   └── hyperparameters.yaml # Optuna arama uzayı
-└── features/
-    ├── calendar.yaml
-    ├── consumption.yaml
-    ├── epias.yaml
-    ├── solar.yaml
-    └── weather.yaml
+│   ├── ensemble.yaml       # Ensemble config (weighted_average/stacking/auto)
+│   ├── hyperparameters.yaml # Optuna arama uzayı
+│   └── catboost_selected_features.json  # Feature selection (229/457)
+├── features/
+│   ├── calendar.yaml
+│   ├── consumption.yaml
+│   ├── epias.yaml
+│   ├── solar.yaml
+│   └── weather.yaml
+├── smoke_override.yaml          # Smoke test baseline (1 trial, 12 splits)
+├── smoke_override_quick.yaml    # Quick smoke test (~10 min, 3 splits)
+└── smoke_override_val2.yaml     # Validation window karşılaştırma
 
 .github/workflows/ci.yml    # CI pipeline (ruff + mypy + pytest)
 .mailmap                     # Git author normalization
 ```
 
-## Model Performansı
+## Model Performansı (R6 HPO, 12-fold TSCV)
 
-> Yeni production HPO sonrası güncellenecek.
+| Model | Val MAPE | Test MAPE | Not |
+|-------|----------|-----------|-----|
+| CatBoost | 2.47% | 2.97% | 30 trial, RMSE loss, 229 feature |
+| TFT | 2.19% | 2.30% | 15 trial, MQLoss, ~600K params |
+| TSMixerx | 2.12% | 2.23% | 15 trial (araştırma), MAE loss, ~313K params |
+| Ensemble (auto) | 2.11% | 2.20% | weighted_avg: CB=0.37 TSM=0.43 TFT=0.20 |
+
+> Production HPO (#139) sonrası güncellenecek. Hedef: ensemble < 2.3%
 
 ## Bilinen Sorunlar
 
@@ -206,7 +229,7 @@ configs/
 - [x] M3: Feature engineering (5 modül + pipeline orkestratör)
 - [x] M4: Leakage audit
 - [x] M5: CatBoost training (TSCV + Optuna + MLflow)
-- [x] M6: ~~Prophet training~~ Prophet removed, replaced by TSMixerx
+- [x] M6: TSMixerx training (TSCV + Optuna + MLflow) — Prophet replaced
 - [x] M7: 2-model ensemble (Faz 1 tamamlanır)
 - [x] M8: TFT training (TSCV + Optuna + MLflow)
 - [x] M9: 3-model ensemble — CatBoost + TFT + TSMixerx (Faz 2 tamamlanır)

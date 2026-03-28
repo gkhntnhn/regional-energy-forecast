@@ -142,3 +142,5 @@ runpod_processed.tar.gz
 research/
 results.tar.gz
 data/raw/final_models_r6_backup.tar.gz
+.planning/
+

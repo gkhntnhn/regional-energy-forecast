@@ -1,7 +1,7 @@
 # SPEC.md — Energy Forecast
 
 > Proje anayasası. Claude Code ve geliştirici bu dosyayı tek kaynak olarak referans alır.
-> Son güncelleme: 2026-03-15
+> Son güncelleme: 2026-03-28
 
 ---
 
@@ -185,7 +185,10 @@ Weather forecast ve solar hesaplamaları (lead dahil) data leakage DEĞİLDİR:
 | Solar | pvlib hesaplamaları | GHI/DNI/DHI, POA, clearness index, cloud proxy |
 | EPIAS | EPİAŞ piyasa verileri | Lag, rolling, expanding (türetilmiş değerler) |
 
-**Toplam feature sayısı:** ~475
+**Toplam feature sayısı:** 457 (pipeline çıkışı)
+- CatBoost: 229 selected features (feature importance pruning)
+- TFT/TSMixerx: 15 covariates (8 futr_exog + 7 hist_exog)
+- OOF analysis-driven features: is_new_year (%37 MAPE outlier), dst_transition (%28 MAPE outlier)
 
 ### 4.2 Data Leakage Kuralları
 
@@ -231,8 +234,8 @@ Feature pipeline training ve prediction için AYNI şekilde çalışır. Ayrı "
 Bu sayede uzun lag'ler (consumption_lag_720 gibi) forecast satırlarında da doğru hesaplanır.
 
 **Çıktı dosyaları:**
-- `data/processed/features_historical.parquet` (~48K satır, ~475 feature)
-- `data/processed/features_forecast.parquet` (48 satır, ~475 feature)
+- `data/processed/features_historical.parquet` (~48K satır, 457 feature)
+- `data/processed/features_forecast.parquet` (48 satır, 457 feature)
 
 ---
 
@@ -277,19 +280,32 @@ Input (feature-engineered DataFrame)
 | Parametre | Değer |
 |-----------|-------|
 | Framework | NeuralForecast (nixtla) |
-| Hidden size | 128 (prod) |
-| Attention heads (n_head) | 2 |
-| RNN layers (n_rnn_layers) | 1 |
+| Hidden size | 64 (R5: 128→64, optimal for 15 covariates) |
+| Attention heads (n_head) | 4 |
+| RNN layers (n_rnn_layers) | 2 |
 | Dropout | 0.1 |
 | Encoder length | 168 saat (7 gün) |
 | Prediction length (h) | 48 saat |
-| max_steps | 10000 (prod) |
-| windows_batch_size | 2048 (prod) |
-| Loss | MAE |
-| Covariates | futr_exog_list (known), hist_exog_list (unknown) |
+| max_steps | 3000 (prod) |
+| windows_batch_size | 64 (RTX 4000 Ada optimized) |
+| step_size | 12 (4.8x speedup) |
+| Loss | MQLoss (quantile: 0.02-0.98) |
+| Covariates | 15 (8 futr_exog + 7 hist_exog) |
+| Parameters | ~600K |
+
+**Covariates (futr_exog — known at forecast time):**
+apparent_temperature, holiday_duration, tatil_tipi, day_of_week_sin,
+wth_hdd, is_weekend, is_new_year, dst_transition
+
+**Covariates (hist_exog — lagged ≥48h, encoder only):**
+consumption_lag_168, consumption_lag_336, consumption_week_ratio,
+consumption_lag_48, consumption_momentum_168, temperature_2m_window_24_max,
+consumption_pct_change_168
 
 **Güçlü yanı:** Attention-based interpretability, GPU utilization %96+,
 hangi feature'ın hangi saatte önemli olduğunu gösterir.
+TFT ve TSMixerx ortak `NeuralForecastTrainer` base class'ı paylaşır
+(TSCV orchestration, Optuna HPO, MLflow logging, OOF caching).
 
 ### 5.4 TSMixerx (MLP-Mixer — NeuralForecast)
 
@@ -298,10 +314,11 @@ hangi feature'ın hangi saatte önemli olduğunu gösterir.
 | Framework | NeuralForecast (nixtla) |
 | n_block | 2 |
 | ff_dim | 128 |
+| input_size | 168 (7 gün context) |
 | Prediction length (h) | 48 saat |
 | max_steps | 3000 (prod) |
-| Loss | MAE |
-| Covariates | futr_exog_list (known), hist_exog_list (unknown) |
+| Loss | MAE (config-driven: MAE/MSE/RMSE/Huber) |
+| Covariates | 15 (8 futr_exog + 7 hist_exog — TFT ile aynı set) |
 | Parameters | ~313K |
 
 **Güçlü yanı:** MLP-Mixer based architecture, lightweight (~313K params vs TFT ~600K),
@@ -309,14 +326,18 @@ competitive accuracy with faster training. Prophet replacement.
 
 ### 5.5 Ensemble
 
-İki mod desteklenir:
+Üç mod desteklenir:
 
-**Stacking (varsayılan):**
+**Auto (varsayılan):**
+- Her iki modu da dener (weighted_average + stacking), validation MAPE'ye göre en iyisini seçer
+- `mode: "auto"` (configs/models/ensemble.yaml)
+
+**Stacking:**
 - CatBoost meta-learner (depth=2) OOF val predictions üzerinde eğitilir
 - Context features: hour, day_of_week, is_weekend, month, is_holiday
 - Temporal 80/20 split ile meta-learner validation
 
-**Weighted Average (fallback):**
+**Weighted Average:**
 - `scipy.optimize.minimize` SLSQP (constraint: Σwᵢ = 1, wᵢ ≥ 0)
 - Metrik: MAPE(y, Σwᵢ·predᵢ) — blended predictions üzerinden
 - NOT: MAPE(blended) ≠ Σwᵢ·MAPE(predᵢ)
@@ -363,7 +384,7 @@ Split N: [█████████████████ train ████
 
 | Ayar | Değer |
 |------|-------|
-| n_trials | 50+ (CatBoost), 20 (TFT), 20 (TSMixerx) |
+| n_trials | 30 (CatBoost), 15 (TFT), 15 (TSMixerx) |
 | iterations | 1000-3000 |
 
 ### 6.3 Evaluation Metrikleri
@@ -388,17 +409,22 @@ MLflow ile tüm eğitimler izlenir:
 
 ### 6.5 Hızlı Test
 
-Ayrı smoke test config/script yok — tek pipeline, tek YAML. Hızlı validation için
-model YAML'larında (configs/models/hyperparameters.yaml, tft.yaml) değerleri geçici
-olarak düşür, çalıştır, sonra geri al:
+Smoke override config'leri ile hızlı validation:
 
 ```bash
-# hyperparameters.yaml'da n_trials: 1, n_splits: 2 yap, sonra:
-uv run python -m energy_forecast.training.run --model catboost --no-mlflow
+# Quick smoke test (~10 min, 3 splits, 1 trial)
+uv run python -m energy_forecast.training.run --model catboost \
+  --config configs/smoke_override_quick.yaml --force-hpo --no-mlflow
 
-# Bitince değerleri production'a geri al (n_trials: 50, n_splits: 12)
-# Veya: git checkout -- configs/  ile tüm config değişikliklerini geri al
+# Baseline smoke test (12 splits, 1 trial, ~30 min)
+uv run python -m energy_forecast.training.run --model catboost \
+  --config configs/smoke_override.yaml --force-hpo --no-mlflow
 ```
+
+**Training modları:**
+- **HPO mode:** `--force-hpo` — Optuna HPO çalıştırır (best_params varsa bile)
+- **Fixed mode:** HPO atlanır, YAML'daki `best_params` doğrudan kullanılır (varsayılan)
+- **Override config:** `--config` ile smoke/test YAML override'ı uygular
 
 ---
 
@@ -572,17 +598,21 @@ configs/
 ├── openmeteo.yaml          # Hava durumu: lokasyonlar, ağırlıklar, değişkenler
 ├── api.yaml                # API: CORS, rate limit
 ├── models/
-│   ├── catboost.yaml       # CatBoost: 28 kategorik kolon, eğitim parametreleri
+│   ├── catboost.yaml       # CatBoost: 35 kategorik kolon, eğitim parametreleri
 │   ├── tft.yaml            # TFT: NeuralForecast architecture, training
 │   ├── tsmixerx.yaml       # TSMixerx: NeuralForecast MLP-Mixer, training
-│   ├── ensemble.yaml       # Ensemble: ağırlıklar, aktif modeller
-│   └── hyperparameters.yaml # Optuna arama uzayı (tüm modeller)
-└── features/
-    ├── calendar.yaml       # Calendar feature parametreleri
-    ├── consumption.yaml    # Consumption: lag değerleri, window boyutları
-    ├── epias.yaml          # EPİAŞ: lag değerleri, window boyutları
-    ├── solar.yaml          # Solar: lokasyon, panel parametreleri
-    └── weather.yaml        # Weather: threshold'lar, window boyutları
+│   ├── ensemble.yaml       # Ensemble: auto/weighted_average/stacking mode
+│   ├── hyperparameters.yaml # Optuna arama uzayı (tüm modeller)
+│   └── catboost_selected_features.json  # Feature selection (229/457)
+├── features/
+│   ├── calendar.yaml       # Calendar feature parametreleri
+│   ├── consumption.yaml    # Consumption: lag değerleri, window boyutları
+│   ├── epias.yaml          # EPİAŞ: lag değerleri, window boyutları
+│   ├── solar.yaml          # Solar: lokasyon, panel parametreleri
+│   └── weather.yaml        # Weather: threshold'lar, window boyutları
+├── smoke_override.yaml          # Smoke test baseline (1 trial, 12 splits)
+├── smoke_override_quick.yaml    # Quick smoke test (~10 min, 3 splits)
+└── smoke_override_val2.yaml     # Validation window karşılaştırma
 ```
 
 ### 9.2 Environment Variables (.env)
@@ -639,7 +669,7 @@ DATABASE_URL=postgresql+asyncpg://user:pass@host:5432/db
 | Hızlı test | YAML'da değer düşür → run.py çalıştır → geri al |
 | Coverage hedefi | %85+ |
 | Mock kuralı | Sadece external API'ler mock'lanır (EPİAŞ, OpenMeteo) |
-| Test sayısı | 838 (aktif) |
+| Test sayısı | 966 non-slow / 983 toplam |
 
 ### 10.3 Git Workflow
 
@@ -662,10 +692,10 @@ Commit format: `feat(scope): description` / `fix(scope): description`
 |--------|-------|--------|
 | Tahmin üretme süresi | < 30 saniye | Ölçülüyor (latency_ms metadata'da) |
 | API response time | < 60 saniye | — |
-| CatBoost Val MAPE | < %5 | Yeni HPO sonrası güncellenecek |
-| TFT Val MAPE | < %5 | Yeni HPO sonrası güncellenecek |
-| TSMixerx Val MAPE | < %5 | Yeni HPO sonrası güncellenecek |
-| Ensemble Val MAPE | < %3 (hedef) | Yeni HPO sonrası güncellenecek |
+| CatBoost Val MAPE | < %3 | R6: Val 2.47%, Test 2.97% (30t, RMSE) |
+| TFT Val MAPE | < %3 | R6: Val 2.19%, Test 2.30% (15t, MQLoss) |
+| TSMixerx Val MAPE | < %3 | R6: Val 2.12%, Test 2.23% (15t, MAE) |
+| Ensemble Val MAPE | < %2.5 (hedef) | Smoke: Val 2.11%, Test 2.20% (auto mode) |
 
 ### 11.2 Güvenilirlik
 
