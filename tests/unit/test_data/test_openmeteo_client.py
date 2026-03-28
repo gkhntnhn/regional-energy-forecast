@@ -14,8 +14,10 @@ import pytest
 from energy_forecast.config import (
     CityConfig,
     GeocodingConfig,
+    GridPointConfig,
     OpenMeteoApiConfig,
     OpenMeteoConfig,
+    ProvinceConfig,
     RegionConfig,
     WeatherCacheConfig,
 )
@@ -715,3 +717,214 @@ class TestImports:
     def test_client_has_weather_api(self) -> None:
         """Client exposes weather_api method."""
         assert hasattr(openmeteo_requests.Client, "weather_api")
+
+
+# ---------------------------------------------------------------------------
+# Tests: Grid mode support
+# ---------------------------------------------------------------------------
+
+
+def _make_grid_region() -> RegionConfig:
+    """Create a grid-mode region with 2 provinces, 3 total points."""
+    return RegionConfig(
+        name="TestGrid",
+        mode="grid",
+        provinces=[
+            ProvinceConfig(
+                name="ProvA",
+                consumption_weight=0.7,
+                grid_points=[
+                    GridPointConfig(latitude=40.25, longitude=29.0, population_weight=0.6),
+                    GridPointConfig(latitude=40.0, longitude=29.0, population_weight=0.4),
+                ],
+            ),
+            ProvinceConfig(
+                name="ProvB",
+                consumption_weight=0.3,
+                grid_points=[
+                    GridPointConfig(latitude=39.75, longitude=28.0, population_weight=1.0),
+                ],
+            ),
+        ],
+    )
+
+
+class TestGridMode:
+    """Tests for grid mode location support."""
+
+    def test_get_locations_legacy(self, client: OpenMeteoClient) -> None:
+        """Legacy mode returns cities directly."""
+        locations = client._get_locations()
+        assert len(locations) == 2
+        assert locations[0].name == "CityA"
+        assert locations[1].name == "CityB"
+
+    def test_get_locations_grid(self, tmp_path: Path) -> None:
+        """Grid mode creates CityConfig from province × grid_point."""
+        config = OpenMeteoConfig(
+            variables=["temperature_2m", "precipitation"],
+            cache=WeatherCacheConfig(path=str(tmp_path / "grid_cache.db")),
+        )
+        region = _make_grid_region()
+        client = OpenMeteoClient(config=config, region=region)
+
+        locations = client._get_locations()
+        assert len(locations) == 3
+
+        # Check combined weights: consumption * population
+        # ProvA point 1: 0.7 * 0.6 = 0.42
+        assert abs(locations[0].weight - 0.42) < 1e-6
+        # ProvA point 2: 0.7 * 0.4 = 0.28
+        assert abs(locations[1].weight - 0.28) < 1e-6
+        # ProvB point 1: 0.3 * 1.0 = 0.30
+        assert abs(locations[2].weight - 0.30) < 1e-6
+
+        # Weights should sum to 1.0
+        total = sum(loc.weight for loc in locations)
+        assert abs(total - 1.0) < 1e-6
+
+    def test_get_locations_grid_names(self, tmp_path: Path) -> None:
+        """Grid location names follow province_lat_lon format."""
+        config = OpenMeteoConfig(
+            variables=["temperature_2m"],
+            cache=WeatherCacheConfig(path=str(tmp_path / "name_cache.db")),
+        )
+        region = _make_grid_region()
+        client = OpenMeteoClient(config=config, region=region)
+
+        locations = client._get_locations()
+        assert locations[0].name == "ProvA_40.25_29.0"
+        assert locations[2].name == "ProvB_39.75_28.0"
+
+    def test_grid_fetch_historical(self, tmp_path: Path) -> None:
+        """Grid mode fetch_historical produces correct weighted average."""
+        config = OpenMeteoConfig(
+            variables=["temperature_2m", "precipitation"],
+            cache=WeatherCacheConfig(path=str(tmp_path / "gfh_cache.db")),
+        )
+        region = _make_grid_region()
+        client = OpenMeteoClient(config=config, region=region)
+
+        # 3 locations → 3 responses
+        resp_a1 = _make_mock_response(temp_base=10.0)  # ProvA pt1, w=0.42
+        resp_a2 = _make_mock_response(temp_base=20.0)  # ProvA pt2, w=0.28
+        resp_b1 = _make_mock_response(temp_base=30.0)  # ProvB pt1, w=0.30
+
+        with patch.object(
+            client._client,
+            "weather_api",
+            side_effect=[[resp_a1], [resp_a2], [resp_b1]],
+        ):
+            df = client.fetch_historical("2024-01-01", "2024-01-01")
+
+        assert isinstance(df, pd.DataFrame)
+        assert len(df) == 24
+        # Expected hour 0: 0.42*10 + 0.28*20 + 0.30*30 = 4.2 + 5.6 + 9.0 = 18.8
+        expected = 0.42 * 10.0 + 0.28 * 20.0 + 0.30 * 30.0
+        assert abs(df["temperature_2m"].iloc[0] - expected) < 0.01
+
+
+# ---------------------------------------------------------------------------
+# Tests: Model parameter injection
+# ---------------------------------------------------------------------------
+
+
+class TestModelParam:
+    """Tests for explicit weather model specification."""
+
+    def test_model_none_no_models_key(self, client: OpenMeteoClient) -> None:
+        """When model is None, params dict has no 'models' key."""
+        resp = _make_mock_response()
+        with patch.object(
+            client._client,
+            "weather_api",
+            side_effect=[[resp], [resp]],
+        ) as mock_api:
+            client.fetch_historical("2024-01-01", "2024-01-01")
+
+        params = mock_api.call_args_list[0][1]["params"]
+        assert "models" not in params
+
+    def test_model_ecmwf_ifs_in_params(self, tmp_path: Path) -> None:
+        """When model is set, params dict includes 'models' key."""
+        config = OpenMeteoConfig(
+            api=OpenMeteoApiConfig(model="ecmwf_ifs"),
+            variables=["temperature_2m", "precipitation"],
+            cache=WeatherCacheConfig(path=str(tmp_path / "model_cache.db")),
+        )
+        region = RegionConfig(
+            name="Test",
+            cities=[
+                CityConfig(name="A", weight=1.0, latitude=40.0, longitude=29.0),
+            ],
+        )
+        client = OpenMeteoClient(config=config, region=region)
+
+        resp = _make_mock_response()
+        with patch.object(
+            client._client,
+            "weather_api",
+            side_effect=[[resp]],
+        ) as mock_api:
+            client.fetch_historical("2024-01-01", "2024-01-01")
+
+        params = mock_api.call_args_list[0][1]["params"]
+        assert params["models"] == "ecmwf_ifs"
+
+
+# ---------------------------------------------------------------------------
+# Tests: Endpoint routing
+# ---------------------------------------------------------------------------
+
+
+class TestEndpointRouting:
+    """Tests for historical endpoint URL selection based on model config."""
+
+    def test_no_model_uses_archive_api(self, client: OpenMeteoClient) -> None:
+        """Without explicit model, fetch_historical uses archive-api."""
+        assert client._get_historical_url() == client.config.api.base_url_historical
+        assert "archive-api" in client._get_historical_url()
+
+    def test_model_set_uses_historical_forecast_api(self, tmp_path: Path) -> None:
+        """With explicit model, fetch_historical uses historical-forecast-api."""
+        config = OpenMeteoConfig(
+            api=OpenMeteoApiConfig(model="ecmwf_ifs"),
+            variables=["temperature_2m", "precipitation"],
+            cache=WeatherCacheConfig(path=str(tmp_path / "route_cache.db")),
+        )
+        region = RegionConfig(
+            name="Test",
+            cities=[
+                CityConfig(name="A", weight=1.0, latitude=40.0, longitude=29.0),
+            ],
+        )
+        client = OpenMeteoClient(config=config, region=region)
+
+        assert client._get_historical_url() == config.api.base_url_historical_forecast
+        assert "historical-forecast-api" in client._get_historical_url()
+
+    def test_model_set_fetch_historical_calls_correct_url(self, tmp_path: Path) -> None:
+        """fetch_historical with model set calls historical-forecast-api URL."""
+        config = OpenMeteoConfig(
+            api=OpenMeteoApiConfig(model="ecmwf_ifs"),
+            variables=["temperature_2m", "precipitation"],
+            cache=WeatherCacheConfig(path=str(tmp_path / "urltest_cache.db")),
+        )
+        region = RegionConfig(
+            name="Test",
+            cities=[
+                CityConfig(name="A", weight=1.0, latitude=40.0, longitude=29.0),
+            ],
+        )
+        client = OpenMeteoClient(config=config, region=region)
+
+        resp = _make_mock_response()
+        with patch.object(
+            client._client,
+            "weather_api",
+            side_effect=[[resp]],
+        ) as mock_api:
+            client.fetch_historical("2024-01-01", "2024-01-01")
+
+        called_url = mock_api.call_args_list[0][0][0]
+        assert "historical-forecast-api" in called_url

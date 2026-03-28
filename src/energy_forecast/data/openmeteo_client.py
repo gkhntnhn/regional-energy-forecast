@@ -89,15 +89,48 @@ class OpenMeteoClient:
     # Public API
     # ------------------------------------------------------------------
 
+    def _get_locations(self) -> list[CityConfig]:
+        """Get location configs based on region mode.
+
+        In legacy mode, returns cities directly.
+        In grid mode, converts province × grid_point pairs to CityConfig
+        instances with combined weights (consumption × population).
+        """
+        if self.region.mode == "grid":
+            locations: list[CityConfig] = []
+            for province in self.region.provinces:
+                for point in province.grid_points:
+                    weight = province.consumption_weight * point.population_weight
+                    loc = CityConfig(
+                        name=f"{province.name}_{point.latitude}_{point.longitude}",
+                        weight=weight,
+                        latitude=point.latitude,
+                        longitude=point.longitude,
+                    )
+                    locations.append(loc)
+            return locations
+        return list(self.region.cities)
+
+    def _get_historical_url(self) -> str:
+        """Get the correct URL for historical weather fetch.
+
+        When an explicit model is configured (e.g. ecmwf_ifs), uses the
+        historical-forecast API (which archives NWP model outputs).
+        Otherwise falls back to the archive API (ERA5 reanalysis).
+        """
+        if self.config.api.model:
+            return self.config.api.base_url_historical_forecast
+        return self.config.api.base_url_historical
+
     def fetch_historical(
         self,
         start_date: str,
         end_date: str,
     ) -> pd.DataFrame:
-        """Fetch historical weather for all cities, return weighted average.
+        """Fetch historical weather for all locations, return weighted average.
 
-        DB-first: if DB has complete data for all cities, use it.
-        Otherwise fetch from API and save per-city data to DB.
+        DB-first: if DB has complete data for all locations, use it.
+        Otherwise fetch from API and save per-location data to DB.
 
         Args:
             start_date: Start date (YYYY-MM-DD).
@@ -105,7 +138,7 @@ class OpenMeteoClient:
 
         Returns:
             DataFrame with hourly DatetimeIndex and weather columns,
-            weighted-averaged across cities.
+            weighted-averaged across locations.
         """
         # 1. Try DB-first
         if self._db is not None:
@@ -118,12 +151,12 @@ class OpenMeteoClient:
         if self._db is not None:
             logger.info("[DB MISS] Weather historical not in DB, fetching from API")
         city_dfs = self._fetch_all_cities(
-            url=self.config.api.base_url_historical,
+            url=self._get_historical_url(),
             start_date=start_date,
             end_date=end_date,
         )
 
-        # 3. Save per-city data to DB (dual-write)
+        # 3. Save per-location data to DB (dual-write)
         if self._db is not None:
             self._save_cities_to_db(city_dfs, source="historical")
 
@@ -280,18 +313,18 @@ class OpenMeteoClient:
         end_date: str | None = None,
         forecast_days: int | None = None,
     ) -> list[tuple[CityConfig, pd.DataFrame]]:
-        """Fetch weather for all cities from API."""
+        """Fetch weather for all locations from API."""
         city_dfs: list[tuple[CityConfig, pd.DataFrame]] = []
-        for city in self.region.cities:
+        for loc in self._get_locations():
             df = self._fetch_single_location(
                 url=url,
-                latitude=city.latitude,
-                longitude=city.longitude,
+                latitude=loc.latitude,
+                longitude=loc.longitude,
                 start_date=start_date,
                 end_date=end_date,
                 forecast_days=forecast_days,
             )
-            city_dfs.append((city, df))
+            city_dfs.append((loc, df))
         return city_dfs
 
     def _load_cities_from_db(
@@ -309,7 +342,7 @@ class OpenMeteoClient:
         expected_hours = (end - start).total_seconds() / 3600 + 1
 
         city_dfs: list[tuple[CityConfig, pd.DataFrame]] = []
-        for city in self.region.cities:
+        for city in self._get_locations():
             df = self._db.get_weather_range(start, end, city=city.name, source=source)
             if df.empty or len(df) < expected_hours * 0.9:
                 return None  # Incomplete data — fall back to API
@@ -387,6 +420,8 @@ class OpenMeteoClient:
             "hourly": self.config.variables,
             "timezone": self.timezone,
         }
+        if self.config.api.model:
+            params["models"] = self.config.api.model
         if start_date and end_date:
             params["start_date"] = start_date
             params["end_date"] = end_date
