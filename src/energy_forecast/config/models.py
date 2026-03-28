@@ -286,7 +286,10 @@ class TSMixerxOptimizationConfig(BaseModel, frozen=True):
 
 
 class TSMixerxConfig(BaseModel, frozen=True):
-    """TSMixerx model configuration (point forecast, MAE loss)."""
+    """TSMixerx model configuration (point forecast).
+
+    Loss options: "mae" (default), "huber" (delta=1.0), "huber_0.5", "huber_2.0".
+    """
 
     architecture: TSMixerxArchitectureConfig = Field(
         default_factory=TSMixerxArchitectureConfig,
@@ -298,6 +301,7 @@ class TSMixerxConfig(BaseModel, frozen=True):
     optimization: TSMixerxOptimizationConfig = Field(
         default_factory=TSMixerxOptimizationConfig,
     )
+    loss: str = "mae"
     best_params: dict[str, Any] = Field(default_factory=dict)
 
 

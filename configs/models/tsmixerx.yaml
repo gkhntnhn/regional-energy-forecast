@@ -47,5 +47,8 @@ covariates:
     - temperature_2m_window_24_max
     - consumption_pct_change_168
 
+# Loss function: "mae" (default), "huber" (d=1.0), "huber_0.5", "huber_2.0"
+loss: "mae"
+
 # Populated after first HPO run
 best_params: {}

@@ -1,0 +1,39 @@
+# Quick smoke test — pipeline + hash validation (~10 min)
+# Usage: --config configs/smoke_override_quick.yaml --force-hpo --no-mlflow
+catboost:
+  n_trials: 1
+  search_space:
+    iterations:
+      type: int
+      low: 10
+      high: 10
+tft:
+  n_trials: 1
+  search_space:
+    hidden_size:
+      type: int
+      low: 16
+      high: 16
+    n_head:
+      type: int
+      low: 1
+      high: 1
+  training:
+    max_steps: 10
+    windows_batch_size: 128
+    encoder_length: 48
+tsmixerx:
+  n_trials: 1
+  search_space:
+    n_block:
+      type: categorical
+      choices: [2]
+    ff_dim:
+      type: categorical
+      choices: [64]
+  training:
+    max_steps: 10
+cross_validation:
+  n_splits: 3
+validation:
+  skip_after_optuna: true

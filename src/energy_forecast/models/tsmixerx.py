@@ -112,12 +112,24 @@ class TSMixerxForecaster(BaseForecaster):
             NeuralForecast instance wrapping a TSMixerx model.
         """
         from neuralforecast import NeuralForecast
-        from neuralforecast.losses.pytorch import MAE
+        from neuralforecast.losses.pytorch import MAE, HuberLoss, MSE, RMSE
         from neuralforecast.models import TSMixerx
 
         cfg = self._tsmixerx_config
         arch = cfg.architecture
         train_cfg = cfg.training
+
+        # Config-driven loss selection
+        loss_map: dict[str, Any] = {
+            "mae": MAE(),
+            "mse": MSE(),
+            "rmse": RMSE(),
+            "huber": HuberLoss(delta=1.0),
+            "huber_0.5": HuberLoss(delta=0.5),
+            "huber_2.0": HuberLoss(delta=2.0),
+        }
+        loss_fn = loss_map.get(cfg.loss, MAE())
+        logger.info("TSMixerx loss function: {} (config={})", type(loss_fn).__name__, cfg.loss)
 
         steps = max_steps if max_steps is not None else train_cfg.max_steps
 
@@ -149,7 +161,7 @@ class TSMixerxForecaster(BaseForecaster):
             ff_dim=arch.ff_dim,
             dropout=arch.dropout,
             revin=arch.revin,
-            loss=MAE(),
+            loss=loss_fn,
             learning_rate=train_cfg.learning_rate,
             max_steps=steps,
             val_check_steps=train_cfg.val_check_steps,

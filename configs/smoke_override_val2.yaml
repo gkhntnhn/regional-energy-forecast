@@ -1,0 +1,42 @@
+# Smoke test — val_months=2 comparison (Test 2)
+# Usage: --config configs/smoke_override_val2.yaml --force-hpo --no-mlflow
+# Compare with smoke_override.yaml (val_months=1) to isolate validation window effect
+catboost:
+  n_trials: 1
+  search_space:
+    iterations:
+      type: int
+      low: 1500
+      high: 1500
+tft:
+  n_trials: 1
+  search_space:
+    hidden_size:
+      type: int
+      low: 64
+      high: 64
+    n_head:
+      type: int
+      low: 4
+      high: 4
+  training:
+    max_steps: 1000
+    windows_batch_size: 64
+    encoder_length: 168
+tsmixerx:
+  n_trials: 1
+  search_space:
+    n_block:
+      type: categorical
+      choices: [2]
+    ff_dim:
+      type: categorical
+      choices: [128]
+  training:
+    max_steps: 1000
+cross_validation:
+  n_splits: 12
+  val_months: 2
+  test_months: 1
+validation:
+  skip_after_optuna: false

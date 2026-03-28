@@ -112,6 +112,7 @@ class TSMixerxTrainer(NeuralForecastTrainer):
                 futr_exog=list(base.covariates.futr_exog),
                 hist_exog=list(base.covariates.hist_exog),
             ),
+            loss=base.loss,
         )
 
     def _create_forecaster(self, config: Any) -> Any:
