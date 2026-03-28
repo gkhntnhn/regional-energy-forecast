@@ -18,7 +18,10 @@ from energy_forecast.config import (
     GenerationCompositesConfig,
     GenerationExpandingConfig,
     GenerationLagConfig,
+    GridPointConfig,
     ModelSearchConfig,
+    OpenMeteoApiConfig,
+    ProvinceConfig,
     RegionConfig,
     SearchParamConfig,
     Settings,
@@ -402,3 +405,198 @@ class TestEnsembleConfig:
 
         with pytest.raises(ValidationError, match=r"(?i)at least"):
             EnsembleConfig(active_models=[])
+
+
+# ---------------------------------------------------------------------------
+# Grid mode: GridPointConfig, ProvinceConfig, RegionConfig(mode="grid")
+# ---------------------------------------------------------------------------
+
+
+class TestGridPointConfig:
+    """Tests for GridPointConfig validation."""
+
+    def test_valid_grid_point(self) -> None:
+        gp = GridPointConfig(latitude=40.25, longitude=29.00, population_weight=0.5)
+        assert gp.latitude == 40.25
+        assert gp.longitude == 29.00
+        assert gp.population_weight == 0.5
+
+    def test_latitude_out_of_range_raises(self) -> None:
+        with pytest.raises(ValidationError):
+            GridPointConfig(latitude=91.0, longitude=29.0, population_weight=0.5)
+
+    def test_longitude_out_of_range_raises(self) -> None:
+        with pytest.raises(ValidationError):
+            GridPointConfig(latitude=40.0, longitude=181.0, population_weight=0.5)
+
+    def test_population_weight_negative_raises(self) -> None:
+        with pytest.raises(ValidationError):
+            GridPointConfig(latitude=40.0, longitude=29.0, population_weight=-0.1)
+
+    def test_population_weight_above_one_raises(self) -> None:
+        with pytest.raises(ValidationError):
+            GridPointConfig(latitude=40.0, longitude=29.0, population_weight=1.1)
+
+
+class TestProvinceConfig:
+    """Tests for ProvinceConfig validation."""
+
+    def test_valid_province(self) -> None:
+        province = ProvinceConfig(
+            name="Bursa",
+            consumption_weight=0.60,
+            grid_points=[
+                GridPointConfig(latitude=40.25, longitude=29.00, population_weight=0.7),
+                GridPointConfig(latitude=40.00, longitude=29.25, population_weight=0.3),
+            ],
+        )
+        assert province.name == "Bursa"
+        assert len(province.grid_points) == 2
+
+    def test_population_weights_must_sum_to_one(self) -> None:
+        with pytest.raises(ValidationError, match="Population weights"):
+            ProvinceConfig(
+                name="Bursa",
+                consumption_weight=0.60,
+                grid_points=[
+                    GridPointConfig(
+                        latitude=40.25, longitude=29.00, population_weight=0.5
+                    ),
+                    GridPointConfig(
+                        latitude=40.00, longitude=29.25, population_weight=0.3
+                    ),
+                ],
+            )
+
+    def test_empty_grid_points_raises(self) -> None:
+        with pytest.raises(ValidationError):
+            ProvinceConfig(
+                name="Bursa",
+                consumption_weight=0.60,
+                grid_points=[],
+            )
+
+    def test_single_grid_point_weight_one(self) -> None:
+        province = ProvinceConfig(
+            name="Yalova",
+            consumption_weight=0.10,
+            grid_points=[
+                GridPointConfig(
+                    latitude=40.75, longitude=29.25, population_weight=1.0
+                ),
+            ],
+        )
+        assert len(province.grid_points) == 1
+
+
+class TestRegionGridMode:
+    """Tests for RegionConfig grid mode."""
+
+    @staticmethod
+    def _make_grid_region() -> RegionConfig:
+        """Create a valid grid-mode region for testing."""
+        return RegionConfig(
+            name="Uludag",
+            mode="grid",
+            provinces=[
+                ProvinceConfig(
+                    name="Bursa",
+                    consumption_weight=0.70,
+                    grid_points=[
+                        GridPointConfig(
+                            latitude=40.25, longitude=29.00, population_weight=1.0
+                        ),
+                    ],
+                ),
+                ProvinceConfig(
+                    name="Balikesir",
+                    consumption_weight=0.30,
+                    grid_points=[
+                        GridPointConfig(
+                            latitude=39.75, longitude=27.75, population_weight=1.0
+                        ),
+                    ],
+                ),
+            ],
+        )
+
+    def test_grid_mode_valid(self) -> None:
+        region = self._make_grid_region()
+        assert region.mode == "grid"
+        assert len(region.provinces) == 2
+
+    def test_grid_mode_consumption_weights_must_sum_to_one(self) -> None:
+        with pytest.raises(ValidationError, match="consumption weights must sum"):
+            RegionConfig(
+                name="Test",
+                mode="grid",
+                provinces=[
+                    ProvinceConfig(
+                        name="A",
+                        consumption_weight=0.50,
+                        grid_points=[
+                            GridPointConfig(
+                                latitude=40.0, longitude=29.0, population_weight=1.0
+                            ),
+                        ],
+                    ),
+                    ProvinceConfig(
+                        name="B",
+                        consumption_weight=0.30,
+                        grid_points=[
+                            GridPointConfig(
+                                latitude=39.0, longitude=28.0, population_weight=1.0
+                            ),
+                        ],
+                    ),
+                ],
+            )
+
+    def test_grid_mode_no_provinces_raises(self) -> None:
+        with pytest.raises(ValidationError, match="Grid mode requires"):
+            RegionConfig(name="Test", mode="grid")
+
+    def test_legacy_mode_default(self) -> None:
+        region = RegionConfig(
+            name="Test",
+            cities=[
+                CityConfig(name="A", weight=0.6, latitude=40.0, longitude=29.0),
+                CityConfig(name="B", weight=0.4, latitude=39.0, longitude=28.0),
+            ],
+        )
+        assert region.mode == "legacy"
+
+    def test_legacy_mode_no_cities_raises(self) -> None:
+        with pytest.raises(ValidationError, match="Legacy mode requires"):
+            RegionConfig(name="Test", mode="legacy")
+
+    def test_legacy_mode_with_explicit_mode_field(self) -> None:
+        region = RegionConfig(
+            name="Test",
+            mode="legacy",
+            cities=[
+                CityConfig(name="A", weight=1.0, latitude=40.0, longitude=29.0),
+            ],
+        )
+        assert region.mode == "legacy"
+        assert len(region.cities) == 1
+
+    def test_grid_mode_ignores_empty_cities(self) -> None:
+        region = self._make_grid_region()
+        assert region.cities == []
+
+
+class TestOpenMeteoApiModelParam:
+    """Tests for OpenMeteoApiConfig model parameter."""
+
+    def test_model_none_by_default(self) -> None:
+        cfg = OpenMeteoApiConfig()
+        assert cfg.model is None
+
+    def test_model_ecmwf_ifs(self) -> None:
+        cfg = OpenMeteoApiConfig(model="ecmwf_ifs")
+        assert cfg.model == "ecmwf_ifs"
+
+    def test_model_from_yaml(self, settings: Settings) -> None:
+        """YAML-loaded config picks up model field."""
+        assert settings.openmeteo.api.model == "ecmwf_ifs"

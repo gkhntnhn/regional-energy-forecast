@@ -16,12 +16,14 @@ __all__ = [
     "ExcelColumnsConfig",
     "ForecastConfig",
     "GeocodingConfig",
+    "GridPointConfig",
     "LoggingConfig",
     "OpenMeteoApiConfig",
     "OpenMeteoConfig",
     "PathsConfig",
     "PipelineConfig",
     "ProjectConfig",
+    "ProvinceConfig",
     "RegionConfig",
     "TrainingPathsConfig",
     "WeatherCacheConfig",
@@ -93,18 +95,60 @@ class CityConfig(BaseModel, frozen=True):
     longitude: float = Field(ge=-180.0, le=180.0)
 
 
-class RegionConfig(BaseModel, frozen=True):
-    """Regional grouping with weighted cities."""
+class GridPointConfig(BaseModel, frozen=True):
+    """Single weather grid point with population weight within a province."""
 
-    name: str = "Uludag"
-    cities: list[CityConfig]
+    latitude: float = Field(ge=-90.0, le=90.0)
+    longitude: float = Field(ge=-180.0, le=180.0)
+    population_weight: float = Field(ge=0.0, le=1.0)
+
+
+class ProvinceConfig(BaseModel, frozen=True):
+    """Province with consumption weight and weather grid points."""
+
+    name: str
+    consumption_weight: float = Field(ge=0.0, le=1.0)
+    grid_points: list[GridPointConfig] = Field(min_length=1)
 
     @model_validator(mode="after")
-    def _weights_sum_to_one(self) -> Self:
-        total = sum(c.weight for c in self.cities)
+    def _population_weights_sum_to_one(self) -> Self:
+        total = sum(p.population_weight for p in self.grid_points)
         if abs(total - 1.0) > 1e-6:
-            msg = f"City weights must sum to 1.0, got {total:.6f}"
+            msg = (
+                f"Population weights in {self.name} must sum to 1.0, got {total:.6f}"
+            )
             raise ValueError(msg)
+        return self
+
+
+class RegionConfig(BaseModel, frozen=True):
+    """Regional grouping — supports both legacy cities and grid modes."""
+
+    name: str = "Uludag"
+    mode: Literal["legacy", "grid"] = "legacy"
+    cities: list[CityConfig] = Field(default_factory=list)
+    provinces: list[ProvinceConfig] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _validate_mode_weights(self) -> Self:
+        if self.mode == "legacy":
+            if not self.cities:
+                msg = "Legacy mode requires at least one city"
+                raise ValueError(msg)
+            total = sum(c.weight for c in self.cities)
+            if abs(total - 1.0) > 1e-6:
+                msg = f"City weights must sum to 1.0, got {total:.6f}"
+                raise ValueError(msg)
+        elif self.mode == "grid":
+            if not self.provinces:
+                msg = "Grid mode requires at least one province"
+                raise ValueError(msg)
+            total = sum(p.consumption_weight for p in self.provinces)
+            if abs(total - 1.0) > 1e-6:
+                msg = (
+                    f"Province consumption weights must sum to 1.0, got {total:.6f}"
+                )
+                raise ValueError(msg)
         return self
 
 
@@ -211,8 +255,11 @@ class OpenMeteoApiConfig(BaseModel, frozen=True):
     """OpenMeteo API connection settings."""
 
     base_url_historical: str = "https://archive-api.open-meteo.com/v1/archive"
-    base_url_historical_forecast: str = "https://historical-forecast-api.open-meteo.com/v1/forecast"
+    base_url_historical_forecast: str = (
+        "https://historical-forecast-api.open-meteo.com/v1/forecast"
+    )
     base_url_forecast: str = "https://api.open-meteo.com/v1/forecast"
+    model: str | None = None
     timeout: int = Field(default=30, ge=1)
     retry_attempts: int = Field(default=3, ge=1)
     backoff_factor: float = Field(default=0.2, ge=0.0)

@@ -80,6 +80,7 @@ class Settings(BaseModel, frozen=True):
 
 _DEFAULT_REGION = RegionConfig(
     name="Uludag",
+    mode="legacy",
     cities=[
         CityConfig(name="Bursa", weight=0.60, latitude=40.183, longitude=29.050),
         CityConfig(name="Balikesir", weight=0.24, latitude=39.653, longitude=27.886),

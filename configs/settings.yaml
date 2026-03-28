@@ -12,6 +12,7 @@ logging:
 
 region:
   name: "Uludag"
+  mode: "legacy"
   cities:
     - name: "Bursa"
       weight: 0.60
