@@ -1,0 +1,59 @@
+{
+  "source": "TUIK 2024 ADNKS (Adrese Dayali Nufus Kayit Sistemi)",
+  "note": "Approximate values for proportional weighting. District coordinates are city center points.",
+  "provinces": {
+    "Bursa": {
+      "total_population": 3194720,
+      "districts": {
+        "Bursa_Merkez": {"population": 2018000, "latitude": 40.20, "longitude": 29.03},
+        "Inegol": {"population": 310000, "latitude": 40.08, "longitude": 29.51},
+        "Gemlik": {"population": 105000, "latitude": 40.43, "longitude": 29.16},
+        "Mudanya": {"population": 70000, "latitude": 40.38, "longitude": 28.88},
+        "Orhangazi": {"population": 72000, "latitude": 40.49, "longitude": 29.31},
+        "Karacabey": {"population": 80000, "latitude": 40.21, "longitude": 28.36},
+        "Mustafakemalpasa": {"population": 110000, "latitude": 40.03, "longitude": 28.41},
+        "Iznik": {"population": 42000, "latitude": 40.43, "longitude": 29.72},
+        "Yenisehir": {"population": 55000, "latitude": 40.27, "longitude": 29.65}
+      }
+    },
+    "Balikesir": {
+      "total_population": 1250000,
+      "districts": {
+        "Altieylul": {"population": 360000, "latitude": 39.65, "longitude": 27.89},
+        "Karesi": {"population": 185000, "latitude": 39.66, "longitude": 27.88},
+        "Bandirma": {"population": 155000, "latitude": 40.35, "longitude": 27.97},
+        "Edremit": {"population": 155000, "latitude": 39.60, "longitude": 27.02},
+        "Gonen": {"population": 75000, "latitude": 40.11, "longitude": 27.65},
+        "Burhaniye": {"population": 60000, "latitude": 39.50, "longitude": 26.97},
+        "Susurluk": {"population": 52000, "latitude": 39.92, "longitude": 28.16},
+        "Bigadic": {"population": 48000, "latitude": 39.39, "longitude": 28.13},
+        "Manyas": {"population": 28000, "latitude": 40.05, "longitude": 27.97},
+        "Erdek": {"population": 35000, "latitude": 40.40, "longitude": 27.79}
+      }
+    },
+    "Yalova": {
+      "total_population": 290000,
+      "districts": {
+        "Yalova_Merkez": {"population": 125000, "latitude": 40.66, "longitude": 29.27},
+        "Ciftlikkoy": {"population": 45000, "latitude": 40.66, "longitude": 29.31},
+        "Altinova": {"population": 32000, "latitude": 40.69, "longitude": 29.51},
+        "Cinarcik": {"population": 14000, "latitude": 40.64, "longitude": 29.12},
+        "Termal": {"population": 11000, "latitude": 40.62, "longitude": 29.17},
+        "Armutlu": {"population": 8000, "latitude": 40.52, "longitude": 28.83}
+      }
+    },
+    "Canakkale": {
+      "total_population": 560000,
+      "districts": {
+        "Canakkale_Merkez": {"population": 200000, "latitude": 40.15, "longitude": 26.40},
+        "Biga": {"population": 100000, "latitude": 40.23, "longitude": 27.24},
+        "Can": {"population": 52000, "latitude": 40.03, "longitude": 27.06},
+        "Gelibolu": {"population": 48000, "latitude": 40.41, "longitude": 26.67},
+        "Ezine": {"population": 32000, "latitude": 39.78, "longitude": 26.34},
+        "Ayvacik": {"population": 35000, "latitude": 39.60, "longitude": 26.40},
+        "Lapseki": {"population": 28000, "latitude": 40.35, "longitude": 26.68},
+        "Yenice": {"population": 30000, "latitude": 40.00, "longitude": 27.26}
+      }
+    }
+  }
+}

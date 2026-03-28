@@ -41,6 +41,8 @@ data/outputs/
 data/predictions/
 data/static/*
 !data/static/.gitkeep
+!data/static/grid_population.json
+!data/static/grid_points.yaml
 
 # Model artifacts (timestamped training outputs)
 models/*
