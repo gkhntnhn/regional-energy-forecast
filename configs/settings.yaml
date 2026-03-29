@@ -12,6 +12,9 @@ logging:
 
 region:
   name: "Uludag"
+  mode: "grid"
+
+  # Legacy cities — rollback: mode: "legacy" ile geri donulur
   cities:
     - name: "Bursa"
       weight: 0.60
@@ -29,6 +32,40 @@ region:
       weight: 0.06
       latitude: 40.146
       longitude: 26.402
+
+  # Grid mode — ECMWF IFS 0.25deg, 15 points, hybrid weighting
+  # Auto-generated from data/static/grid_points.yaml
+  provinces:
+    - name: "Bursa"
+      consumption_weight: 0.60
+      grid_points:
+        - {latitude: 40.50, longitude: 29.25, population_weight: 0.026519}
+        - {latitude: 40.25, longitude: 28.25, population_weight: 0.029466}
+        - {latitude: 40.25, longitude: 28.75, population_weight: 0.025783}
+        - {latitude: 40.25, longitude: 29.00, population_weight: 0.743278}
+        - {latitude: 40.25, longitude: 29.50, population_weight: 0.020258}
+        - {latitude: 40.00, longitude: 28.50, population_weight: 0.040516}
+        - {latitude: 40.00, longitude: 29.50, population_weight: 0.114180}
+
+    - name: "Balikesir"
+      consumption_weight: 0.24
+      grid_points:
+        - {latitude: 40.25, longitude: 28.00, population_weight: 0.156566}
+        - {latitude: 40.00, longitude: 27.75, population_weight: 0.075758}
+        - {latitude: 39.75, longitude: 27.00, population_weight: 0.156566}
+        - {latitude: 39.75, longitude: 28.00, population_weight: 0.186869}
+        - {latitude: 39.50, longitude: 27.00, population_weight: 0.060606}
+        - {latitude: 39.50, longitude: 27.75, population_weight: 0.363635}
+
+    - name: "Yalova"
+      consumption_weight: 0.10
+      grid_points:
+        - {latitude: 40.50, longitude: 29.00, population_weight: 1.000000}
+
+    - name: "Canakkale"
+      consumption_weight: 0.06
+      grid_points:
+        - {latitude: 40.00, longitude: 26.50, population_weight: 1.000000}
 
 forecast:
   horizon_hours: 48

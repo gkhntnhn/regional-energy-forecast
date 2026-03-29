@@ -89,15 +89,48 @@ class OpenMeteoClient:
     # Public API
     # ------------------------------------------------------------------
 
+    def _get_locations(self) -> list[CityConfig]:
+        """Get location configs based on region mode.
+
+        In legacy mode, returns cities directly.
+        In grid mode, converts province × grid_point pairs to CityConfig
+        instances with combined weights (consumption × population).
+        """
+        if self.region.mode == "grid":
+            locations: list[CityConfig] = []
+            for province in self.region.provinces:
+                for point in province.grid_points:
+                    weight = province.consumption_weight * point.population_weight
+                    loc = CityConfig(
+                        name=f"{province.name}_{point.latitude}_{point.longitude}",
+                        weight=weight,
+                        latitude=point.latitude,
+                        longitude=point.longitude,
+                    )
+                    locations.append(loc)
+            return locations
+        return list(self.region.cities)
+
+    def _get_historical_url(self) -> str:
+        """Get the correct URL for historical weather fetch.
+
+        When an explicit model is configured (e.g. ecmwf_ifs), uses the
+        historical-forecast API (which archives NWP model outputs).
+        Otherwise falls back to the archive API (ERA5 reanalysis).
+        """
+        if self.config.api.model:
+            return self.config.api.base_url_historical_forecast
+        return self.config.api.base_url_historical
+
     def fetch_historical(
         self,
         start_date: str,
         end_date: str,
     ) -> pd.DataFrame:
-        """Fetch historical weather for all cities, return weighted average.
+        """Fetch historical weather for all locations, return weighted average.
 
-        DB-first: if DB has complete data for all cities, use it.
-        Otherwise fetch from API and save per-city data to DB.
+        DB-first: if DB has complete data for all locations, use it.
+        Otherwise fetch from API and save per-location data to DB.
 
         Args:
             start_date: Start date (YYYY-MM-DD).
@@ -105,7 +138,7 @@ class OpenMeteoClient:
 
         Returns:
             DataFrame with hourly DatetimeIndex and weather columns,
-            weighted-averaged across cities.
+            weighted-averaged across locations.
         """
         # 1. Try DB-first
         if self._db is not None:
@@ -118,12 +151,12 @@ class OpenMeteoClient:
         if self._db is not None:
             logger.info("[DB MISS] Weather historical not in DB, fetching from API")
         city_dfs = self._fetch_all_cities(
-            url=self.config.api.base_url_historical,
+            url=self._get_historical_url(),
             start_date=start_date,
             end_date=end_date,
         )
 
-        # 3. Save per-city data to DB (dual-write)
+        # 3. Save per-location data to DB (dual-write)
         if self._db is not None:
             self._save_cities_to_db(city_dfs, source="historical")
 
@@ -280,18 +313,18 @@ class OpenMeteoClient:
         end_date: str | None = None,
         forecast_days: int | None = None,
     ) -> list[tuple[CityConfig, pd.DataFrame]]:
-        """Fetch weather for all cities from API."""
+        """Fetch weather for all locations from API."""
         city_dfs: list[tuple[CityConfig, pd.DataFrame]] = []
-        for city in self.region.cities:
+        for loc in self._get_locations():
             df = self._fetch_single_location(
                 url=url,
-                latitude=city.latitude,
-                longitude=city.longitude,
+                latitude=loc.latitude,
+                longitude=loc.longitude,
                 start_date=start_date,
                 end_date=end_date,
                 forecast_days=forecast_days,
             )
-            city_dfs.append((city, df))
+            city_dfs.append((loc, df))
         return city_dfs
 
     def _load_cities_from_db(
@@ -309,7 +342,7 @@ class OpenMeteoClient:
         expected_hours = (end - start).total_seconds() / 3600 + 1
 
         city_dfs: list[tuple[CityConfig, pd.DataFrame]] = []
-        for city in self.region.cities:
+        for city in self._get_locations():
             df = self._db.get_weather_range(start, end, city=city.name, source=source)
             if df.empty or len(df) < expected_hours * 0.9:
                 return None  # Incomplete data — fall back to API
@@ -387,6 +420,8 @@ class OpenMeteoClient:
             "hourly": self.config.variables,
             "timezone": self.timezone,
         }
+        if self.config.api.model:
+            params["models"] = self.config.api.model
         if start_date and end_date:
             params["start_date"] = start_date
             params["end_date"] = end_date
@@ -511,6 +546,81 @@ class OpenMeteoClient:
                 cast(pd.DatetimeIndex, base_index),
                 var,
             )
+
+        # --- Spatial variance features (grid mode only) ---
+        if self.region.mode == "grid" and len(city_dfs) > 1:
+            result = self._add_spatial_variance(result, city_dfs)
+
+        return result
+
+    def _add_spatial_variance(
+        self,
+        result: pd.DataFrame,
+        location_dfs: list[tuple[CityConfig, pd.DataFrame]],
+    ) -> pd.DataFrame:
+        """Compute spatial variance metrics across grid points.
+
+        Added as extra columns to the weighted-average DataFrame.
+        These are NOT leakage — weather forecast data is available at
+        prediction time from OpenMeteo.
+
+        Args:
+            result: Weighted-average DataFrame to augment.
+            location_dfs: Per-location (CityConfig, DataFrame) pairs.
+
+        Returns:
+            DataFrame with spatial columns appended.
+        """
+        base_index = result.index
+
+        # Temperature spread: max - min across all grid points
+        if "temperature_2m" in result.columns:
+            all_temps = pd.DataFrame(
+                {loc.name: df.reindex(base_index)["temperature_2m"]
+                 for loc, df in location_dfs if "temperature_2m" in df.columns}
+            )
+            if not all_temps.empty:
+                result["wth_temp_spread"] = all_temps.max(axis=1) - all_temps.min(axis=1)
+
+        # Precipitation coverage: fraction of points with precip > 0
+        if "precipitation" in result.columns:
+            all_precip = pd.DataFrame(
+                {loc.name: df.reindex(base_index)["precipitation"]
+                 for loc, df in location_dfs if "precipitation" in df.columns}
+            )
+            if not all_precip.empty:
+                result["wth_precip_coverage"] = (
+                    (all_precip > 0).sum(axis=1) / all_precip.shape[1]
+                )
+
+        # N-S temperature gradient (northern vs southern points)
+        if "temperature_2m" in result.columns:
+            median_lat = np.median([loc.latitude for loc, _ in location_dfs])
+            north = [
+                df.reindex(base_index)["temperature_2m"]
+                for loc, df in location_dfs
+                if loc.latitude > median_lat and "temperature_2m" in df.columns
+            ]
+            south = [
+                df.reindex(base_index)["temperature_2m"]
+                for loc, df in location_dfs
+                if loc.latitude <= median_lat and "temperature_2m" in df.columns
+            ]
+            if north and south:
+                north_mean = pd.concat(north, axis=1).mean(axis=1)
+                south_mean = pd.concat(south, axis=1).mean(axis=1)
+                result["wth_temp_gradient_ns"] = north_mean - south_mean
+
+        # Pressure spread (frontal activity indicator)
+        if "surface_pressure" in result.columns:
+            all_press = pd.DataFrame(
+                {loc.name: df.reindex(base_index)["surface_pressure"]
+                 for loc, df in location_dfs if "surface_pressure" in df.columns}
+            )
+            if not all_press.empty:
+                result["wth_pressure_spread"] = (
+                    all_press.max(axis=1) - all_press.min(axis=1)
+                )
 
         return result
 

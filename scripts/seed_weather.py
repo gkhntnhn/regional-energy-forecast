@@ -312,8 +312,47 @@ def main() -> int:
         logger.error("Seed failed: {}", e)
         session.rollback()
         return 1
-    finally:
-        session.close()
+
+    # --- Grid mode: seed per-point raw data from backfill parquets ---
+    grid_raw_dir = PROJECT_ROOT / "data" / "external" / "weather_grid" / "raw"
+    if grid_raw_dir.exists() and settings.region.mode == "grid":
+        logger.info("Seeding grid weather from backfill parquets...")
+        grid_rows = 0
+        for yr in years:
+            grid_path = grid_raw_dir / f"ecmwf_ifs_{yr}.parquet"
+            if not grid_path.exists():
+                continue
+            gdf = pd.read_parquet(grid_path)
+            # Raw parquet has: datetime(index), lat, lon, province, + weather vars
+            weather_vars = [
+                c for c in gdf.columns
+                if c not in ("latitude", "longitude", "province")
+            ]
+            rows_list: list[dict[str, object]] = []
+            for idx, row in gdf.iterrows():
+                loc_name = f"{row['province']}_{row['latitude']}_{row['longitude']}"
+                d: dict[str, object] = {
+                    "datetime": idx,
+                    "city": loc_name,
+                    "source": "historical",
+                }
+                for col in weather_vars:
+                    val = row[col]
+                    d[col] = float(val) if pd.notna(val) else None
+                rows_list.append(d)
+
+            if rows_list:
+                count = dao.upsert_weather(rows_list)
+                session.commit()
+                grid_rows += count
+                logger.info("  {} -> grid DB ({} rows, {} points)",
+                            yr, count,
+                            gdf[["latitude", "longitude"]].drop_duplicates().shape[0])
+
+        total_rows += grid_rows
+        logger.info("Grid weather seed: {} rows", grid_rows)
+
+    session.close()
 
     elapsed = time.monotonic() - start_time
     logger.info(

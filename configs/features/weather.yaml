@@ -61,3 +61,13 @@ heat_index:
 temp_deviation:
   # Temperature deviation from expanding mean — "unusually hot/cold" anomaly signal
   enabled: true
+
+# Spatial variance features — computed from grid point spread (grid mode only)
+# NOT leakage: weather forecast data available at prediction time
+spatial_features:
+  enabled: false  # A/B test: spatial features hurt MAPE (C=2.30% vs D=2.47%)
+  features:
+    - wth_temp_spread           # max - min temperature across grid points (C)
+    - wth_precip_coverage       # fraction of points with precip > 0 (0-1)
+    - wth_temp_gradient_ns      # north-south temperature difference (C)
+    - wth_pressure_spread       # pressure difference across region (hPa)
