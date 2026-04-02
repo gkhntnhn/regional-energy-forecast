@@ -192,6 +192,15 @@ class PredictionService:
             last_timestamp = consumption_df.index.max()
             logger.info("Last data point: {}", last_timestamp)
 
+            # Step 1.5: Box-Cox forward transform on consumption
+            if self._settings.boxcox.enabled:
+                from energy_forecast.transform import boxcox_transform
+
+                lam_fwd = self._settings.boxcox.lambda_param
+                consumption_df["consumption"] = boxcox_transform(
+                    np.asarray(consumption_df["consumption"].values), lam_fwd
+                )
+
             # Step 2: Extend for forecast period
             update_progress("Extending data for forecast horizon...")
             extended_df = self._data_loader.extend_for_forecast(
