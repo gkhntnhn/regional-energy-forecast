@@ -15,6 +15,7 @@ from energy_forecast.config.api import (
 )
 from energy_forecast.config.features import FeaturesConfig
 from energy_forecast.config.general import (
+    BoxCoxConfig,
     CityConfig,
     DataLoaderConfig,
     EpiasApiConfig,
@@ -53,6 +54,7 @@ class Settings(BaseModel, frozen=True):
 
     project: ProjectConfig = Field(default_factory=ProjectConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
+    boxcox: BoxCoxConfig = Field(default_factory=BoxCoxConfig)
     region: RegionConfig
     forecast: ForecastConfig = Field(default_factory=ForecastConfig)
     paths: TrainingPathsConfig = Field(default_factory=TrainingPathsConfig)
@@ -129,6 +131,7 @@ def _build_settings_dict(config_dir: Path) -> dict[str, Any]:
     return {
         "project": settings_data.get("project", {}),
         "logging": settings_data.get("logging", {}),
+        "boxcox": settings_data.get("boxcox", {}),
         "region": settings_data.get("region", {}),
         "forecast": settings_data.get("forecast", {}),
         "paths": settings_data.get("paths", {}),

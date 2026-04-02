@@ -48,6 +48,7 @@ def mock_settings() -> MagicMock:
     settings.openmeteo = MagicMock()
     settings.region = MagicMock()
     settings.project.timezone = "Europe/Istanbul"
+    settings.boxcox.enabled = False
     return settings
 
 

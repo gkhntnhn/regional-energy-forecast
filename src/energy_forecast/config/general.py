@@ -9,6 +9,7 @@ import yaml
 from pydantic import BaseModel, Field, model_validator
 
 __all__ = [
+    "BoxCoxConfig",
     "CityConfig",
     "DataLoaderConfig",
     "DataValidationConfig",
@@ -64,6 +65,13 @@ def _load_yaml(path: Path) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 # General configs
 # ---------------------------------------------------------------------------
+
+
+class BoxCoxConfig(BaseModel, frozen=True):
+    """Box-Cox target transform configuration."""
+
+    enabled: bool = False
+    lambda_param: float = 0.3893
 
 
 class ProjectConfig(BaseModel, frozen=True):

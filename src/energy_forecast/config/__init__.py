@@ -77,6 +77,7 @@ from energy_forecast.config.features import (
     WeatherThresholdsConfig,
 )
 from energy_forecast.config.general import (
+    BoxCoxConfig,
     CityConfig,
     DataLoaderConfig,
     DataValidationConfig,
@@ -135,6 +136,7 @@ __all__ = [
     "ApiConfig",
     "ApiEmailConfig",
     "ApiFilesConfig",
+    "BoxCoxConfig",
     "BusinessHoursConfig",
     "CalendarConfig",
     # models

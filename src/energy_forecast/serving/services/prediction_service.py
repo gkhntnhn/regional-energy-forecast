@@ -10,6 +10,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+import numpy as np
 import pandas as pd
 from loguru import logger
 from pydantic import BaseModel, Field
@@ -281,6 +282,21 @@ class PredictionService:
                 forecast_features,
                 history=historical_features,
             )
+
+            # Step 7.5: Inverse Box-Cox transform → MWh space
+            if self._settings.boxcox.enabled:
+                from energy_forecast.transform import inv_boxcox
+
+                lam = self._settings.boxcox.lambda_param
+                predictions["consumption_mwh"] = inv_boxcox(
+                    np.asarray(predictions["consumption_mwh"].values), lam
+                )
+                # Also inverse per-model prediction columns for DB analytics
+                for col in ("catboost_prediction", "tft_prediction", "tsmixerx_prediction"):
+                    if col in predictions.columns:
+                        predictions[col] = inv_boxcox(
+                            np.asarray(predictions[col].values), lam
+                        )
 
             # Step 8: Prepare output DataFrame
             # Keep raw predictions (with per-model columns) for DB storage
