@@ -129,6 +129,8 @@ docs/code-walkthrough/
 # Deployment targets (internal planning, not committed)
 docs/M11-deployment-targets.md
 scripts/backtest_daily.py
+scripts/eval_metric_comparison.py
+scripts/loss_comparison.py
 
 # Frontend
 frontend/node_modules/
@@ -147,3 +149,4 @@ results.tar.gz
 data/raw/final_models_r6_backup.tar.gz
 .planning/
 
+scripts/test_gradient_clip.py

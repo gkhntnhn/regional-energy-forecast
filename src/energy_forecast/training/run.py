@@ -152,6 +152,15 @@ def apply_config_overrides(settings: Settings, config_path: Path) -> None:
         if model_name in overrides:
             _apply_model_hp_override(model_name, model_config, overrides[model_name])
 
+    # CatBoost-specific: training param overrides
+    if "catboost" in overrides:
+        cb_override = overrides["catboost"]
+        if "training" in cb_override:
+            for key, val in cb_override["training"].items():
+                if hasattr(settings.catboost.training, key):
+                    object.__setattr__(settings.catboost.training, key, val)
+        logger.debug("CatBoost training overrides applied")
+
     # TFT-specific: training + optimization param overrides
     if "tft" in overrides:
         tft_override = overrides["tft"]
@@ -163,9 +172,13 @@ def apply_config_overrides(settings: Settings, config_path: Path) -> None:
                 for key, val in tft_override[section].items():
                     if hasattr(cfg, key):
                         object.__setattr__(cfg, key, val)
+        # Top-level overrides (e.g., loss)
+        for key in ("loss",):
+            if key in tft_override:
+                object.__setattr__(settings.tft, key, tft_override[key])
         logger.debug("TFT training/optimization overrides applied")
 
-    # TSMixerx-specific: training + optimization param overrides
+    # TSMixerx-specific: training + optimization + top-level param overrides
     if "tsmixerx" in overrides:
         tsmixerx_override = overrides["tsmixerx"]
         for section, cfg in [
@@ -176,6 +189,10 @@ def apply_config_overrides(settings: Settings, config_path: Path) -> None:
                 for key, val in tsmixerx_override[section].items():
                     if hasattr(cfg, key):
                         object.__setattr__(cfg, key, val)
+        # Top-level overrides (e.g., loss)
+        for key in ("loss",):
+            if key in tsmixerx_override:
+                object.__setattr__(settings.tsmixerx, key, tsmixerx_override[key])
         logger.debug("TSMixerx training/optimization overrides applied")
 
     # Override cross-validation
