@@ -8,6 +8,7 @@ Supports two modes:
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -191,7 +192,12 @@ class EnsembleForecaster(BaseForecaster):
 
         Args:
             X: Feature DataFrame with DatetimeIndex.
-            **kwargs: history (pd.DataFrame | None) for TFT encoder context.
+            **kwargs:
+                history: Historical DataFrame for TFT/TSMixerx encoder context.
+                prediction_transform: Callable applied to each base model's
+                    raw prediction array before ensemble combining. Used for
+                    Box-Cox inverse so that stacking meta-learner receives
+                    predictions in the same scale as it was trained on.
 
         Returns:
             DataFrame with PREDICTION_COL and individual model predictions.
@@ -200,11 +206,20 @@ class EnsembleForecaster(BaseForecaster):
             RuntimeError: If no active models are loaded.
         """
         history: pd.DataFrame | None = kwargs.get("history")
+        prediction_transform: Callable[
+            [np.ndarray[Any, np.dtype[np.floating[Any]]]],
+            np.ndarray[Any, np.dtype[np.floating[Any]]],
+        ] | None = kwargs.get("prediction_transform")
+
         predictions = self._get_base_predictions(X, history=history)
 
         if not predictions:
             msg = "No active models loaded. Call set_models() first."
             raise RuntimeError(msg)
+
+        # Apply per-prediction transform (e.g. Box-Cox inverse) before combining
+        if prediction_transform is not None:
+            predictions = {k: prediction_transform(v) for k, v in predictions.items()}
 
         if self._mode == "stacking" and self._meta_model is not None:
             ensemble_pred = self._predict_stacking(X, predictions)

@@ -287,25 +287,27 @@ class PredictionService:
             # Step 7: Generate ensemble predictions
             update_progress("Generating ensemble predictions...")
             historical_features = features_df.loc[~forecast_mask].copy()
-            predictions = self._ensemble.predict(
-                forecast_features,
-                history=historical_features,
-            )
 
-            # Step 7.5: Inverse Box-Cox transform → MWh space
+            # Box-Cox: inverse-transform per-model predictions BEFORE ensemble
+            # combining, so stacking meta-learner receives MWh-scale inputs
+            # (matching the OOF cache it was trained on).
+            bc_transform = None
             if self._settings.boxcox.enabled:
                 from energy_forecast.transform import inv_boxcox
 
                 lam = self._settings.boxcox.lambda_param
-                predictions["consumption_mwh"] = inv_boxcox(
-                    np.asarray(predictions["consumption_mwh"].values), lam
-                )
-                # Also inverse per-model prediction columns for DB analytics
-                for col in ("catboost_prediction", "tft_prediction", "tsmixerx_prediction"):
-                    if col in predictions.columns:
-                        predictions[col] = inv_boxcox(
-                            np.asarray(predictions[col].values), lam
-                        )
+
+                def bc_transform(
+                    arr: np.ndarray,  # type: ignore[type-arg]
+                    _lam: float = lam,
+                ) -> np.ndarray:  # type: ignore[type-arg]
+                    return inv_boxcox(arr, _lam)
+
+            predictions = self._ensemble.predict(
+                forecast_features,
+                history=historical_features,
+                prediction_transform=bc_transform,
+            )
 
             # Step 8: Prepare output DataFrame
             # Keep raw predictions (with per-model columns) for DB storage
