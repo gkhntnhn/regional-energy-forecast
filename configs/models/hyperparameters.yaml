@@ -36,8 +36,9 @@ catboost:
 tft:
   n_trials: 15             # R6 Production HPO
   search_space:
-    # hidden_size: fixed at 64 in tft.yaml (R5: 128→64, optimal for 13 covariates)
-    # windows_batch_size: fixed at 512 in tft.yaml (RunPod L4/A100)
+    hidden_size:
+      type: categorical
+      choices: [64, 128]  # R5: 64 optimal, 128 worth re-testing with Box-Cox
     n_head:
       type: categorical
       choices: [2, 4]     # 1 too weak for hidden=64, 2-4 optimal
@@ -51,7 +52,7 @@ tft:
     learning_rate:
       type: float
       low: 0.0005
-      high: 0.005         # Range around default 0.001
+      high: 0.01          # Widened: R6 best 0.00467 was at 93% of old upper (0.005)
       log: true
     loss:                  # NEW: let Optuna pick the best loss
       type: categorical
@@ -73,7 +74,7 @@ tsmixerx:
     learning_rate:
       type: float
       low: 0.0005
-      high: 0.005
+      high: 0.008          # Widened: R7 best 0.00367 near old upper, BC allows higher
       log: true
     max_steps:
       type: categorical
