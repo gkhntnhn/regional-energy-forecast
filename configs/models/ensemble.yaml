@@ -31,8 +31,8 @@ optimization:
 stacking:
   meta_learner:
     depth: 2                      # Very shallow — only learns conditional weighting
-    iterations: 500
-    early_stopping_rounds: 30
+    iterations: 2000
+    early_stopping_rounds: 50
     learning_rate: 0.05
     loss_function: "RMSE"
     l2_leaf_reg: 3.0

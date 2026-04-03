@@ -10,6 +10,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+import numpy as np
 import pandas as pd
 from loguru import logger
 from pydantic import BaseModel, Field
@@ -191,6 +192,15 @@ class PredictionService:
             last_timestamp = consumption_df.index.max()
             logger.info("Last data point: {}", last_timestamp)
 
+            # Step 1.5: Box-Cox forward transform on consumption
+            if self._settings.boxcox.enabled:
+                from energy_forecast.transform import boxcox_transform
+
+                lam_fwd = self._settings.boxcox.lambda_param
+                consumption_df["consumption"] = boxcox_transform(
+                    np.asarray(consumption_df["consumption"].values), lam_fwd
+                )
+
             # Step 2: Extend for forecast period
             update_progress("Extending data for forecast horizon...")
             extended_df = self._data_loader.extend_for_forecast(
@@ -277,9 +287,26 @@ class PredictionService:
             # Step 7: Generate ensemble predictions
             update_progress("Generating ensemble predictions...")
             historical_features = features_df.loc[~forecast_mask].copy()
+
+            # Box-Cox: inverse-transform per-model predictions BEFORE ensemble
+            # combining, so stacking meta-learner receives MWh-scale inputs
+            # (matching the OOF cache it was trained on).
+            bc_transform = None
+            if self._settings.boxcox.enabled:
+                from energy_forecast.transform import inv_boxcox
+
+                lam = self._settings.boxcox.lambda_param
+
+                def bc_transform(
+                    arr: np.ndarray,  # type: ignore[type-arg]
+                    _lam: float = lam,
+                ) -> np.ndarray:  # type: ignore[type-arg]
+                    return inv_boxcox(arr, _lam)
+
             predictions = self._ensemble.predict(
                 forecast_features,
                 history=historical_features,
+                prediction_transform=bc_transform,
             )
 
             # Step 8: Prepare output DataFrame

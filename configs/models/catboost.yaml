@@ -9,7 +9,7 @@ training:
   depth: 6
   loss_function: "RMSE"       # R1: RMSE beat MAE by 0.16% (2.42% vs 2.58%)
   eval_metric: "MAPE"
-  early_stopping_rounds: 100
+  early_stopping_rounds: 250  # Increased: lower lr needs more patience
   bootstrap_type: "MVS"       # R1 lesson: GPU compat, subsample requires MVS
   has_time: true
   random_seed: 42

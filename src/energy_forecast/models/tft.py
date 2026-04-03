@@ -120,7 +120,7 @@ class TFTForecaster(BaseForecaster):
             NeuralForecast instance wrapping a TFT model.
         """
         from neuralforecast import NeuralForecast
-        from neuralforecast.losses.pytorch import MQLoss
+        from neuralforecast.losses.pytorch import MAE, MSE, RMSE, HuberLoss, MQLoss
         from neuralforecast.models import TFT
 
         cfg = self._tft_config
@@ -128,6 +128,19 @@ class TFTForecaster(BaseForecaster):
         train_cfg = cfg.training
 
         steps = max_steps if max_steps is not None else train_cfg.max_steps
+
+        # Config-driven loss selection
+        loss_name = getattr(cfg, "loss", "quantile")
+        loss_map: dict[str, Any] = {
+            "quantile": MQLoss(quantiles=cfg.quantiles),
+            "mae": MAE(),
+            "mse": MSE(),
+            "rmse": RMSE(),
+            "huber": HuberLoss(delta=1.0),
+            "huber_0.5": HuberLoss(delta=0.5),
+        }
+        loss_fn = loss_map.get(loss_name, MQLoss(quantiles=cfg.quantiles))
+        logger.info("TFT loss function: {} (config={})", type(loss_fn).__name__, loss_name)
 
         # NeuralForecast uses **kwargs to capture extra arguments as trainer_kwargs.
         # Pass precision/gradient_clip/callbacks as flat kwargs, NOT in a dict.
@@ -159,7 +172,7 @@ class TFTForecaster(BaseForecaster):
             n_rnn_layers=arch.n_rnn_layers,
             dropout=arch.dropout,
             rnn_type=train_cfg.rnn_type,
-            loss=MQLoss(quantiles=cfg.quantiles),
+            loss=loss_fn,
             learning_rate=train_cfg.learning_rate,
             max_steps=steps,
             val_check_steps=train_cfg.val_check_steps,

@@ -172,18 +172,37 @@ class CatBoostTrainer:
         val_pred: np.ndarray[Any, np.dtype[np.floating[Any]]] = model.predict(x_val)
         test_pred: np.ndarray[Any, np.dtype[np.floating[Any]]] = model.predict(x_test)
 
+        # Inverse Box-Cox: metrics always in MWh space
+        if self._settings.boxcox.enabled:
+            from energy_forecast.transform import inv_boxcox
+
+            lam = self._settings.boxcox.lambda_param
+            y_train_mwh = inv_boxcox(y_train.to_numpy(), lam)
+            y_val_mwh = inv_boxcox(y_val.to_numpy(), lam)
+            y_test_mwh = inv_boxcox(y_test.to_numpy(), lam)
+            train_pred_mwh = inv_boxcox(train_pred, lam)
+            val_pred_mwh = inv_boxcox(val_pred, lam)
+            test_pred_mwh = inv_boxcox(test_pred, lam)
+        else:
+            y_train_mwh = y_train.to_numpy()
+            y_val_mwh = y_val.to_numpy()
+            y_test_mwh = y_test.to_numpy()
+            train_pred_mwh = train_pred
+            val_pred_mwh = val_pred
+            test_pred_mwh = test_pred
+
         return SplitResult(
             split_idx=split_info.split_idx,
-            train_metrics=compute_all(y_train.to_numpy(), train_pred),
-            val_metrics=compute_all(y_val.to_numpy(), val_pred),
-            test_metrics=compute_all(y_test.to_numpy(), test_pred),
+            train_metrics=compute_all(y_train_mwh, train_pred_mwh),
+            val_metrics=compute_all(y_val_mwh, val_pred_mwh),
+            test_metrics=compute_all(y_test_mwh, test_pred_mwh),
             best_iteration=int(model.best_iteration_),
             val_month=split_info.val_start.strftime("%Y-%m"),
             test_month=split_info.test_start.strftime("%Y-%m"),
-            val_predictions=val_pred,
-            val_actuals=y_val.to_numpy(),
-            test_predictions=test_pred,
-            test_actuals=y_test.to_numpy(),
+            val_predictions=val_pred_mwh,
+            val_actuals=y_val_mwh,
+            test_predictions=test_pred_mwh,
+            test_actuals=y_test_mwh,
         )
 
     # -- All splits training --

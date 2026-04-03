@@ -498,6 +498,7 @@ def split_and_save(
     df: pd.DataFrame,
     output_dir: Path,
     forecast_hours: int = 48,
+    settings: Settings | None = None,
 ) -> tuple[Path, Path]:
     """Split into historical and forecast, save as parquet.
 
@@ -545,6 +546,18 @@ def split_and_save(
     logger.info("Saved: {}", historical_path)
     logger.info("Saved: {}", forecast_path)
 
+    # Save Box-Cox metadata sidecar
+    if settings is not None and settings.boxcox.enabled:
+        import json
+
+        metadata = {
+            "boxcox_enabled": True,
+            "boxcox_lambda": settings.boxcox.lambda_param,
+        }
+        meta_path = output_dir / "boxcox_metadata.json"
+        meta_path.write_text(json.dumps(metadata, indent=2))
+        logger.info("Box-Cox metadata saved: {}", meta_path)
+
     return historical_path, forecast_path
 
 
@@ -573,6 +586,16 @@ def main() -> int:
     except (pa.errors.SchemaError, pa.errors.SchemaErrors) as e:
         logger.error("Consumption data validation failed: {}", e)
         return 1
+
+    # Step 1.5: Box-Cox target transform (before forecast rows — NaN safe)
+    if settings.boxcox.enabled:
+        from energy_forecast.transform import boxcox_transform
+
+        lam = settings.boxcox.lambda_param
+        consumption_df["consumption"] = boxcox_transform(
+            consumption_df["consumption"].values, lam
+        )
+        logger.info("Box-Cox transform applied (lambda={})", lam)
 
     # Step 2: Extend with forecast rows
     logger.info("[2/6] Extending with forecast rows...")
@@ -674,7 +697,7 @@ def main() -> int:
     logger.info("SAVING DATASETS")
     logger.info("=" * 60)
     historical_path, forecast_path = split_and_save(
-        features_df, args.output_dir, args.forecast_hours
+        features_df, args.output_dir, args.forecast_hours, settings=settings
     )
 
     # Close DB session

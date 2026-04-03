@@ -247,6 +247,18 @@ class NeuralForecastTrainer(ABC):
             test_pred.loc[test_common_idx, PREDICTION_COL].values, dtype=np.float64
         )
 
+        # Inverse Box-Cox: metrics always in MWh space
+        if self._settings.boxcox.enabled:
+            from energy_forecast.transform import inv_boxcox
+
+            lam = self._settings.boxcox.lambda_param
+            y_train = inv_boxcox(y_train, lam)
+            y_val = inv_boxcox(y_val, lam)
+            y_test = inv_boxcox(y_test, lam)
+            train_pred_arr = inv_boxcox(train_pred_arr, lam)
+            val_pred_arr = inv_boxcox(val_pred_arr, lam)
+            test_pred_arr = inv_boxcox(test_pred_arr, lam)
+
         return SplitResult(
             split_idx=split_info.split_idx,
             train_metrics=compute_all(y_train, train_pred_arr),
@@ -343,6 +355,17 @@ class NeuralForecastTrainer(ABC):
 
         def objective(trial: Trial) -> float:
             suggested = suggest_params(trial, search_space)
+
+            # Loss is a config param, not a model constructor param.
+            # Pop it from suggested and update config via model_copy.
+            loss_name = suggested.pop("loss", None)
+            if loss_name is not None:
+                original_config = self._model_config
+                updated_config = original_config.model_copy(update={"loss": loss_name})
+                # Swap instance config for this trial
+                config_attr = f"_{self._model_name}_config"
+                object.__setattr__(self, config_attr, updated_config)
+
             val_mapes: list[float] = []
             test_mapes: list[float] = []
             split_results: list[SplitResult] = []

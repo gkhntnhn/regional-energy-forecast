@@ -67,6 +67,10 @@ region:
       grid_points:
         - {latitude: 40.00, longitude: 26.50, population_weight: 1.000000}
 
+boxcox:
+  enabled: true
+  lambda_param: 0.3893    # Optimal for 2022-2026 consumption data
+
 forecast:
   horizon_hours: 48
   frequency: "1h"

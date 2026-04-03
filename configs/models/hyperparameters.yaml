@@ -1,4 +1,4 @@
-# Optuna hyperparameter search spaces — R2 (R1-informed narrowed ranges)
+# Optuna hyperparameter search spaces — R10 (Box-Cox + loss search + new data ranges)
 # Each param: type (int/float/categorical), low, high, step?, log?, choices?
 # Adding a new parameter to YAML requires NO code change
 
@@ -10,25 +10,25 @@ catboost:
     # iterations: fixed at 10000 in catboost.yaml (early stopping decides)
     learning_rate:
       type: float
-      low: 0.05
-      high: 0.12          # Narrowed from [0.01, 0.1] — R1 optimum: 0.093
+      low: 0.01             # Widened: new data needs lower lr exploration
+      high: 0.05            # Narrowed upper: 0.12 overfits at 585 iter
       log: true
     depth:
       type: int
-      low: 5
-      high: 7             # Keep some exploration (R1: depth=6 dominated)
+      low: 4                # Widened: explore shallower trees
+      high: 7
     l2_leaf_reg:
       type: float
       low: 1.0
-      high: 3.0           # Narrowed from [1.0, 10.0] — R1 optimum: 1.57
+      high: 10.0            # Widened: more regularization with lower lr
     min_child_samples:
       type: int
-      low: 50
-      high: 100           # Narrowed from [5, 100] — R1 optimum: 75
+      low: 20               # Widened: explore smaller leaves
+      high: 150             # Widened: explore larger leaves
     subsample:
       type: float
-      low: 0.65
-      high: 0.95          # Narrowed from [0.6, 1.0] — R1 optimum: 0.75
+      low: 0.6              # Slightly widened
+      high: 0.95
     loss_function:
       type: categorical
       choices: ["RMSE","MAE"]   # Fixed — RMSE beat MAE by 0.16% (2.42% vs 2.58%)
@@ -36,8 +36,9 @@ catboost:
 tft:
   n_trials: 15             # R6 Production HPO
   search_space:
-    # hidden_size: fixed at 64 in tft.yaml (R5: 128→64, optimal for 13 covariates)
-    # windows_batch_size: fixed at 512 in tft.yaml (RunPod L4/A100)
+    hidden_size:
+      type: categorical
+      choices: [64, 128]  # R5: 64 optimal, 128 worth re-testing with Box-Cox
     n_head:
       type: categorical
       choices: [2, 4]     # 1 too weak for hidden=64, 2-4 optimal
@@ -51,8 +52,11 @@ tft:
     learning_rate:
       type: float
       low: 0.0005
-      high: 0.005         # Range around default 0.001
+      high: 0.01          # Widened: R6 best 0.00467 was at 93% of old upper (0.005)
       log: true
+    loss:                  # NEW: let Optuna pick the best loss
+      type: categorical
+      choices: ["mae", "rmse", "quantile"]
 
 tsmixerx:
   n_trials: 30             # R7 Production HPO (expanded from 15)
@@ -70,11 +74,14 @@ tsmixerx:
     learning_rate:
       type: float
       low: 0.0005
-      high: 0.005
+      high: 0.008          # Widened: R7 best 0.00367 near old upper, BC allows higher
       log: true
     max_steps:
       type: categorical
-      choices: [2000, 3000]
+      choices: [10000]     # Fixed: TSMixerx never early stops, more steps = better
+    loss:                  # NEW: let Optuna pick the best loss
+      type: categorical
+      choices: ["mae", "mse", "rmse", "huber_0.5"]
 
 cross_validation:
   n_splits: 12             # Production: 12-fold TSCV
