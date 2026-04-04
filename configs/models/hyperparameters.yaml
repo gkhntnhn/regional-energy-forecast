@@ -5,13 +5,13 @@
 target_col: consumption
 
 catboost:
-  n_trials: 30             # R6 Production HPO
+  n_trials: 60             # R10 Production HPO
   search_space:
     # iterations: fixed at 10000 in catboost.yaml (early stopping decides)
     learning_rate:
       type: float
       low: 0.01             # Widened: new data needs lower lr exploration
-      high: 0.05            # Narrowed upper: 0.12 overfits at 585 iter
+      high: 0.15            # Widened for Box-Cox (target 20x smaller) upper: 0.12 overfits at 585 iter
       log: true
     depth:
       type: int
@@ -34,7 +34,7 @@ catboost:
       choices: ["RMSE","MAE"]   # Fixed — RMSE beat MAE by 0.16% (2.42% vs 2.58%)
 
 tft:
-  n_trials: 15             # R6 Production HPO
+  n_trials: 15             # R10 relaxed prune Production HPO
   search_space:
     hidden_size:
       type: categorical
@@ -59,7 +59,7 @@ tft:
       choices: ["mae", "rmse", "quantile"]
 
 tsmixerx:
-  n_trials: 30             # R7 Production HPO (expanded from 15)
+  n_trials: 15             # R10 relaxed prune Production HPO (expanded from 15)
   search_space:
     n_block:
       type: categorical

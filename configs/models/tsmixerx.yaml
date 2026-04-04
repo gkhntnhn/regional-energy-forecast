@@ -50,10 +50,11 @@ covariates:
 # Loss function: "mae" (default), "huber" (d=1.0), "huber_0.5", "huber_2.0"
 loss: "mae"
 
-# R7 HPO best params (30t, 12-fold, Val 1.96%, Test 2.04%)
+# R10 HPO best params (Trial #5, Val 1.88%, Test 1.92%, Box-Cox lambda=0.3893)
 best_params:
   n_block: 3
-  ff_dim: 64
-  dropout: 0.06452090304204987
-  learning_rate: 0.0036740592026352267
-  max_steps: 3000
+  ff_dim: 128
+  dropout: 0.2689574557254564
+  learning_rate: 0.001137254171303761
+  max_steps: 10000
+  loss: "rmse"

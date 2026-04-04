@@ -66,9 +66,11 @@ quantiles:
 
 loss: "quantile"
 
-# R6 HPO best params (Trial #1, Val 2.19%, Test 2.30%)
+# R10 HPO best params (Trial #7, Val 2.31%, Test 2.41%, Box-Cox lambda=0.3893)
 best_params:
-  n_head: 4
-  dropout: 0.14016725176148134
+  hidden_size: 128
+  n_head: 2
+  dropout: 0.15194787455392975
   n_rnn_layers: 1
-  learning_rate: 0.004665303012212832
+  learning_rate: 0.0005436678144256332
+  loss: "quantile"

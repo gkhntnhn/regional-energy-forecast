@@ -425,8 +425,8 @@ class NeuralForecastTrainer(ABC):
                 seed=self._model_config.training.random_seed,
             ),
             pruner=MedianPruner(
-                n_startup_trials=2,
-                n_warmup_steps=3,
+                n_startup_trials=8,
+                n_warmup_steps=6,
             ),
         )
 

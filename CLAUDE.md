@@ -151,7 +151,7 @@ Bu sayede consumption_lag_720 gibi uzun lag'ler forecast'ta doğru hesaplanır.
 ## CI/CD
 - GitHub Actions (.github/workflows/ci.yml)
 - Push/PR → ruff check + mypy + pytest (-m "not slow")
-- Tests: 1105 non-slow / 1122 toplam, coverage 89%
+- Tests: 1137 non-slow / 1154 toplam, coverage 89%
 - Optuna persistence: n_trials > 3 → SQLite storage, ≤3 → in-memory
 
 ## Dosya Yapısı
@@ -160,8 +160,8 @@ data/
 ├── raw/
 │   └── Consumption_Input_Format.xlsx    # Ham tüketim verisi
 ├── processed/
-│   ├── features_historical.parquet      # Training için (~48K satır, 457 feature)
-│   └── features_forecast.parquet        # Prediction için (48 satır, 457 feature)
+│   ├── features_historical.parquet      # Training için (~37K satır, 461 feature)
+│   └── features_forecast.parquet        # Prediction için (48 satır, 461 feature)
 ├── static/
 │   └── turkish_holidays.parquet         # Tatil verileri
 └── external/
@@ -183,7 +183,7 @@ configs/
 │   ├── tsmixerx.yaml       # TSMixerx model config (NeuralForecast)
 │   ├── ensemble.yaml       # Ensemble config (weighted_average/stacking/auto)
 │   ├── hyperparameters.yaml # Optuna arama uzayı
-│   └── catboost_selected_features.json  # Feature selection (229/457)
+│   └── catboost_selected_features.json  # Feature selection (~234/461)
 ├── features/
 │   ├── calendar.yaml
 │   ├── consumption.yaml

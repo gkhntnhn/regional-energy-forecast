@@ -150,3 +150,8 @@ data/raw/final_models_r6_backup.tar.gz
 .planning/
 
 scripts/test_gradient_clip.py
+
+# HPO logs + results archives (too large for git)
+hpo_*.txt
+models/r10_results.tar.gz
+smoke_*.txt
