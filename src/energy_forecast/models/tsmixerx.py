@@ -112,7 +112,7 @@ class TSMixerxForecaster(BaseForecaster):
             NeuralForecast instance wrapping a TSMixerx model.
         """
         from neuralforecast import NeuralForecast
-        from neuralforecast.losses.pytorch import MAE, HuberLoss, MSE, RMSE
+        from neuralforecast.losses.pytorch import MAE, MSE, RMSE, HuberLoss
         from neuralforecast.models import TSMixerx
 
         cfg = self._tsmixerx_config

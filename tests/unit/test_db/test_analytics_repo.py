@@ -22,6 +22,11 @@ from energy_forecast.utils import TZ_ISTANBUL
 # Helpers
 # ---------------------------------------------------------------------------
 
+# Use "yesterday" as base date so data always falls within days=30 queries.
+_BASE_DATE = datetime.now(tz=TZ_ISTANBUL).replace(
+    hour=0, minute=0, second=0, microsecond=0
+) - timedelta(days=1)
+
 
 def _make_prediction(
     job_id: str,
@@ -31,7 +36,7 @@ def _make_prediction(
     actual: float | None = 1250.0,
     day_offset: int = 0,
 ) -> PredictionModel:
-    dt = datetime(2026, 3, 1, hour, tzinfo=TZ_ISTANBUL) + timedelta(days=day_offset)
+    dt = _BASE_DATE.replace(hour=hour) + timedelta(days=day_offset)
     error = abs(consumption - actual) / actual * 100 if actual is not None and actual > 0 else None
     return PredictionModel(
         job_id=job_id,
@@ -52,7 +57,7 @@ def _make_job(
     metadata: dict[str, Any] | None = None,
     epias_snapshot: dict[str, Any] | None = None,
 ) -> JobModel:
-    dt = datetime(2026, 3, 1, 10, tzinfo=TZ_ISTANBUL) + timedelta(days=day_offset)
+    dt = _BASE_DATE.replace(hour=10) + timedelta(days=day_offset)
     return JobModel(
         id=job_id,
         email="test@test.com",
@@ -100,7 +105,7 @@ async def test_get_daily_mape(db_session: AsyncSession) -> None:
     repo = AnalyticsRepository(db_session)
     result = await repo.get_daily_mape(days=30)
     assert len(result) == 1
-    assert result[0]["day"] == "2026-03-01"
+    assert result[0]["day"] == _BASE_DATE.strftime("%Y-%m-%d")
     assert result[0]["n_hours"] == 24
     assert result[0]["mape"] > 0
 
@@ -206,7 +211,7 @@ async def test_get_model_comparison_stats(
 async def test_get_weather_variable_accuracy(
     db_session: AsyncSession,
 ) -> None:
-    dt = datetime(2026, 3, 1, 12, tzinfo=TZ_ISTANBUL)
+    dt = _BASE_DATE.replace(hour=12)
     db_session.add(_make_weather(dt, is_actual=False, job_id=None, temperature=16.0))
     db_session.add(_make_weather(dt, is_actual=True, temperature=15.0))
     await db_session.flush()
