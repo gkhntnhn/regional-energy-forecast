@@ -5,33 +5,41 @@
 target_col: consumption
 
 catboost:
-  n_trials: 30             # R6 Production HPO
+  n_trials: 40             # R11 Grid Weather HPO — 7 params, expanded from R7 (30t/6p)
   search_space:
     # iterations: fixed at 10000 in catboost.yaml (early stopping decides)
     learning_rate:
       type: float
-      low: 0.05
-      high: 0.12          # Narrowed from [0.01, 0.1] — R1 optimum: 0.093
+      low: 0.03            # R11: expanded from [0.05, 0.12] — grid weather robustness
+      high: 0.15
       log: true
     depth:
       type: int
       low: 5
-      high: 7             # Keep some exploration (R1: depth=6 dominated)
+      high: 8              # R11: +1 (was 7) — grid weather feature space richer
     l2_leaf_reg:
       type: float
       low: 1.0
-      high: 3.0           # Narrowed from [1.0, 10.0] — R1 optimum: 1.57
+      high: 5.0            # R11: expanded from [1.0, 3.0] — grid regularization
     min_child_samples:
       type: int
-      low: 50
-      high: 100           # Narrowed from [5, 100] — R1 optimum: 75
+      low: 30              # R11: expanded from [50, 100]
+      high: 120
     subsample:
       type: float
-      low: 0.65
-      high: 0.95          # Narrowed from [0.6, 1.0] — R1 optimum: 0.75
+      low: 0.6              # R11: expanded from [0.65, 0.95]
+      high: 0.95
     loss_function:
       type: categorical
-      choices: ["RMSE","MAE"]   # Fixed — RMSE beat MAE by 0.16% (2.42% vs 2.58%)
+      choices: ["RMSE","MAE"]
+    colsample_bylevel:
+      type: float
+      low: 0.6              # R11: NEW — CPU-only, feature sampling per split
+      high: 1.0
+    leaf_estimation_iterations:
+      type: int
+      low: 1                # R11: NEW — Newton iterations for leaf values
+      high: 10
 
 tft:
   n_trials: 15             # R6 Production HPO
@@ -55,7 +63,7 @@ tft:
       log: true
 
 tsmixerx:
-  n_trials: 30             # R7 Production HPO (expanded from 15)
+  n_trials: 40             # R11 Grid Weather HPO — 7 params (max_steps FIXED at 5000)
   search_space:
     n_block:
       type: categorical
@@ -65,16 +73,25 @@ tsmixerx:
       choices: [64, 128, 256]
     dropout:
       type: float
-      low: 0.05
+      low: 0.0                # R11: expanded from [0.05, 0.3] — allow no-dropout
       high: 0.3
     learning_rate:
       type: float
-      low: 0.0005
-      high: 0.005
+      low: 0.0003             # R11: slightly wider from [0.0005, 0.005]
+      high: 0.007
       log: true
-    max_steps:
+    # max_steps: FIXED at 5000 in tsmixerx.yaml (user directive — no HPO)
+    windows_batch_size:
       type: categorical
-      choices: [2000, 3000]
+      choices: [128, 256, 512]  # R11: NEW — batch size HPO (L4/A40 VRAM ample)
+    weight_decay:
+      type: float
+      low: 0.000001             # R11: NEW — AdamW L2 regularization
+      high: 0.001
+      log: true
+    loss:
+      type: categorical
+      choices: ["mae", "mse", "huber"]  # R11: NEW — BC olmadan loss search
 
 cross_validation:
   n_splits: 12             # Production: 12-fold TSCV

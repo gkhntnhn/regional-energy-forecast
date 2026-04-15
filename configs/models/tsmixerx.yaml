@@ -11,10 +11,11 @@ architecture:
 
 training:
   prediction_length: 48   # 48 hours forecast
-  max_steps: 3000
-  windows_batch_size: 64
+  max_steps: 5000         # R11: FIXED 5000 (was 3000) — early_stop handles convergence
+  windows_batch_size: 256 # R11: 64 → 256 (RunPod L4/A40 VRAM ample)
   step_size: 12
   learning_rate: 0.001
+  weight_decay: 0.0       # R11: AdamW L2 regularization (0.0 = disabled)
   early_stop_patience_steps: 200
   val_check_steps: 50
   random_seed: 42

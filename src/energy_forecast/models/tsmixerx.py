@@ -153,6 +153,11 @@ class TSMixerxForecaster(BaseForecaster):
         if callbacks:
             extra_trainer_kwargs["callbacks"] = callbacks
 
+        # AdamW weight_decay regularization (0.0 disables)
+        optimizer_kwargs: dict[str, Any] = {}
+        if train_cfg.weight_decay > 0.0:
+            optimizer_kwargs["weight_decay"] = train_cfg.weight_decay
+
         model = TSMixerx(
             h=train_cfg.prediction_length,
             input_size=arch.input_size,
@@ -163,6 +168,7 @@ class TSMixerxForecaster(BaseForecaster):
             revin=arch.revin,
             loss=loss_fn,
             learning_rate=train_cfg.learning_rate,
+            optimizer_kwargs=optimizer_kwargs,
             max_steps=steps,
             val_check_steps=train_cfg.val_check_steps,
             early_stop_patience_steps=train_cfg.early_stop_patience_steps,

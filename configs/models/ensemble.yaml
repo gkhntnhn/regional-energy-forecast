@@ -1,31 +1,30 @@
-# Ensemble configuration — R6 optimized
-# 3-model ensemble: CB + TFT + TSMixerx
-# Stacking < weighted_average — simpler is better
+# Ensemble configuration — R11 2-model (TFT disabled)
+# 2-model ensemble: CatBoost + TSMixerx
+# TFT disabled: training time too long, marginal contribution (R7 weight 0.23)
 
 # Ensemble mode: "weighted_average", "stacking", or "auto" (tries both, picks best)
 mode: "auto"
 
 # Active models (can be overridden via CLI --models flag)
 active_models:
-  - tft
   - catboost
   - tsmixerx
 
 # Default weights — equal initial, SLSQP will optimize
-# 3-model ensemble: CB + TFT + TSMixerx (SLSQP will optimize)
+# TFT explicitly 0.0 (disabled from active_models)
 weights:
-  catboost: 0.33
-  tft: 0.34
-  tsmixerx: 0.33
+  catboost: 0.5
+  tft: 0.0
+  tsmixerx: 0.5
 
 # Weight optimization settings (used when mode=weighted_average)
 optimization:
   enabled: true
   metric: "mape"  # Metric to minimize
   bounds:
-    catboost: [0.2, 0.7]
-    tft: [0.2, 0.7]
-    tsmixerx: [0.1, 0.5]
+    catboost: [0.3, 0.7]
+    tft: [0.0, 0.0]
+    tsmixerx: [0.3, 0.7]
 
 # Stacking meta-learner config (used when mode=stacking)
 stacking:

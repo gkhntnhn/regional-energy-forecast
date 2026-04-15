@@ -240,6 +240,7 @@ class TSMixerxTrainingConfig(BaseModel, frozen=True):
     windows_batch_size: int = Field(default=64, ge=1)
     step_size: int = Field(default=12, ge=1)
     learning_rate: float = Field(default=0.001, gt=0.0)
+    weight_decay: float = Field(default=0.0, ge=0.0)
     early_stop_patience_steps: int = Field(default=200, ge=-1)  # -1 disables
     val_check_steps: int = Field(default=50, ge=1)
     random_seed: int = 42

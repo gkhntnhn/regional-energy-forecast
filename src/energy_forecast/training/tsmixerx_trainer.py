@@ -96,6 +96,7 @@ class TSMixerxTrainer(NeuralForecastTrainer):
             ),
             "step_size": base.training.step_size,
             "learning_rate": params.get("learning_rate", base.training.learning_rate),
+            "weight_decay": params.get("weight_decay", base.training.weight_decay),
             "early_stop_patience_steps": base.training.early_stop_patience_steps,
             "val_check_steps": base.training.val_check_steps,
             "random_seed": base.training.random_seed,
@@ -112,7 +113,7 @@ class TSMixerxTrainer(NeuralForecastTrainer):
                 futr_exog=list(base.covariates.futr_exog),
                 hist_exog=list(base.covariates.hist_exog),
             ),
-            loss=base.loss,
+            loss=params.get("loss", base.loss),
         )
 
     def _create_forecaster(self, config: Any) -> Any:
