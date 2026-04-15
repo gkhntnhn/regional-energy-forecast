@@ -1,7 +1,7 @@
 # SPEC.md — Energy Forecast
 
 > Proje anayasası. Claude Code ve geliştirici bu dosyayı tek kaynak olarak referans alır.
-> Son güncelleme: 2026-03-28
+> Son güncelleme: 2026-04-14
 
 ---
 
@@ -185,7 +185,7 @@ Weather forecast ve solar hesaplamaları (lead dahil) data leakage DEĞİLDİR:
 | Solar | pvlib hesaplamaları | GHI/DNI/DHI, POA, clearness index, cloud proxy |
 | EPIAS | EPİAŞ piyasa verileri | Lag, rolling, expanding (türetilmiş değerler) |
 
-**Toplam feature sayısı:** 457 (pipeline çıkışı)
+**Toplam feature sayısı:** 461 (pipeline çıkışı)
 - CatBoost: 229 selected features (feature importance pruning)
 - TFT/TSMixerx: 15 covariates (8 futr_exog + 7 hist_exog)
 - OOF analysis-driven features: is_new_year (%37 MAPE outlier), dst_transition (%28 MAPE outlier)
@@ -234,8 +234,8 @@ Feature pipeline training ve prediction için AYNI şekilde çalışır. Ayrı "
 Bu sayede uzun lag'ler (consumption_lag_720 gibi) forecast satırlarında da doğru hesaplanır.
 
 **Çıktı dosyaları:**
-- `data/processed/features_historical.parquet` (~48K satır, 457 feature)
-- `data/processed/features_forecast.parquet` (48 satır, 457 feature)
+- `data/processed/features_historical.parquet` (~37K satır, 461 feature)
+- `data/processed/features_forecast.parquet` (48 satır, 461 feature)
 
 ---
 
@@ -603,7 +603,7 @@ configs/
 │   ├── tsmixerx.yaml       # TSMixerx: NeuralForecast MLP-Mixer, training
 │   ├── ensemble.yaml       # Ensemble: auto/weighted_average/stacking mode
 │   ├── hyperparameters.yaml # Optuna arama uzayı (tüm modeller)
-│   └── catboost_selected_features.json  # Feature selection (229/457)
+│   └── catboost_selected_features.json  # Feature selection (229/461)
 ├── features/
 │   ├── calendar.yaml       # Calendar feature parametreleri
 │   ├── consumption.yaml    # Consumption: lag değerleri, window boyutları
@@ -669,7 +669,7 @@ DATABASE_URL=postgresql+asyncpg://user:pass@host:5432/db
 | Hızlı test | YAML'da değer düşür → run.py çalıştır → geri al |
 | Coverage hedefi | %85+ |
 | Mock kuralı | Sadece external API'ler mock'lanır (EPİAŞ, OpenMeteo) |
-| Test sayısı | 1105 non-slow / 1122 toplam |
+| Test sayısı | 1137 non-slow / 1154 toplam |
 
 ### 10.3 Git Workflow
 
