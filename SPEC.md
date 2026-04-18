@@ -1,7 +1,7 @@
 # SPEC.md — Energy Forecast
 
 > Proje anayasası. Claude Code ve geliştirici bu dosyayı tek kaynak olarak referans alır.
-> Son güncelleme: 2026-04-14
+> Son güncelleme: 2026-04-16
 
 ---
 
@@ -352,6 +352,7 @@ competitive accuracy with faster training. Prophet replacement.
 |-----|----------|-------|
 | Faz 1 | CatBoost + Prophet | ✅ Tamamlandı (Prophet sonradan kaldırıldı) |
 | Faz 2 | CatBoost + TFT + TSMixerx | ✅ Tamamlandı |
+| R11 (2026-04-16) | **CatBoost + TSMixerx** (TFT iptal — uzun eğitim, marjinal katkı) | 🔄 HPO hazır, RunPod bekleniyor |
 
 ---
 
