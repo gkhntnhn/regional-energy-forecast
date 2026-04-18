@@ -147,3 +147,8 @@ results.tar.gz
 data/raw/final_models_r6_backup.tar.gz
 .planning/
 
+# Debug artifacts (R11 post-HPO analysis — local only, do NOT commit)
+debug/
+r11_full_debug.tar.gz
+r11_results.tar.gz
+
