@@ -1,7 +1,7 @@
 # Energy Forecast
 
 Uludağ elektrik dağıtım bölgesi (Bursa, Balıkesir, Yalova, Çanakkale) saatlik elektrik tüketimi tahmin sistemi.
-CatBoost + TSMixerx ensemble (R11'den itibaren — TFT iptal), 48 saat ileri (T + T+1), FastAPI serving, AWS deploy.
+TSMixerx single-model (R12 branch — CB/TFT config-level off, kod korunuyor), 48 saat ileri (T + T+1), FastAPI serving, AWS deploy.
 
 ## Referans Proje
 Eski proje: C:\Users\pc\Desktop\distributed-energy-forecasting\

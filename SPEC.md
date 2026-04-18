@@ -352,7 +352,8 @@ competitive accuracy with faster training. Prophet replacement.
 |-----|----------|-------|
 | Faz 1 | CatBoost + Prophet | ✅ Tamamlandı (Prophet sonradan kaldırıldı) |
 | Faz 2 | CatBoost + TFT + TSMixerx | ✅ Tamamlandı |
-| R11 (2026-04-16) | **CatBoost + TSMixerx** (TFT iptal — uzun eğitim, marjinal katkı) | 🔄 HPO hazır, RunPod bekleniyor |
+| R11 (2026-04-16) | **CatBoost + TSMixerx** (TFT iptal — uzun eğitim, marjinal katkı) | ✅ HPO DONE: TSMx 1.91% / CB 3.11% / Ens stacking 2.00% (deploy ertelendi) |
+| R12 (2026-04-18) | **TSMixerx-only** (single-model, CB+TFT config-level off — kod korunuyor disaster recovery için) | 🔄 FAZ 0 DONE, FAZ 1 research bekliyor |
 
 ---
 
