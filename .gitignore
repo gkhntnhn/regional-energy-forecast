@@ -152,3 +152,5 @@ debug/
 r11_full_debug.tar.gz
 r11_results.tar.gz
 
+r12_hpo.log
+configs/models/tsmixerx.yaml.r7_backup

@@ -59,14 +59,19 @@ covariates:
 # Loss function: "mae" (R11 winner)
 loss: "mae"
 
-# R11 best_params (RTX 3090 HPO, 2026-04-18, val 1.91% test 1.91%)
-# Sanity test: bu params + Set B 22 covariate → R11 baseline ile karsilastir
+# R12 best_params (RTX 3090 pod HPO, 2026-04-19, val 1.77% test 1.83%)
+# 100 trial median pruner, 12 boyut search, Set B 22 covariate
+# Anti-canonical winner: revin=False, scaler=standard, loss=huber_0.5
 best_params:
-  n_block: 3
-  ff_dim: 128
-  dropout: 0.1459515283918986
-  learning_rate: 0.0038
-  weight_decay: 0.00094
-  windows_batch_size: 128           # R11 256 -> 128 (4060 Ti VRAM marji)
-  max_steps: 5000
-  loss: "mae"
+  n_block: 4
+  ff_dim: 96
+  dropout: 0.20132633302063577
+  input_size: 168
+  revin: false
+  scaler_type: standard
+  learning_rate: 0.002534832369549769
+  weight_decay: 0.00018468390311739306
+  windows_batch_size: 512           # Pod RTX 3090; 4060 Ti lokal'de --wbs 256 override
+  early_stop_patience_steps: 325
+  step_size: 24
+  loss: "huber_0.5"

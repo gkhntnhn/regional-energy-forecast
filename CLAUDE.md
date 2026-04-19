@@ -198,14 +198,16 @@ configs/
 .mailmap                     # Git author normalization
 ```
 
-## Model Performansı (R7 HPO, 12-fold TSCV)
+## Model Performansı (R7+R12 HPO, 12-fold TSCV)
 
 | Model | Val MAPE | Test MAPE | Not |
 |-------|----------|-----------|-----|
-| CatBoost | 2.47% | 2.97% | fixed R6 params, RMSE loss, 229 feature |
-| TFT | 2.40% | 2.52% | fixed R6 params, MQLoss, ~600K params |
-| TSMixerx | 1.96% | 2.04% | 30 trial HPO, MAE loss, n_block=3 ff_dim=64 |
-| Ensemble (auto) | 1.75% | 1.82% | weighted_avg: TSM=0.50 CB=0.27 TFT=0.23 |
+| CatBoost (R7) | 2.47% | 2.97% | fixed R6 params, RMSE loss, 229 feature |
+| TFT (R7) | 2.40% | 2.52% | fixed R6 params, MQLoss, ~600K params |
+| TSMixerx (R7) | 1.96% | 2.04% | 30 trial HPO, MAE loss, n_block=3 ff_dim=64 (~119K params) |
+| Ensemble R7 (auto) | 1.75% | 1.82% | weighted_avg: TSM=0.50 CB=0.27 TFT=0.23 (production baseline) |
+| **TSMixerx R12 single** | **1.748%** | **1.767%** | seed=42 deterministic, n_block=4 ff_dim=96 (~286K params), Set B 22 cov |
+| **TSMixerx R12 5-seed Jensen** | **🏆 1.614%** | **🏆 1.649%** | 5 seed ensemble, σ_test=0.04%, R7 ceiling -0.171% aşıldı |
 
 ## Bilinen Sorunlar
 
