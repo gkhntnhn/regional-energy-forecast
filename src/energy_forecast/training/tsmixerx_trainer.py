@@ -84,8 +84,8 @@ class TSMixerxTrainer(NeuralForecastTrainer):
             "n_block": params.get("n_block", base.architecture.n_block),
             "ff_dim": params.get("ff_dim", base.architecture.ff_dim),
             "dropout": params.get("dropout", base.architecture.dropout),
-            "input_size": base.architecture.input_size,
-            "revin": base.architecture.revin,
+            "input_size": params.get("input_size", base.architecture.input_size),
+            "revin": params.get("revin", base.architecture.revin),
         }
 
         train_params = {
@@ -94,16 +94,18 @@ class TSMixerxTrainer(NeuralForecastTrainer):
             "windows_batch_size": params.get(
                 "windows_batch_size", base.training.windows_batch_size
             ),
-            "step_size": base.training.step_size,
+            "step_size": params.get("step_size", base.training.step_size),
             "learning_rate": params.get("learning_rate", base.training.learning_rate),
             "weight_decay": params.get("weight_decay", base.training.weight_decay),
-            "early_stop_patience_steps": base.training.early_stop_patience_steps,
+            "early_stop_patience_steps": params.get(
+                "early_stop_patience_steps", base.training.early_stop_patience_steps
+            ),
             "val_check_steps": base.training.val_check_steps,
-            "random_seed": base.training.random_seed,
+            "random_seed": params.get("random_seed", base.training.random_seed),
             "accelerator": base.training.accelerator,
             "num_workers": base.training.num_workers,
             "enable_progress_bar": base.training.enable_progress_bar,
-            "scaler_type": base.training.scaler_type,
+            "scaler_type": params.get("scaler_type", base.training.scaler_type),
         }
 
         return TSMixerxConfig(
