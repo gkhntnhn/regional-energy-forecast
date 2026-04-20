@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import pandas as pd
-from scripts.generate_holidays import (
+from scripts.data.generate_holidays import (
     _map_holiday_name,
     _resolve_collisions,
     generate_holiday_catalog,

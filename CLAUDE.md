@@ -227,7 +227,6 @@ configs/
 ## Detaylı Bilgi
 @SPEC.md — Proje spesifikasyonu (forecast akışı, model mimarisi, API tasarımı)
 @PROJECT_KNOWLEDGE.md — Eski proje detayları (feature listesi, config değerleri, referans)
-@docs/plans/ — Milestone planları
 
 ## Milestone Durumu
 - [x] M0: Proje iskeleti

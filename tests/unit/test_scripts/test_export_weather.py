@@ -9,7 +9,7 @@ class TestParseArgs:
     """Tests for argument parsing."""
 
     def test_defaults(self) -> None:
-        from scripts.export_weather import parse_args
+        from scripts.data.export_weather import parse_args
 
         with patch("sys.argv", ["export_weather.py"]):
             args = parse_args()
@@ -17,14 +17,14 @@ class TestParseArgs:
         assert args.dry_run is False
 
     def test_year_flag(self) -> None:
-        from scripts.export_weather import parse_args
+        from scripts.data.export_weather import parse_args
 
         with patch("sys.argv", ["export_weather.py", "--year", "2024"]):
             args = parse_args()
         assert args.year == 2024
 
     def test_dry_run_flag(self) -> None:
-        from scripts.export_weather import parse_args
+        from scripts.data.export_weather import parse_args
 
         with patch("sys.argv", ["export_weather.py", "--dry-run"]):
             args = parse_args()
@@ -36,7 +36,7 @@ class TestMainNoDB:
 
     def test_returns_1_without_db_url(self) -> None:
         """main() returns 1 when DB URL is missing."""
-        from scripts.export_weather import main
+        from scripts.data.export_weather import main
 
         with (
             patch("sys.argv", ["export_weather.py"]),

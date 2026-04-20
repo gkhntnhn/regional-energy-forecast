@@ -73,7 +73,10 @@ docs/reviews/
 
 # Ad-hoc debug/analysis scripts (CLI session artifacts)
 scripts/adhoc/
-scripts/debug_*.py
+scripts/debug/
+
+# RunPod deployment helpers (machine-specific, local-only)
+scripts/runpod/
 
 # OS
 .DS_Store

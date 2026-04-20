@@ -30,13 +30,13 @@ train-ensemble: ## Train ensemble (all models + weight optimization)
 	uv run python -m energy_forecast.training.run --model ensemble
 
 prepare-data: ## Prepare dataset (Excel -> feature parquets)
-	uv run python scripts/prepare_dataset.py -v
+	uv run python scripts/data/prepare_dataset.py -v
 
 generate-holidays: ## Generate Turkish holidays parquet
-	uv run python scripts/generate_holidays.py
+	uv run python scripts/data/generate_holidays.py
 
 backfill-epias: ## Backfill EPIAS market data cache
-	uv run python scripts/backfill_epias.py
+	uv run python scripts/data/backfill_epias.py
 
 db-up: ## Start PostgreSQL (Docker Compose)
 	docker compose up -d db
@@ -57,32 +57,32 @@ fetch-weather-actuals: ## Fetch weather actuals for T-2 day
 	uv run python -m energy_forecast.jobs.weather_actuals
 
 db-backup: ## Backup database to gzipped SQL dump
-	uv run python scripts/backup_db.py
+	uv run python scripts/ops/backup_db.py
 
 promote-model: ## Promote best model run to final_models/ (MODEL=catboost)
-	uv run python scripts/promote_model.py --model $(MODEL)
+	uv run python scripts/deploy/promote_model.py --model $(MODEL)
 
 cleanup-old-data: ## Apply retention policy (90 days default)
-	uv run python scripts/cleanup_jobs.py --days 90
+	uv run python scripts/ops/cleanup_jobs.py --days 90
 
 cleanup-dry-run: ## Show what would be deleted (dry run)
-	uv run python scripts/cleanup_jobs.py --days 90 --dry-run
+	uv run python scripts/ops/cleanup_jobs.py --days 90 --dry-run
 
 seed-db: ## Seed DB with sample data (data/seed/)
-	uv run python scripts/seed_db.py
+	uv run python scripts/ops/seed_db.py
 
 seed-db-full: ## Seed DB with all parquet data (full import)
-	uv run python scripts/seed_db.py --full
+	uv run python scripts/ops/seed_db.py --full
 
 seed-weather: ## Seed weather_cache (parquet-first, API fallback)
-	uv run python scripts/seed_weather.py
+	uv run python scripts/data/seed_weather.py
 
 seed-all: ## Seed everything: static data + weather cache
-	uv run python scripts/seed_db.py --full
-	uv run python scripts/seed_weather.py
+	uv run python scripts/ops/seed_db.py --full
+	uv run python scripts/data/seed_weather.py
 
 export-weather: ## Export weather_cache DB to yearly parquet files
-	uv run python scripts/export_weather.py
+	uv run python scripts/data/export_weather.py
 
 fresh-start: ## DB reset + prepare data (clean slate for training)
 	$(MAKE) db-reset
@@ -93,8 +93,8 @@ db-reset: ## Full DB reset: destroy volumes, recreate, migrate, seed everything
 	docker compose down -v
 	docker compose up -d --wait
 	uv run alembic upgrade head
-	uv run python scripts/seed_db.py --full
-	uv run python scripts/seed_weather.py
+	uv run python scripts/ops/seed_db.py --full
+	uv run python scripts/data/seed_weather.py
 	@echo "DB reset complete: volumes recreated + migrated + seeded (static + weather)"
 
 mlflow-up: ## Start MLflow + DB (Docker Compose)
