@@ -22,12 +22,12 @@ from pathlib import Path
 # Ensure local src/ is importable when run from project root
 sys.path.insert(0, str(Path("src").resolve()))
 
-import numpy as np  # noqa: E402
-import pandas as pd  # noqa: E402
-from loguru import logger  # noqa: E402
+import numpy as np
+import pandas as pd
+from loguru import logger
 
-from energy_forecast.config import load_config  # noqa: E402
-from energy_forecast.training.multi_seed_trainer import (  # noqa: E402
+from energy_forecast.config import load_config
+from energy_forecast.training.multi_seed_trainer import (
     DEFAULT_SEEDS,
     MultiSeedTSMixerxTrainer,
 )
@@ -66,6 +66,22 @@ def main() -> None:
     parser.add_argument(
         "--report", type=Path, default=Path("debug/r12_research/06_multi_seed_results.json"),
         help="Output report path",
+    )
+    parser.add_argument(
+        "--preds-dir",
+        type=Path,
+        default=Path("debug/r12_research/06_multi_seed_preds"),
+        help=(
+            "Per-seed OOF predictions output directory (Lesson 166 fix). "
+            "Each seed saved as seed_{N}.npz with val_pred/val_actual/"
+            "test_pred/test_actual arrays. Enables post-mortem bootstrap "
+            "and per-split Jensen analysis without re-training."
+        ),
+    )
+    parser.add_argument(
+        "--no-save-preds",
+        action="store_true",
+        help="Skip OOF prediction persistence (save disk, lose retrospective analysis).",
     )
     args = parser.parse_args()
 
@@ -128,6 +144,25 @@ def main() -> None:
     args.report.parent.mkdir(parents=True, exist_ok=True)
     args.report.write_text(json.dumps(report, indent=2, default=str))
     logger.info("Report saved to {}", args.report)
+
+    # Persist per-seed OOF predictions (Lesson 166 fix).
+    # Previously these lived only in memory and were lost after exit —
+    # forcing 108-min retrain for post-mortem bootstrap/per-split analyses.
+    if not args.no_save_preds and result.seed_predictions:
+        args.preds_dir.mkdir(parents=True, exist_ok=True)
+        for seed, preds in result.seed_predictions.items():
+            np.savez_compressed(
+                args.preds_dir / f"seed_{seed}.npz",
+                val_pred=preds["val_pred"],
+                val_actual=preds["val_actual"],
+                test_pred=preds["test_pred"],
+                test_actual=preds["test_actual"],
+            )
+        logger.info(
+            "Persisted per-seed OOF predictions ({} seeds) -> {}",
+            len(result.seed_predictions),
+            args.preds_dir,
+        )
 
 
 if __name__ == "__main__":
