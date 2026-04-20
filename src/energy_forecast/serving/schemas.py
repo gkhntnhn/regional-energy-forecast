@@ -103,11 +103,20 @@ class JobStatusResponse(BaseModel):
 
 
 class HealthResponse(BaseModel):
-    """Health check response."""
+    """Health check response.
+
+    When the loaded TSMixerx model is a multi-seed ensemble and not all seeds
+    loaded successfully, ``degraded=True`` and ``status="degraded"`` — monitors
+    should treat this as a soft SLO breach (service still serves predictions
+    but with reduced quality).
+    """
 
     status: str
     timestamp: datetime
     version: str
+    degraded: bool = False
+    n_seeds_loaded: int | None = None
+    n_seeds_requested: int | None = None
 
 
 class ErrorResponse(BaseModel):

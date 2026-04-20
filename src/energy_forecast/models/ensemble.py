@@ -20,6 +20,7 @@ from energy_forecast.config import EnsembleConfig
 from energy_forecast.models.base import PREDICTION_COL, BaseForecaster
 from energy_forecast.models.tft import TFTForecaster
 from energy_forecast.models.tsmixerx import TSMixerxForecaster
+from energy_forecast.models.tsmixerx_multi_seed import MultiSeedTSMixerxForecaster
 from energy_forecast.utils.ensemble_helpers import build_context_features
 
 
@@ -66,7 +67,7 @@ class EnsembleForecaster(BaseForecaster):
         self._context_features: list[str] = merged_config["context_features"]
         self._catboost_model: CatBoostRegressor | None = None
         self._tft_model: TFTForecaster | None = None
-        self._tsmixerx_model: TSMixerxForecaster | None = None
+        self._tsmixerx_model: TSMixerxForecaster | MultiSeedTSMixerxForecaster | None = None
         self._meta_model: CatBoostRegressor | None = None
 
     @property
@@ -93,7 +94,7 @@ class EnsembleForecaster(BaseForecaster):
         self,
         catboost_model: CatBoostRegressor | None = None,
         tft_model: TFTForecaster | None = None,
-        tsmixerx_model: TSMixerxForecaster | None = None,
+        tsmixerx_model: TSMixerxForecaster | MultiSeedTSMixerxForecaster | None = None,
     ) -> None:
         """Set pre-trained models for prediction.
 
@@ -464,11 +465,25 @@ class EnsembleForecaster(BaseForecaster):
                 self._tft_model = None
                 logger.warning("Failed to load TFT model, skipping: {}", e)
 
-        # Load TSMixerx
+        # Load TSMixerx — auto-detect multi-seed (seed_*/ subdirs) vs single
         if tsmixerx_path is not None and tsmixerx_path.exists():
             try:
-                self._tsmixerx_model = TSMixerxForecaster.from_checkpoint(tsmixerx_path)
-                logger.info("Loaded TSMixerx model from {}", tsmixerx_path)
+                seed_dirs = sorted(tsmixerx_path.glob("seed_*"))
+                if seed_dirs:
+                    self._tsmixerx_model = MultiSeedTSMixerxForecaster.from_checkpoint(
+                        tsmixerx_path
+                    )
+                    info = self._tsmixerx_model.get_seed_info()
+                    logger.info(
+                        "Loaded multi-seed TSMixerx from {} ({} of {} seeds, degraded={})",
+                        tsmixerx_path,
+                        info["n_loaded"],
+                        info["n_requested"],
+                        info["is_degraded"],
+                    )
+                else:
+                    self._tsmixerx_model = TSMixerxForecaster.from_checkpoint(tsmixerx_path)
+                    logger.info("Loaded single TSMixerx model from {}", tsmixerx_path)
             except Exception as e:
                 self._tsmixerx_model = None
                 logger.warning("Failed to load TSMixerx model, skipping: {}", e)
