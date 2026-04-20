@@ -1,7 +1,7 @@
 # SPEC.md — Energy Forecast
 
 > Proje anayasası. Claude Code ve geliştirici bu dosyayı tek kaynak olarak referans alır.
-> Son güncelleme: 2026-04-18
+> Son güncelleme: 2026-04-21 (R12 FAZ 11 + E2E smoke verified, `r12-deploy` @ `2b51f16`)
 
 ---
 
@@ -352,7 +352,9 @@ competitive accuracy with faster training. Prophet replacement.
 |-----|----------|-------|
 | Faz 1 | CatBoost + Prophet | ✅ Tamamlandı (Prophet sonradan kaldırıldı) |
 | Faz 2 | CatBoost + TFT + TSMixerx | ✅ Tamamlandı |
-| R11 (2026-04-16) | **CatBoost + TSMixerx** (TFT iptal — uzun eğitim, marjinal katkı) | 🔄 HPO hazır, RunPod bekleniyor |
+| R11 (2026-04-16) | **CatBoost + TSMixerx** (TFT iptal — uzun eğitim, marjinal katkı) | ✅ HPO DONE: TSMx 1.91% / CB 3.11% / Ens stacking 2.00% (deploy ertelendi) |
+| R12 (2026-04-18→20) | **TSMixerx-only** (single-model, CB+TFT config-level off — kod korunuyor disaster recovery için) | ✅ FAZ 0-6 DONE: HPO val 1.77%/test 1.83% (seed=42 non-det), 5-seed Jensen val **1.614%**/test **1.649%** — R7 ceiling -0.171% aşıldı |
+| R12 FAZ 7-11 (2026-04-20) | **5-seed Jensen ensemble DEPLOY** — `MultiSeedTSMixerxForecaster`, serving auto-detect, graceful degrade, artifact SHA256 (ckpt+pkl), observability endpoints | ✅ DEPLOYED: `final_models/tsmixerx/seed_*/`, `r12-deploy` tag, 1176 test, bootstrap CI [1.614%, 1.685%] |
 
 ---
 
@@ -670,7 +672,7 @@ DATABASE_URL=postgresql+asyncpg://user:pass@host:5432/db
 | Hızlı test | YAML'da değer düşür → run.py çalıştır → geri al |
 | Coverage hedefi | %85+ |
 | Mock kuralı | Sadece external API'ler mock'lanır (EPİAŞ, OpenMeteo) |
-| Test sayısı | 1137 non-slow / 1154 toplam |
+| Test sayısı | 1159 non-slow / 1176 toplam |
 
 ### 10.3 Git Workflow
 
@@ -695,8 +697,8 @@ Commit format: `feat(scope): description` / `fix(scope): description`
 | API response time | < 60 saniye | — |
 | CatBoost Val MAPE | < %3 | R7: Val 2.47%, Test 2.97% (fixed, RMSE) |
 | TFT Val MAPE | < %3 | R7: Val 2.40%, Test 2.52% (fixed, MQLoss) |
-| TSMixerx Val MAPE | < %3 | R7: Val 1.96%, Test 2.04% (30t HPO, MAE) |
-| Ensemble Val MAPE | < %2.5 (hedef) | R7: Val 1.75%, Test 1.82% (weighted_avg) |
+| TSMixerx Val MAPE | < %3 | R7: Val 1.96%, Test 2.04% (30t HPO, MAE) — R12: Val 1.748%, Test 1.767% (deterministic single seed) |
+| Ensemble Val MAPE | < %2.5 (hedef) | R7: Val 1.75%, Test 1.82% (weighted_avg) — R12 5-seed Jensen: Val **1.614%**, Test **1.649%** |
 
 ### 11.2 Güvenilirlik
 

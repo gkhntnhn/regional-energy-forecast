@@ -63,35 +63,61 @@ tft:
       log: true
 
 tsmixerx:
-  n_trials: 40             # R11 Grid Weather HPO — 7 params (max_steps FIXED at 5000)
+  n_trials: 100            # R12: 40 → 100 (12 boyut + Hyperband)
+  pruner: "hyperband"      # R12: MedianPruner → HyperbandPruner (FAZ 1+2 onerisi)
+  pruner_kwargs:
+    min_resource: 200
+    max_resource: 3000
+    reduction_factor: 3
   search_space:
+    # ============ MIMARI (4 boyut) ============
     n_block:
       type: categorical
-      choices: [2, 3, 4]
+      choices: [3, 4]               # R12: 2 elendi (R7+R11 hep 3); 4 yeni dene
     ff_dim:
       type: categorical
-      choices: [64, 128, 256]
+      choices: [96, 128, 192]       # R12: 64 underparam, 256 overparam (FAZ 1)
     dropout:
       type: float
-      low: 0.0                # R11: expanded from [0.05, 0.3] — allow no-dropout
-      high: 0.3
+      low: 0.10                     # R12: R11 best 0.146 etrafinda dar
+      high: 0.25
+    input_size:                     # ⭐ R12 YENI
+      type: categorical
+      choices: [168, 240, 336]      # 7g/10g/14g context (Shi 2024: <504)
+    # ============ NORMALIZATION (2 boyut) ============
+    revin:                          # ⭐ R12 YENI
+      type: categorical
+      choices: [true, false]
+    scaler_type:                    # ⭐ R12 YENI
+      type: categorical
+      choices: ["robust", "identity", "standard"]
+    # ============ TRAINING (4 boyut) ============
     learning_rate:
       type: float
-      low: 0.0003             # R11: slightly wider from [0.0005, 0.005]
-      high: 0.007
+      low: 0.0005                   # R12: R11 best 0.0038 etrafinda dar
+      high: 0.005
       log: true
-    # max_steps: FIXED at 5000 in tsmixerx.yaml (user directive — no HPO)
-    windows_batch_size:
-      type: categorical
-      choices: [128, 256, 512]  # R11: NEW — batch size HPO (L4/A40 VRAM ample)
     weight_decay:
       type: float
-      low: 0.000001             # R11: NEW — AdamW L2 regularization
-      high: 0.001
+      low: 0.00001                  # R12: R11 best 0.00094 etrafinda
+      high: 0.005
       log: true
+    windows_batch_size:
+      type: categorical
+      choices: [128, 256, 512]      # 4060 Ti'da 128, A40/L4'te 512
+    early_stop_patience_steps:      # ⭐ R12 YENI
+      type: int
+      low: 100
+      high: 400
+    # ============ SAMPLING (1 boyut) ============
+    step_size:                      # ⭐ R12 YENI
+      type: categorical
+      choices: [6, 12, 24]
+    # ============ LOSS (1 boyut) ============
     loss:
       type: categorical
-      choices: ["mae", "mse", "huber"]  # R11: NEW — BC olmadan loss search
+      choices: ["mae", "huber_0.5", "huber", "huber_2.0"]  # R12: 5 huber variant tarama
+    # max_steps: FIXED at 5000 in tsmixerx.yaml (Hyperband bunu yonetir)
 
 cross_validation:
   n_splits: 12             # Production: 12-fold TSCV

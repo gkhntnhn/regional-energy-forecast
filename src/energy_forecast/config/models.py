@@ -482,11 +482,14 @@ class ModelSearchConfig(BaseModel, frozen=True):
     """Per-model Optuna search space and trial count.
 
     ``search_space`` is a dynamic dict — any parameter can be added
-    via YAML without code changes.
+    via YAML without code changes. R12: ``pruner`` ve ``pruner_kwargs``
+    YAML-driven — TSMixerx 60-100 trial Hyperband, CatBoost Median (varsayilan).
     """
 
     n_trials: int = Field(default=50, ge=1)
     search_space: dict[str, SearchParamConfig] = Field(default_factory=dict)
+    pruner: Literal["median", "hyperband"] = Field(default="median")
+    pruner_kwargs: dict[str, Any] = Field(default_factory=dict)
 
 
 class CrossValidationConfig(BaseModel, frozen=True):

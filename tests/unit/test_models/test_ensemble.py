@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pandas as pd
 import pytest
 
 from energy_forecast.models.ensemble import EnsembleForecaster
+from energy_forecast.models.tsmixerx_multi_seed import MultiSeedTSMixerxForecaster
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -484,3 +487,152 @@ class TestTFTPrediction:
 
         result = forecaster.predict(df, history=history)
         assert "consumption_mwh" in result.columns
+
+
+# ---------------------------------------------------------------------------
+# Multi-seed TSMixerx factory integration (R12 FAZ 7)
+# ---------------------------------------------------------------------------
+
+
+def _make_multi_seed_dir(
+    base: Path,
+    seeds: tuple[int, ...] = (42, 123, 456, 789, 2026),
+) -> Path:
+    """Build a multi-seed directory skeleton with minimal metadata per seed."""
+    metadata_template = {
+        "architecture": {
+            "n_block": 4,
+            "ff_dim": 96,
+            "dropout": 0.2,
+            "input_size": 168,
+            "revin": False,
+        },
+        "training": {
+            "input_size": 168,
+            "prediction_length": 48,
+            "num_workers": 0,
+            "scaler_type": "standard",
+        },
+        "covariates": {
+            "futr_exog": ["apparent_temperature"],
+            "hist_exog": ["consumption_lag_48"],
+        },
+        "ckpt_hashes": {},
+    }
+    for s in seeds:
+        seed_dir = base / f"seed_{s}"
+        seed_dir.mkdir(parents=True, exist_ok=True)
+        (seed_dir / "metadata.json").write_text(json.dumps(metadata_template))
+    return base
+
+
+def _make_mock_tsmixerx_forecaster(input_size: int = 168) -> MagicMock:
+    """Mock single TSMixerxForecaster with required config attributes."""
+    fc = MagicMock()
+    fc._tsmixerx_config.architecture.input_size = input_size
+    fc._tsmixerx_config.architecture.n_block = 4
+    fc._tsmixerx_config.architecture.ff_dim = 96
+    # Mock predict with per-hour DataFrame
+    fc.predict.return_value = pd.DataFrame(
+        {"consumption_mwh": np.array([1000.0] * 48)},
+        index=pd.date_range("2024-01-01", periods=48, freq="h"),
+    )
+    return fc
+
+
+class TestMultiSeedFactoryDetection:
+    """EnsembleForecaster.load_models auto-detects multi-seed vs single."""
+
+    def test_load_models_detects_multi_seed_dir(self, tmp_path: Path) -> None:
+        """seed_*/ subdirs present -> MultiSeedTSMixerxForecaster instantiated."""
+        ms_dir = _make_multi_seed_dir(tmp_path / "tsmixerx")
+
+        fake_forecaster = _make_mock_tsmixerx_forecaster()
+        with patch(
+            "energy_forecast.models.tsmixerx_multi_seed.TSMixerxForecaster.from_checkpoint",
+            return_value=fake_forecaster,
+        ):
+            forecaster = EnsembleForecaster({"active_models": ["tsmixerx"]})
+            forecaster.load_models(tsmixerx_path=ms_dir)
+
+        assert isinstance(forecaster._tsmixerx_model, MultiSeedTSMixerxForecaster)
+        assert forecaster._tsmixerx_model.n_seeds_loaded == 5
+
+    def test_load_models_detects_single_seed_dir(self, tmp_path: Path) -> None:
+        """No seed_*/ -> single TSMixerxForecaster (backward compat)."""
+        single_dir = tmp_path / "tsmixerx"
+        single_dir.mkdir()
+        # Minimal flat checkpoint dir (NF ckpt + metadata)
+        (single_dir / "metadata.json").write_text(
+            json.dumps(
+                {
+                    "architecture": {
+                        "n_block": 4,
+                        "ff_dim": 96,
+                        "dropout": 0.2,
+                        "input_size": 168,
+                        "revin": False,
+                    },
+                    "training": {},
+                    "covariates": {"futr_exog": [], "hist_exog": []},
+                    "ckpt_hashes": {},
+                },
+            ),
+        )
+
+        fake_forecaster = _make_mock_tsmixerx_forecaster()
+        with patch(
+            "energy_forecast.models.ensemble.TSMixerxForecaster.from_checkpoint",
+            return_value=fake_forecaster,
+        ):
+            forecaster = EnsembleForecaster({"active_models": ["tsmixerx"]})
+            forecaster.load_models(tsmixerx_path=single_dir)
+
+        # Should get the single-seed mock (not the multi-seed wrapper)
+        assert forecaster._tsmixerx_model is fake_forecaster
+        assert not isinstance(forecaster._tsmixerx_model, MultiSeedTSMixerxForecaster)
+
+    def test_load_models_multi_seed_sets_weights_unchanged(self, tmp_path: Path) -> None:
+        """Multi-seed path must not disturb ensemble weights (tsmixerx=1.0 preserved)."""
+        ms_dir = _make_multi_seed_dir(tmp_path / "tsmixerx")
+
+        fake_forecaster = _make_mock_tsmixerx_forecaster()
+        with patch(
+            "energy_forecast.models.tsmixerx_multi_seed.TSMixerxForecaster.from_checkpoint",
+            return_value=fake_forecaster,
+        ):
+            forecaster = EnsembleForecaster(
+                {
+                    "active_models": ["tsmixerx"],
+                    "weights": {"catboost": 0.0, "tft": 0.0, "tsmixerx": 1.0},
+                },
+            )
+            forecaster.load_models(tsmixerx_path=ms_dir)
+
+        assert forecaster.weights["tsmixerx"] == pytest.approx(1.0)
+        assert forecaster.active_models == ["tsmixerx"]
+
+    def test_predict_with_multi_seed_integration(self, tmp_path: Path) -> None:
+        """End-to-end: load multi-seed -> predict -> ensemble returns consumption_mwh."""
+        ms_dir = _make_multi_seed_dir(tmp_path / "tsmixerx")
+
+        fake_forecaster = _make_mock_tsmixerx_forecaster()
+        with patch(
+            "energy_forecast.models.tsmixerx_multi_seed.TSMixerxForecaster.from_checkpoint",
+            return_value=fake_forecaster,
+        ):
+            forecaster = EnsembleForecaster({"active_models": ["tsmixerx"]})
+            forecaster.load_models(tsmixerx_path=ms_dir)
+
+        # Build a 48h forecast DataFrame matching mock's return index
+        df = _make_feature_df(n_rows=48)
+        hist_idx = pd.date_range("2023-12-24", periods=168, freq="h")
+        rng = np.random.default_rng(42)
+        history = pd.DataFrame({"consumption": 800.0 + rng.random(168) * 400}, index=hist_idx)
+
+        result = forecaster.predict(df, history=history)
+
+        assert "consumption_mwh" in result.columns
+        assert "tsmixerx_prediction" in result.columns
+        # Jensen averaging of 5 identical mocks -> same value
+        assert np.allclose(result["consumption_mwh"].to_numpy(), 1000.0)

@@ -132,10 +132,16 @@ def _init_services(app: FastAPI, settings: Any) -> None:
         )
     )
 
-    # Prediction service — prefer final_models/ (flat), fallback to timestamped
+    # Prediction service — prefer final_models/ (flat), fallback to timestamped.
+    # Detection: ANY model present in final_models/ promotes that directory
+    # (R12 tsmixerx-only deploys populate only final_models/tsmixerx/).
     models_dir = Path(settings.paths.models_dir)
     final_dir = Path("final_models")
-    use_final = (final_dir / "catboost" / "model.cbm").exists()
+    use_final = (
+        (final_dir / "catboost" / "model.cbm").exists()
+        or (final_dir / "tft").exists()
+        or (final_dir / "tsmixerx").exists()
+    )
 
     if use_final:
         catboost_path = final_dir / "catboost" / "model.cbm"
@@ -447,11 +453,34 @@ async def job_queue_full_handler(request: Request, exc: JobQueueFullError) -> JS
 
 @app.get("/health", response_model=HealthResponse)
 async def health() -> HealthResponse:
-    """Health check endpoint."""
+    """Health check endpoint — also reports multi-seed degradation."""
+    degraded = False
+    n_loaded: int | None = None
+    n_requested: int | None = None
+
+    # Inspect the active prediction service for multi-seed ensemble status.
+    # Use isinstance (not hasattr) to avoid false-positive signals from
+    # MagicMock-based test fixtures whose attribute lookups always succeed.
+    from energy_forecast.models.tsmixerx_multi_seed import MultiSeedTSMixerxForecaster
+
+    prediction_service = getattr(app.state, "prediction_service", None)
+    if prediction_service is not None and prediction_service.is_ready:
+        tsmixerx_model = getattr(
+            getattr(prediction_service, "_ensemble", None), "_tsmixerx_model", None
+        )
+        if isinstance(tsmixerx_model, MultiSeedTSMixerxForecaster):
+            info = tsmixerx_model.get_seed_info()
+            degraded = bool(info.get("is_degraded", False))
+            n_loaded = info.get("n_loaded")
+            n_requested = info.get("n_requested")
+
     return HealthResponse(
-        status="ok",
+        status="degraded" if degraded else "ok",
         timestamp=datetime.now(tz=TZ_ISTANBUL),
         version=__version__,
+        degraded=degraded,
+        n_seeds_loaded=n_loaded,
+        n_seeds_requested=n_requested,
     )
 
 

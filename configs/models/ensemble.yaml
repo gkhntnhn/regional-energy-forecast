@@ -1,32 +1,32 @@
-# Ensemble configuration — R11 2-model (TFT disabled)
-# 2-model ensemble: CatBoost + TSMixerx
-# TFT disabled: training time too long, marginal contribution (R7 weight 0.23)
+# Ensemble configuration — R12 single-model (TSMixerx-only)
+# CB + TFT config-level off — kod, test, YAML korunuyor (disaster recovery için)
+# Pattern referans: R11'de TFT iptal edilirken aynı yaklaşım — sadece active_models'tan çıkarıldı
 
-# Ensemble mode: "weighted_average", "stacking", or "auto" (tries both, picks best)
-mode: "auto"
+# Ensemble mode: "weighted_average" (tek model için stacking anlamsız)
+mode: "weighted_average"
 
 # Active models (can be overridden via CLI --models flag)
 active_models:
-  - catboost
   - tsmixerx
+# catboost ve tft KASITLI ÇIKARILDI — aktif modeller listesinde değiller
+# Ama src/, tests/, configs/ altındaki kodları korunuyor (R12 reject olursa 10 sn'de geri aktive)
 
-# Default weights — equal initial, SLSQP will optimize
-# TFT explicitly 0.0 (disabled from active_models)
+# Default weights — tek model fixed 1.0
 weights:
-  catboost: 0.5
+  catboost: 0.0
   tft: 0.0
-  tsmixerx: 0.5
+  tsmixerx: 1.0
 
-# Weight optimization settings (used when mode=weighted_average)
+# Weight optimization settings (tek model olunca devre dışı)
 optimization:
-  enabled: true
-  metric: "mape"  # Metric to minimize
+  enabled: false
+  metric: "mape"
   bounds:
-    catboost: [0.3, 0.7]
+    catboost: [0.0, 0.0]
     tft: [0.0, 0.0]
-    tsmixerx: [0.3, 0.7]
+    tsmixerx: [1.0, 1.0]
 
-# Stacking meta-learner config (used when mode=stacking)
+# Stacking meta-learner config (DOKUNULMAZ — disaster recovery için kalır, invoke edilmez)
 stacking:
   meta_learner:
     depth: 2                      # Very shallow — only learns conditional weighting

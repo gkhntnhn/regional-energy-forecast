@@ -24,7 +24,7 @@ import pandas as pd
 import torch
 from loguru import logger
 from optuna import Study, Trial, TrialPruned, create_study
-from optuna.pruners import MedianPruner
+from optuna.pruners import HyperbandPruner, MedianPruner
 from optuna.samplers import TPESampler
 
 # Reduce GPU memory fragmentation (safe no-op if no CUDA)
@@ -391,6 +391,21 @@ class NeuralForecastTrainer(ABC):
         """
         name = self._model_name
         storage = self._optuna_storage(name)
+
+        # Pruner factory — config-driven (R12: median or hyperband)
+        pruner_type = self._hp_search_config.pruner
+        pruner_kwargs = dict(self._hp_search_config.pruner_kwargs)
+        if pruner_type == "hyperband":
+            pruner_kwargs.setdefault("min_resource", 200)
+            pruner_kwargs.setdefault("max_resource", 3000)
+            pruner_kwargs.setdefault("reduction_factor", 3)
+            pruner: Any = HyperbandPruner(**pruner_kwargs)
+        else:
+            pruner_kwargs.setdefault("n_startup_trials", 2)
+            pruner_kwargs.setdefault("n_warmup_steps", 3)
+            pruner = MedianPruner(**pruner_kwargs)
+        logger.info("{} Optuna pruner: {} ({})", name.upper(), pruner_type, pruner_kwargs)
+
         study = create_study(
             study_name=name,
             direction="minimize",
@@ -401,10 +416,7 @@ class NeuralForecastTrainer(ABC):
                 n_startup_trials=5,
                 seed=self._model_config.training.random_seed,
             ),
-            pruner=MedianPruner(
-                n_startup_trials=2,
-                n_warmup_steps=3,
-            ),
+            pruner=pruner,
         )
 
         objective, trial_results = self._create_objective(df)

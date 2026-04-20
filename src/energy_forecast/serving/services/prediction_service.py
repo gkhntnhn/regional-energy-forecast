@@ -443,16 +443,33 @@ class PredictionService:
         return result
 
     def get_model_info(self) -> dict[str, Any]:
-        """Get information about loaded models."""
+        """Get information about loaded models (including multi-seed status)."""
         if not self.is_ready or self._ensemble is None:
             return {"loaded": False}
 
-        return {
+        info: dict[str, Any] = {
             "loaded": True,
             "active_models": self._ensemble.active_models,
             "weights": self._ensemble.weights,
             "forecast_horizon": self._config.forecast_horizon,
         }
+
+        # Multi-seed TSMixerx observability (R12). Only aggregate counts are
+        # exposed on /models (which is an auth'd but non-admin endpoint);
+        # explicit seed names live in admin-only paths. This reduces recon
+        # surface if the API key is compromised (audit P1-2).
+        tsmixerx = self._ensemble._tsmixerx_model
+        if tsmixerx is not None and hasattr(tsmixerx, "get_seed_info"):
+            seed_info = tsmixerx.get_seed_info()
+            info["tsmixerx_ensemble"] = {
+                "ensemble_type": seed_info["ensemble_type"],
+                "n_requested": seed_info["n_requested"],
+                "n_loaded": seed_info["n_loaded"],
+                "is_degraded": seed_info["is_degraded"],
+                "last_request_n_succeeded": seed_info.get("last_request_n_succeeded"),
+            }
+
+        return info
 
     def get_feature_importance_top(self, n: int = 15) -> list[dict[str, Any]] | None:
         """Get top-N CatBoost feature importance for analytics storage.
@@ -485,6 +502,17 @@ class PredictionService:
         weights: dict[str, float] = {}
         if self._ensemble:
             weights = self._ensemble.weights
+
+        # TSMixerx version record — either flat path or dict for multi-seed
+        tsmixerx_version: Any = str(self._config.tsmixerx_path)
+        if self._ensemble is not None:
+            tsmixerx = self._ensemble._tsmixerx_model
+            if tsmixerx is not None and hasattr(tsmixerx, "get_seed_info"):
+                tsmixerx_version = {
+                    "path": str(self._config.tsmixerx_path),
+                    **tsmixerx.get_seed_info(),
+                }
+
         return {
             "config_snapshot": {
                 "ensemble_method": "stacking",
@@ -494,7 +522,7 @@ class PredictionService:
             "model_versions": {
                 "catboost": str(self._config.catboost_path),
                 "tft": str(self._config.tft_path),
-                "tsmixerx": str(self._config.tsmixerx_path),
+                "tsmixerx": tsmixerx_version,
             },
         }
 

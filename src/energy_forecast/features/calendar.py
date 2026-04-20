@@ -420,8 +420,12 @@ class CalendarFeatureEngineer(BaseFeatureEngineer):
                 # Forward rolling sum: how many holiday hours in next N days
                 # shift(-n_hours) + rolling(n_hours) = forward window
                 fwd = series.shift(-n_hours).rolling(n_hours, min_periods=1).sum()
-                # Normalize to daily count
-                df[f"{col}_next_{n_days}d"] = fwd / 24.0
+                # Edge case: at the very end of the series the forward window
+                # is entirely past the data horizon, producing NaN. Treat
+                # unknown future as "no holiday" (0). Required for R12 TSMixerx
+                # serving where is_holiday_next_3d lives in futr_exog and
+                # NeuralForecast rejects any NaN in the future covariate df.
+                df[f"{col}_next_{n_days}d"] = (fwd / 24.0).fillna(0.0)
 
         return df
 

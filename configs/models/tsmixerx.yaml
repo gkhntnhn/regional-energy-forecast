@@ -1,25 +1,25 @@
-# TSMixerx configuration — research-validated (2026-03-26)
-# 12-fold TSCV: val 2.12% test 2.23% (313K params)
-# Covariates: same 13 as TFT (6 futr + 7 hist)
+# TSMixerx configuration — R12 Sanity Test (Set B 22 covariate + R11 best_params)
+# Backup: tsmixerx.yaml.r7_backup (R7 30t HPO state)
+# Hedef: R11 baseline (val 1.91% / test 1.91%) ile karsilastir → Set B impact izole
 
 architecture:
-  n_block: 2
+  n_block: 2                # base default; best_params override eder
   ff_dim: 128
   dropout: 0.1
-  input_size: 168         # 7 days context
+  input_size: 168           # 7 days context (R11 ile ayni)
   revin: true
 
 training:
-  prediction_length: 48   # 48 hours forecast
-  max_steps: 5000         # R11: FIXED 5000 (was 3000) — early_stop handles convergence
-  windows_batch_size: 256 # R11: 64 → 256 (RunPod L4/A40 VRAM ample)
+  prediction_length: 48
+  max_steps: 5000           # R11 ile ayni
+  windows_batch_size: 256   # base default; best_params 128'e dusurur (4060 Ti VRAM)
   step_size: 12
-  learning_rate: 0.001
-  weight_decay: 0.0       # R11: AdamW L2 regularization (0.0 = disabled)
+  learning_rate: 0.001      # base default; best_params override eder
+  weight_decay: 0.0         # base default
   early_stop_patience_steps: 200
   val_check_steps: 50
   random_seed: 42
-  accelerator: "gpu"
+  accelerator: "gpu"        # 4060 Ti — best_params loss=mae ile uyumlu
   num_workers: 4
   enable_progress_bar: true
   scaler_type: "robust"
@@ -27,34 +27,51 @@ training:
 optimization:
   optuna_splits: 12
   n_jobs: 1
-  val_size_hours: 720     # ~1 month
+  val_size_hours: 720       # ~1 month
 
 covariates:
-  futr_exog:              # Known at forecast time
+  futr_exog:                # 11 (R11 8 + 3 yeni)
     - apparent_temperature
     - holiday_duration
     - tatil_tipi
     - day_of_week_sin
     - wth_hdd
+    - wth_cdd                       # YENI (R12 Set B) — yaz signal, wth_hdd simetrik
+    - cdd_x_is_peak                 # YENI — peak hour yaz interaction
+    - is_holiday_next_3d            # YENI — tatil leadup (calendar anticipation)
     - is_weekend
     - is_new_year
     - dst_transition
-  hist_exog:              # Only in past (lagged)
+  hist_exog:                # 11 (R11 7 - 1 drop + 5 yeni; net +4)
+    # DROP: temperature_2m_window_24_max (FAZ 3 permutation: -0.07% delta)
+    - consumption_lag_48
+    - consumption_lag_72            # YENI — 3-gun
     - consumption_lag_168
     - consumption_lag_336
+    - consumption_window_168_mean   # YENI — weekly seasonality smooth
+    - consumption_window_168_std    # YENI — volatility
+    - consumption_ewma_168          # YENI — exponential smooth
     - consumption_week_ratio
-    - consumption_lag_48
     - consumption_momentum_168
-    - temperature_2m_window_24_max
     - consumption_pct_change_168
+    - hour_x_consumption_lag_168    # YENI — saat-spesifik haftalik pattern (R8 OOF feature)
 
-# Loss function: "mae" (default), "huber" (d=1.0), "huber_0.5", "huber_2.0"
+# Loss function: "mae" (R11 winner)
 loss: "mae"
 
-# R7 HPO best params (30t, 12-fold, Val 1.96%, Test 2.04%)
+# R12 best_params (RTX 3090 pod HPO, 2026-04-19, val 1.77% test 1.83%)
+# 100 trial median pruner, 12 boyut search, Set B 22 covariate
+# Anti-canonical winner: revin=False, scaler=standard, loss=huber_0.5
 best_params:
-  n_block: 3
-  ff_dim: 64
-  dropout: 0.06452090304204987
-  learning_rate: 0.0036740592026352267
-  max_steps: 3000
+  n_block: 4
+  ff_dim: 96
+  dropout: 0.20132633302063577
+  input_size: 168
+  revin: false
+  scaler_type: standard
+  learning_rate: 0.002534832369549769
+  weight_decay: 0.00018468390311739306
+  windows_batch_size: 512           # Pod RTX 3090; 4060 Ti lokal'de --wbs 256 override
+  early_stop_patience_steps: 325
+  step_size: 24
+  loss: "huber_0.5"
