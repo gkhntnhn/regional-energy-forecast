@@ -1,7 +1,7 @@
 # Energy Forecast
 
 Uludağ elektrik dağıtım bölgesi (Bursa, Balıkesir, Yalova, Çanakkale) saatlik elektrik tüketimi tahmin sistemi.
-TSMixerx single-model (R12 branch — CB/TFT config-level off, kod korunuyor), 48 saat ileri (T + T+1), FastAPI serving, AWS deploy.
+**R12 DEPLOY:** TSMixerx 5-seed Jensen ensemble (test MAPE 1.649%), 48 saat ileri (T + T+1), FastAPI serving. CB/TFT kod korundu (disaster recovery).
 
 ## Referans Proje
 Eski proje: C:\Users\pc\Desktop\distributed-energy-forecasting\
@@ -207,7 +207,14 @@ configs/
 | TSMixerx (R7) | 1.96% | 2.04% | 30 trial HPO, MAE loss, n_block=3 ff_dim=64 (~119K params) |
 | Ensemble R7 (auto) | 1.75% | 1.82% | weighted_avg: TSM=0.50 CB=0.27 TFT=0.23 (production baseline) |
 | **TSMixerx R12 single** | **1.748%** | **1.767%** | seed=42 deterministic, n_block=4 ff_dim=96 (~286K params), Set B 22 cov |
-| **TSMixerx R12 5-seed Jensen** | **🏆 1.614%** | **🏆 1.649%** | 5 seed ensemble, σ_test=0.04%, R7 ceiling -0.171% aşıldı |
+| **🏆 TSMixerx R12 5-seed Jensen (DEPLOYED)** | **1.614%** | **1.649%** | 5 seed ensemble, σ_test=0.04%, R7 ceiling -0.171% aşıldı, bootstrap CI [1.614%, 1.685%] |
+
+**R12 deploy notları:**
+- 5 seed (42, 123, 456, 789, 2026) `final_models/tsmixerx/seed_*/` altında (production)
+- Serving auto-detect: `seed_*/` dizini → `MultiSeedTSMixerxForecaster` (Jensen averaging)
+- Graceful degrade: 1+ seed yüklenirse servis çalışır; `/health` endpoint `degraded=true` döner eksik seed varsa
+- Artifact integrity: ckpt + pkl SHA256 verify (R12 FAZ 10 P0-1 fix)
+- Inference latency: ~0.58s (5 seed GPU sequential, 4060 Ti ölçüm)
 
 ## Bilinen Sorunlar
 
@@ -234,4 +241,5 @@ configs/
 - [x] M8: TFT training (TSCV + Optuna + MLflow)
 - [x] M9: 3-model ensemble — CatBoost + TFT + TSMixerx (Faz 2 tamamlanır)
 - [x] M10: API serving (FastAPI + async job processing)
-- [ ] M11: Docker + CI/CD (AWS deploy)
+- [x] **R12: TSMixerx multi-seed deploy** — 5-seed Jensen ensemble (test MAPE 1.649%, R7 ceiling -0.171%), `r12-deploy` tag
+- [ ] M11: Docker + CI/CD (platform-agnostic deploy)

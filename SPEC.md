@@ -1,7 +1,7 @@
 # SPEC.md — Energy Forecast
 
 > Proje anayasası. Claude Code ve geliştirici bu dosyayı tek kaynak olarak referans alır.
-> Son güncelleme: 2026-04-20
+> Son güncelleme: 2026-04-20 (R12 FAZ 11 — Multi-seed deploy complete)
 
 ---
 
@@ -353,7 +353,8 @@ competitive accuracy with faster training. Prophet replacement.
 | Faz 1 | CatBoost + Prophet | ✅ Tamamlandı (Prophet sonradan kaldırıldı) |
 | Faz 2 | CatBoost + TFT + TSMixerx | ✅ Tamamlandı |
 | R11 (2026-04-16) | **CatBoost + TSMixerx** (TFT iptal — uzun eğitim, marjinal katkı) | ✅ HPO DONE: TSMx 1.91% / CB 3.11% / Ens stacking 2.00% (deploy ertelendi) |
-| R12 (2026-04-18→20) | **TSMixerx-only** (single-model, CB+TFT config-level off — kod korunuyor disaster recovery için) | ✅ FAZ 0-6 DONE: HPO val 1.77%/test 1.83% (seed=42 non-det), 5-seed Jensen val **1.614%**/test **1.649%** — R7 ceiling -0.171% aşıldı; FAZ 7 deploy karar bekliyor |
+| R12 (2026-04-18→20) | **TSMixerx-only** (single-model, CB+TFT config-level off — kod korunuyor disaster recovery için) | ✅ FAZ 0-6 DONE: HPO val 1.77%/test 1.83% (seed=42 non-det), 5-seed Jensen val **1.614%**/test **1.649%** — R7 ceiling -0.171% aşıldı |
+| R12 FAZ 7-11 (2026-04-20) | **5-seed Jensen ensemble DEPLOY** — `MultiSeedTSMixerxForecaster`, serving auto-detect, graceful degrade, artifact SHA256 (ckpt+pkl), observability endpoints | ✅ DEPLOYED: `final_models/tsmixerx/seed_*/`, `r12-deploy` tag, 1176 test, bootstrap CI [1.614%, 1.685%] |
 
 ---
 
