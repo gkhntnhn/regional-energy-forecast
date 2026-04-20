@@ -240,5 +240,5 @@ configs/
 - [x] M8: TFT training (TSCV + Optuna + MLflow)
 - [x] M9: 3-model ensemble — CatBoost + TFT + TSMixerx (Faz 2 tamamlanır)
 - [x] M10: API serving (FastAPI + async job processing)
-- [x] **R12: TSMixerx multi-seed deploy** — 5-seed Jensen ensemble (test MAPE 1.649%, R7 ceiling -0.171%), `r12-deploy` tag
+- [x] **R12: TSMixerx multi-seed deploy** — 5-seed Jensen ensemble (test MAPE 1.649%, R7 ceiling -0.171%), `r12-deploy` tag, debug analiz `debug/r12_research/08_model_debug_report.md`
 - [ ] M11: Docker + CI/CD (platform-agnostic deploy)
