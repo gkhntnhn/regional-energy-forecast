@@ -499,10 +499,17 @@ class TSMixerxForecaster(BaseForecaster):
                 torch.save(ckpt, ckpt_file)
                 logger.debug("Stripped callbacks from {}", ckpt_file.name)
 
-        # Compute checkpoint hashes for integrity verification
-        ckpt_hashes: dict[str, str] = {}
-        for ckpt_file in path.glob("*.ckpt"):
-            ckpt_hashes[ckpt_file.name] = hashlib.sha256(ckpt_file.read_bytes()).hexdigest()
+        # Compute hashes for all artifact files (ckpt + pkl).
+        # Security P0-1: pickle files (alias_to_model.pkl, dataset.pkl,
+        # configuration.pkl) loaded via NeuralForecast.load() -> pickle.load().
+        # Hashing every artifact closes the tampering window that existed when
+        # only .ckpt was verified.
+        artifact_hashes: dict[str, str] = {}
+        for ext in ("*.ckpt", "*.pkl"):
+            for artifact_file in path.glob(ext):
+                artifact_hashes[artifact_file.name] = hashlib.sha256(
+                    artifact_file.read_bytes()
+                ).hexdigest()
 
         # Save metadata (architecture, training, covariates, hashes)
         metadata = {
@@ -514,7 +521,12 @@ class TSMixerxForecaster(BaseForecaster):
                 "scaler_type": self._tsmixerx_config.training.scaler_type,
             },
             "covariates": self._tsmixerx_config.covariates.model_dump(),
-            "ckpt_hashes": ckpt_hashes,
+            # New canonical field — covers ckpt + pkl. ckpt_hashes kept for
+            # backward-compat readers (deprecated, same content filtered).
+            "artifact_hashes": artifact_hashes,
+            "ckpt_hashes": {
+                k: v for k, v in artifact_hashes.items() if k.endswith(".ckpt")
+            },
         }
         metadata_path = path / self.METADATA_FILENAME
         with open(metadata_path, "w") as f:
@@ -552,21 +564,28 @@ class TSMixerxForecaster(BaseForecaster):
         with open(metadata_path) as f:
             metadata = json.load(f)
 
-        # Verify checkpoint integrity
-        ckpt_hashes = metadata.get("ckpt_hashes", {})
-        if ckpt_hashes:
-            for ckpt_name, expected_hash in ckpt_hashes.items():
-                ckpt_file = path / ckpt_name
-                if ckpt_file.exists():
-                    actual_hash = hashlib.sha256(ckpt_file.read_bytes()).hexdigest()
+        # Verify artifact integrity — prefer new `artifact_hashes` (covers
+        # ckpt + pkl), fall back to legacy `ckpt_hashes` (ckpt only).
+        # Security P0-1: verifying pkl files blocks pickle-deserialize
+        # tampering of alias_to_model/dataset/configuration.
+        artifact_hashes: dict[str, str] = metadata.get("artifact_hashes") or metadata.get(
+            "ckpt_hashes", {}
+        )
+        if artifact_hashes:
+            for artifact_name, expected_hash in artifact_hashes.items():
+                artifact_file = path / artifact_name
+                if artifact_file.exists():
+                    actual_hash = hashlib.sha256(artifact_file.read_bytes()).hexdigest()
                     if actual_hash != expected_hash:
                         msg = (
-                            f"TSMixerx checkpoint integrity check failed: {ckpt_name} "
+                            f"TSMixerx artifact integrity check failed: {artifact_name} "
                             f"(expected {expected_hash[:12]}..., "
                             f"got {actual_hash[:12]}...)"
                         )
                         raise RuntimeError(msg)
-            logger.debug("TSMixerx checkpoint integrity verified ({} files)", len(ckpt_hashes))
+            logger.debug(
+                "TSMixerx artifact integrity verified ({} files)", len(artifact_hashes)
+            )
 
         # Load NeuralForecast model
         nf = NeuralForecast.load(path=str(path))
