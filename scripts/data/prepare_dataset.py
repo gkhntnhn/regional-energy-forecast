@@ -51,7 +51,7 @@ except ImportError:  # pragma: no cover
 load_dotenv()
 
 # Project root for locating configs directory
-PROJECT_ROOT = Path(__file__).parent.parent
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
 
 def parse_args() -> argparse.Namespace:

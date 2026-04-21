@@ -28,7 +28,7 @@ import yaml
 from loguru import logger
 from retry_requests import retry
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 GRID_POINTS_FILE = PROJECT_ROOT / "data" / "static" / "grid_points.yaml"
 OUTPUT_DIR = PROJECT_ROOT / "data" / "external" / "weather_grid"
 

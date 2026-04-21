@@ -26,7 +26,7 @@ from dotenv import load_dotenv
 from loguru import logger
 
 # Ensure project root is on path
-PROJECT_ROOT = Path(__file__).parent.parent
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 load_dotenv()

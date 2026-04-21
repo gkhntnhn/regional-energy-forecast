@@ -78,6 +78,9 @@ scripts/debug/
 # RunPod deployment helpers (machine-specific, local-only)
 scripts/runpod/
 
+# Local backup archives (disaster recovery, machine-specific)
+backups/
+
 # OS
 .DS_Store
 Thumbs.db
