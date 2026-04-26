@@ -36,6 +36,9 @@ class EnvConfig(BaseSettings):
     api_host: str = "0.0.0.0"
     api_port: int = 8000
     api_key: str = ""
+    # Token for /internal/* endpoints (scheduler-only, separate from api_key
+    # which is user-facing). Empty in dev → endpoints disabled.
+    internal_token: str = ""
     epias_username: str = ""
     epias_password: str = ""
     smtp_server: str = ""
