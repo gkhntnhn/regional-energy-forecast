@@ -5,9 +5,11 @@ from __future__ import annotations
 from typing import Any, ClassVar
 
 import pandas as pd
+import pandera as pa
 from loguru import logger
 
 from energy_forecast.config import Settings
+from energy_forecast.data.schemas import ConsumptionSchema, EpiasSchema, WeatherSchema
 from energy_forecast.features.base import BaseFeatureEngineer
 from energy_forecast.features.calendar import CalendarFeatureEngineer
 from energy_forecast.features.consumption import ConsumptionFeatureEngineer
@@ -73,6 +75,9 @@ class FeaturePipeline:
         Returns:
             Feature-engineered DataFrame ready for modeling.
         """
+        if self._pipeline_cfg.validate_input:
+            self._validate_input(df)
+
         result = df.copy()
         for name, engineer in self._engineers:
             logger.info("Running {} feature engineer", name)
@@ -83,6 +88,33 @@ class FeaturePipeline:
             self._validate_output(result)
 
         return result
+
+    def _validate_input(self, df: pd.DataFrame) -> None:
+        """Validate merged input via Pandera schemas (post-merge, pre-feature).
+
+        Implements SPEC.md §4.3 step 6: schema validation immediately after
+        the consumption + EPIAS + weather merge, before any feature engineering.
+        Each schema is skipped silently if its expected columns are absent —
+        e.g. early backfill steps may operate on consumption-only frames.
+        """
+        schemas: list[tuple[str, type[pa.DataFrameModel]]] = [
+            ("consumption", ConsumptionSchema),
+            ("weather", WeatherSchema),
+            ("epias", EpiasSchema),
+        ]
+        for label, schema in schemas:
+            expected_cols = set(schema.to_schema().columns.keys())
+            if not expected_cols.intersection(df.columns):
+                logger.debug(
+                    "Schema '{}' skipped — no relevant columns in input", label
+                )
+                continue
+            try:
+                schema.validate(df, lazy=True)
+                logger.debug("Schema '{}' passed", label)
+            except pa.errors.SchemaErrors:
+                logger.error("Schema '{}' validation failed", label)
+                raise
 
     def _validate_output(self, df: pd.DataFrame) -> None:
         """Post-pipeline validation checks."""

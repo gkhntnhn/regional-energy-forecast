@@ -92,9 +92,12 @@ class OpenMeteoClient:
     def _get_locations(self) -> list[CityConfig]:
         """Get location configs based on region mode.
 
-        In legacy mode, returns cities directly.
-        In grid mode, converts province × grid_point pairs to CityConfig
-        instances with combined weights (consumption × population).
+        Sole source of weather locations. Pulls from ``self.region`` (loaded
+        from ``configs/settings.yaml`` ``region:`` block — NOT openmeteo.yaml):
+
+        - legacy mode → ``region.cities`` returned directly.
+        - grid mode → ``region.provinces × grid_points`` flattened into
+          CityConfig list, weight = consumption_weight × population_weight.
         """
         if self.region.mode == "grid":
             locations: list[CityConfig] = []

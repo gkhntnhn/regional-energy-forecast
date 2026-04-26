@@ -1,4 +1,12 @@
 # OpenMeteo API configuration (official SDK)
+#
+# NOTE: Location coordinates and weights (Bursa/Balikesir/Yalova/Canakkale)
+# are NOT defined here — they live under `region.cities` (legacy mode) or
+# `region.provinces` (grid mode) in `configs/settings.yaml`. OpenMeteoClient
+# resolves them via `_get_locations()` in src/energy_forecast/data/openmeteo_client.py.
+# This split keeps location SoT inside the regional model rather than
+# duplicating it across weather-config files.
+
 api:
   base_url_historical: "https://archive-api.open-meteo.com/v1/archive"
   base_url_historical_forecast: "https://historical-forecast-api.open-meteo.com/v1/forecast"

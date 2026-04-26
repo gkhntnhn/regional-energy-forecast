@@ -145,7 +145,6 @@ docs/PRODUCTION_ROADMAP.md
 docs/PLATFORM_COMPARISON.md
 configs/smoke_override.yaml
 runpod_processed.tar.gz
-.gitignore
 
 # Research experiments (local only)
 research/
@@ -158,5 +157,9 @@ debug/
 r11_full_debug.tar.gz
 r11_results.tar.gz
 
+# Trash dir for hook-blocked rm ops (empty via Windows Recycle Bin)
+.trash/
+
 r12_hpo.log
 configs/models/tsmixerx.yaml.r7_backup
+frontend.zip

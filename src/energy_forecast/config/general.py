@@ -200,6 +200,7 @@ class PipelineConfig(BaseModel, frozen=True):
     )
     merge_strategy: Literal["left", "inner", "outer"] = "left"
     drop_raw_epias: bool = True
+    validate_input: bool = True  # Pandera schema validation (post-merge, pre-feature)
     validate_output: bool = True
     check_duplicate_columns: bool = True
 
@@ -285,7 +286,16 @@ class WeatherCacheConfig(BaseModel, frozen=True):
 
 
 class OpenMeteoConfig(BaseModel, frozen=True):
-    """OpenMeteo full configuration."""
+    """OpenMeteo full configuration.
+
+    Note:
+        Location coordinates and weights are intentionally NOT a field on this
+        config. They are sourced from ``RegionConfig.cities`` (legacy mode) or
+        ``RegionConfig.provinces`` (grid mode) — defined under ``region:`` in
+        ``configs/settings.yaml``. ``OpenMeteoClient._get_locations()`` resolves
+        them per active mode. This avoids duplicate location definitions across
+        weather-config files.
+    """
 
     api: OpenMeteoApiConfig = Field(default_factory=OpenMeteoApiConfig)
     variables: list[str] = Field(

@@ -151,8 +151,17 @@ def _write_top_metadata(target: Path, seed_names: list[str], *, dry_run: bool) -
 def _verify_promoted(src: Path, dst: Path) -> tuple[int, list[str]]:
     """Compare file hashes between source and destination.
 
-    metadata.json files are intentionally rewritten during ``_augment_seed_metadata``
-    (P0-1 pkl hash injection), so they are verified semantically (JSON-parseable
+    Scope is restricted to files directly under ``seed_*/`` — mirroring
+    ``_copy_seed_dir`` exactly. Top-level source artifacts (e.g. ``oof_preds/``,
+    ``smoke_report.txt``) are intentionally excluded from promotion to keep
+    the deployed target lean; verifying them would surface false-positive
+    "missing" mismatches and exit 1 the deploy in CI/CD (Lesson 173).
+
+    The top-level ``metadata.json`` on target is written fresh by
+    ``_write_top_metadata`` and not derived from source — also out of scope.
+
+    metadata.json inside each seed_*/ is rewritten during ``_augment_seed_metadata``
+    (P0-1 pkl hash injection), so it is verified semantically (JSON-parseable
     + has ``artifact_hashes``) rather than byte-wise.
 
     Returns:
@@ -160,34 +169,37 @@ def _verify_promoted(src: Path, dst: Path) -> tuple[int, list[str]]:
     """
     mismatches: list[str] = []
     n_verified = 0
-    for src_file in src.rglob("*"):
-        if not src_file.is_file():
+    for seed_dir in sorted(src.glob("seed_*")):
+        if not seed_dir.is_dir():
             continue
-        relative = src_file.relative_to(src)
-        dst_file = dst / relative
-        if not dst_file.exists():
-            mismatches.append(f"missing: {relative}")
-            continue
-
-        # metadata.json is augmented on destination — semantic check only.
-        if src_file.name == "metadata.json":
-            try:
-                dst_meta = json.loads(dst_file.read_text(encoding="utf-8"))
-            except (json.JSONDecodeError, OSError) as e:
-                mismatches.append(f"metadata.json corrupt: {relative} ({e})")
+        for src_file in seed_dir.iterdir():
+            if not src_file.is_file():
                 continue
-            if "artifact_hashes" not in dst_meta:
-                mismatches.append(
-                    f"metadata.json missing artifact_hashes: {relative} (P0-1 migration failed)"
-                )
+            relative = src_file.relative_to(src)
+            dst_file = dst / relative
+            if not dst_file.exists():
+                mismatches.append(f"missing: {relative}")
+                continue
+
+            # metadata.json is augmented on destination — semantic check only.
+            if src_file.name == "metadata.json":
+                try:
+                    dst_meta = json.loads(dst_file.read_text(encoding="utf-8"))
+                except (json.JSONDecodeError, OSError) as e:
+                    mismatches.append(f"metadata.json corrupt: {relative} ({e})")
+                    continue
+                if "artifact_hashes" not in dst_meta:
+                    mismatches.append(
+                        f"metadata.json missing artifact_hashes: {relative} (P0-1 migration failed)"
+                    )
+                    continue
+                n_verified += 1
+                continue
+
+            if _hash_file(src_file) != _hash_file(dst_file):
+                mismatches.append(f"hash mismatch: {relative}")
                 continue
             n_verified += 1
-            continue
-
-        if _hash_file(src_file) != _hash_file(dst_file):
-            mismatches.append(f"hash mismatch: {relative}")
-            continue
-        n_verified += 1
     return n_verified, mismatches
 
 

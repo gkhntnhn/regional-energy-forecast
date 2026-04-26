@@ -531,7 +531,7 @@ class JobManager:
                         user_email=email,
                         details={
                             "job_id": job_id,
-                            "error": error_msg[:500],
+                            "error": safe_msg,
                         },
                     )
                     await session.commit()
@@ -542,7 +542,7 @@ class JobManager:
                 email_service.send_error_notification(
                     to_email=email,
                     job_id=job_id,
-                    error_message=error_msg,
+                    error_message=safe_msg,
                 )
             except Exception as email_err:
                 logger.error("Failed to send error notification: {}", email_err)
@@ -601,17 +601,19 @@ class JobManager:
 
         except Exception as e:
             error_msg = str(e)
+            # Sanitize error for user — strip internal paths and DB details (mirror DB-mode)
+            safe_msg = error_msg.split("\n")[0][:200] if error_msg else "Internal error"
             job.status = JobStatus.FAILED
-            job.error = error_msg
+            job.error = safe_msg
             job.completed_at = datetime.now(tz=TZ_ISTANBUL)
             self._active_job_id = None
-            logger.error("Job {} failed: {}", job.id, error_msg)
+            logger.opt(exception=True).error("Job {} failed: {}", job.id, error_msg)
 
             try:
                 email_service.send_error_notification(
                     to_email=job.email,
                     job_id=job.id,
-                    error_message=error_msg,
+                    error_message=safe_msg,
                 )
             except Exception as email_err:
                 logger.error("Failed to send error notification: {}", email_err)
