@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from energy_forecast.config.api import (
     ApiConfig,
@@ -48,8 +48,12 @@ __all__ = [
 # ---------------------------------------------------------------------------
 
 
-class Settings(BaseModel, frozen=True):
+class Settings(BaseModel):
     """Root config — aggregates all YAML configs + env vars."""
+
+    # Lesson 165: extra="forbid" makes unknown YAML keys fail loud
+    # (prevented by R12 FAZ 5 hyperband silent-default bug)
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     project: ProjectConfig = Field(default_factory=ProjectConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
