@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pandas as pd
+import pandera as pa
 import pytest
 
 from energy_forecast.config import (
@@ -198,3 +199,66 @@ class TestValidateOutput:
 
         with pytest.raises(TypeError, match="DatetimeIndex"):
             pipe._validate_output(df)
+
+
+class TestValidateInput:
+    """Tests for Pandera-based input validation (audit P0-2 / X6)."""
+
+    @staticmethod
+    def _validating_pipe() -> FeaturePipeline:
+        return FeaturePipeline(
+            Settings(
+                region=_DEFAULT_REGION,
+                pipeline=PipelineConfig(
+                    modules=[],
+                    validate_input=True,
+                    validate_output=False,
+                ),
+            )
+        )
+
+    def test_valid_consumption_passes(self) -> None:
+        """Schema-conformant input does not raise."""
+        idx = pd.date_range("2024-01-01", periods=3, freq="h").rename("datetime")
+        df = pd.DataFrame({"consumption": [100.0, 110.0, 120.0]}, index=idx)
+        self._validating_pipe()._validate_input(df)
+
+    def test_negative_consumption_raises(self) -> None:
+        """Out-of-range consumption surfaces SchemaErrors."""
+        idx = pd.date_range("2024-01-01", periods=3, freq="h").rename("datetime")
+        df = pd.DataFrame({"consumption": [100.0, -50.0, 120.0]}, index=idx)
+        with pytest.raises(pa.errors.SchemaErrors):
+            self._validating_pipe()._validate_input(df)
+
+    def test_out_of_range_temperature_raises(self) -> None:
+        """Physically impossible temperature surfaces SchemaErrors."""
+        idx = pd.date_range("2024-01-01", periods=3, freq="h").rename("datetime")
+        df = pd.DataFrame(
+            {"temperature_2m": [20.0, 999.0, 22.0]},  # 999 violates le=60
+            index=idx,
+        )
+        with pytest.raises(pa.errors.SchemaErrors):
+            self._validating_pipe()._validate_input(df)
+
+    def test_skipped_when_no_relevant_columns(self) -> None:
+        """All schemas skip silently for unrelated columns (no false fail)."""
+        idx = pd.date_range("2024-01-01", periods=3, freq="h").rename("datetime")
+        df = pd.DataFrame({"unrelated_column": [1, 2, 3]}, index=idx)
+        # No raise — all 3 schemas have no overlapping columns.
+        self._validating_pipe()._validate_input(df)
+
+    def test_validate_input_false_skips(self) -> None:
+        """validate_input=False bypasses validation in run()."""
+        settings = Settings(
+            region=_DEFAULT_REGION,
+            pipeline=PipelineConfig(
+                modules=[],
+                validate_input=False,
+                validate_output=False,
+            ),
+        )
+        pipe = FeaturePipeline(settings)
+        idx = pd.date_range("2024-01-01", periods=1, freq="h").rename("datetime")
+        # Negative consumption — would fail if validation enabled.
+        df = pd.DataFrame({"consumption": [-100.0]}, index=idx)
+        pipe.run(df)  # no raise — validation skipped

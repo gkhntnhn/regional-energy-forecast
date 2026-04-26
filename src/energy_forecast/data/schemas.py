@@ -52,7 +52,9 @@ class WeatherSchema(pa.DataFrameModel):
     apparent_temperature: Series[float] = pa.Field(ge=-70, le=70, nullable=True)
     precipitation: Series[float] = pa.Field(ge=0, nullable=True)
     snow_depth: Series[float] = pa.Field(ge=0, nullable=True)
-    weather_code: Series[float] = pa.Field(ge=0, le=99, nullable=True)
+    # weather_code allows int input (OpenMeteo + test fixtures both pass int);
+    # field-level coerce keeps DatetimeIndex strict while easing this column.
+    weather_code: Series[float] = pa.Field(ge=0, le=99, nullable=True, coerce=True)
     surface_pressure: Series[float] = pa.Field(ge=870, le=1085, nullable=True)
     wind_speed_10m: Series[float] = pa.Field(ge=0, nullable=True)
     wind_direction_10m: Series[float] = pa.Field(ge=0, le=360, nullable=True)
