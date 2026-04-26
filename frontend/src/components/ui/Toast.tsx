@@ -1,39 +1,7 @@
-import { create } from "zustand";
 import { useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { X } from "lucide-react";
-
-type ToastType = "success" | "error" | "info";
-
-interface ToastItem {
-  id: number;
-  message: string;
-  type: ToastType;
-}
-
-interface ToastStore {
-  toasts: ToastItem[];
-  add: (message: string, type?: ToastType) => void;
-  remove: (id: number) => void;
-}
-
-let nextId = 0;
-
-export const useToastStore = create<ToastStore>((set) => ({
-  toasts: [],
-  add: (message, type = "info") => {
-    const id = nextId++;
-    set((s) => ({ toasts: [...s.toasts, { id, message, type }] }));
-    setTimeout(() => {
-      set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) }));
-    }, 4000);
-  },
-  remove: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
-}));
-
-export function toast(message: string, type?: ToastType) {
-  useToastStore.getState().add(message, type);
-}
+import { useToastStore, type ToastItem, type ToastType } from "./toast-store";
 
 const typeStyles: Record<ToastType, string> = {
   success: "border-l-emerald-500 bg-emerald-50 text-emerald-900",
@@ -41,7 +9,7 @@ const typeStyles: Record<ToastType, string> = {
   info: "border-l-slate-500 bg-slate-50 text-slate-900",
 };
 
-function ToastItem({ item, onClose }: { item: ToastItem; onClose: () => void }) {
+function ToastEntry({ item, onClose }: { item: ToastItem; onClose: () => void }) {
   useEffect(() => {
     const timer = setTimeout(onClose, 4000);
     return () => clearTimeout(timer);
@@ -71,7 +39,7 @@ export function ToastContainer() {
   return (
     <div className="fixed top-4 right-4 z-50 flex flex-col gap-2 w-80">
       {toasts.map((t) => (
-        <ToastItem key={t.id} item={t} onClose={() => remove(t.id)} />
+        <ToastEntry key={t.id} item={t} onClose={() => remove(t.id)} />
       ))}
     </div>
   );

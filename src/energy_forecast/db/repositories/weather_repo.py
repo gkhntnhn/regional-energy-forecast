@@ -9,6 +9,7 @@ import pandas as pd
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from energy_forecast.config.features import WeatherThresholdsConfig
 from energy_forecast.db.models import WeatherSnapshotModel
 
 # Weather columns in the OpenMeteo DataFrame
@@ -26,10 +27,10 @@ _WEATHER_COLS: list[str] = [
     "weather_code",
 ]
 
-# HDD/CDD base temperature — MUST match WeatherThresholdsConfig defaults
-# Source of truth: configs/features/weather.yaml (hdd_base, cdd_base)
-_HDD_BASE = 18.0
-_CDD_BASE = 24.0
+# HDD/CDD base temperature — single source of truth via WeatherThresholdsConfig.
+# (configs/features/weather.yaml overrides at runtime; defaults match here.)
+_HDD_BASE = WeatherThresholdsConfig().hdd_base
+_CDD_BASE = WeatherThresholdsConfig().cdd_base
 
 
 class WeatherSnapshotRepository:

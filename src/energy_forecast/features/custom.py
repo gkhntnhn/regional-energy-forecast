@@ -15,6 +15,13 @@ import numpy as np
 import pandas as pd
 from sklearn.base import BaseEstimator, TransformerMixin
 
+from energy_forecast.config.features import WeatherThresholdsConfig
+
+# DegreeDayFeatures default bases — sourced from WeatherThresholdsConfig (Pydantic SoT).
+# Evaluated once at module import; runtime overrides come via constructor args.
+_DEFAULT_HDD_BASE = WeatherThresholdsConfig().hdd_base
+_DEFAULT_CDD_BASE = WeatherThresholdsConfig().cdd_base
+
 
 class EwmaFeatures(BaseEstimator, TransformerMixin):  # type: ignore[misc]
     """EWMA features with min_lag shift for leakage prevention.
@@ -153,8 +160,8 @@ class DegreeDayFeatures(BaseEstimator, TransformerMixin):  # type: ignore[misc]
     def __init__(
         self,
         temp_variable: str = "temperature_2m",
-        hdd_base: float = 18.0,
-        cdd_base: float = 24.0,
+        hdd_base: float = _DEFAULT_HDD_BASE,
+        cdd_base: float = _DEFAULT_CDD_BASE,
     ) -> None:
         self.temp_variable = temp_variable
         self.hdd_base = hdd_base
