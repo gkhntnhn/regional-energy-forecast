@@ -251,8 +251,13 @@ class TSMixerxTrainingConfig(BaseModel, frozen=True):
 
 
 class TSMixerxCovariatesConfig(BaseModel, frozen=True):
-    """TSMixerx covariate specification (futr_exog_list / hist_exog_list)."""
+    """TSMixerx covariate specification (futr_exog_list / hist_exog_list).
 
+    Defaults synced to R12 Set B (11+11) per configs/models/tsmixerx.yaml.
+    Order matters for NeuralForecast column alignment.
+    """
+
+    # R12 Set B futr_exog (11) — R7 8 + wth_cdd, cdd_x_is_peak, is_holiday_next_3d
     futr_exog: list[str] = Field(
         default_factory=lambda: [
             "apparent_temperature",
@@ -260,20 +265,29 @@ class TSMixerxCovariatesConfig(BaseModel, frozen=True):
             "tatil_tipi",
             "day_of_week_sin",
             "wth_hdd",
+            "wth_cdd",
+            "cdd_x_is_peak",
+            "is_holiday_next_3d",
             "is_weekend",
             "is_new_year",
             "dst_transition",
         ]
     )
+    # R12 Set B hist_exog (11) — R7 7 - temperature_2m_window_24_max (FAZ 3 -0.07%)
+    # + consumption_lag_72, _window_168_mean, _window_168_std, _ewma_168, hour_x_lag_168
     hist_exog: list[str] = Field(
         default_factory=lambda: [
+            "consumption_lag_48",
+            "consumption_lag_72",
             "consumption_lag_168",
             "consumption_lag_336",
+            "consumption_window_168_mean",
+            "consumption_window_168_std",
+            "consumption_ewma_168",
             "consumption_week_ratio",
-            "consumption_lag_48",
             "consumption_momentum_168",
-            "temperature_2m_window_24_max",
             "consumption_pct_change_168",
+            "hour_x_consumption_lag_168",
         ]
     )
 
