@@ -285,7 +285,16 @@ class WeatherCacheConfig(BaseModel, frozen=True):
 
 
 class OpenMeteoConfig(BaseModel, frozen=True):
-    """OpenMeteo full configuration."""
+    """OpenMeteo full configuration.
+
+    Note:
+        Location coordinates and weights are intentionally NOT a field on this
+        config. They are sourced from ``RegionConfig.cities`` (legacy mode) or
+        ``RegionConfig.provinces`` (grid mode) — defined under ``region:`` in
+        ``configs/settings.yaml``. ``OpenMeteoClient._get_locations()`` resolves
+        them per active mode. This avoids duplicate location definitions across
+        weather-config files.
+    """
 
     api: OpenMeteoApiConfig = Field(default_factory=OpenMeteoApiConfig)
     variables: list[str] = Field(
