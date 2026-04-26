@@ -6,9 +6,10 @@ header (separate from the user-facing ``API_KEY``).
 
 Endpoints
 ---------
-POST /internal/sync-epias?days_back=N   — backfill EPIAS market + generation
-POST /internal/sync-weather?days_back=N — backfill weather actuals + grid
-                                          (placeholder — implemented next)
+POST /internal/sync-epias?days_back=N   — reconcile EPIAS market + generation
+                                          parquet cache into DB tables
+POST /internal/sync-weather?days_back=N — reconcile weather aggregate +
+                                          15-grid parquet cache into DB tables
 
 Design
 ------
@@ -16,14 +17,18 @@ Sync (blocking) response — daily ingestion finishes in 5-90s and the
 scheduler/operator wants the result inline. Background-task pattern is
 not needed here.
 
-Idempotency — backed by ``ON CONFLICT (datetime) DO UPDATE`` upserts in
-the existing ``scripts/ops/seed_db.py`` helpers, which are imported and
-run inside ``asyncio.to_thread`` to bridge the sync repo layer.
+Idempotency — backed by ``ON CONFLICT (datetime, ...) DO UPDATE`` upserts in
+the existing seed scripts. EPIAS path imports ``seed_db`` helpers in-thread.
+Weather path shells out to ``seed_weather.py`` (CLI-only entry point) and
+parses its loguru output for row counts; library-extract is a follow-up.
 """
 
 from __future__ import annotations
 
 import asyncio
+import os
+import re
+import subprocess
 import sys
 import time
 from datetime import datetime, timedelta
@@ -240,17 +245,121 @@ async def sync_epias(
     )
 
 
+def _run_weather_db_sync() -> tuple[int, int, str | None, str]:
+    """Blocking parquet -> DB sync for weather aggregate + 15-grid backfill.
+
+    Shells out to ``scripts/data/seed_weather.py`` (CLI-only entry today;
+    library-extract is a follow-up cleanup). Parses its loguru log lines
+    for aggregate and grid row counts.
+
+    Returns ``(aggregate_rows, grid_rows, last_year, raw_log_tail)``. The
+    raw log tail is included in the audit details for ops debuggability.
+    """
+    project_root = Path(__file__).resolve().parents[4]
+    seed_script = project_root / "scripts" / "data" / "seed_weather.py"
+
+    proc = subprocess.run(
+        [sys.executable, str(seed_script)],
+        cwd=str(project_root),
+        capture_output=True,
+        timeout=600,
+        check=False,
+        env={**os.environ},
+    )
+
+    log_text = (proc.stderr or b"").decode("utf-8", errors="ignore") + (
+        proc.stdout or b""
+    ).decode("utf-8", errors="ignore")
+
+    if proc.returncode != 0:
+        tail = "\n".join(log_text.splitlines()[-15:])
+        raise RuntimeError(
+            f"seed_weather.py exit={proc.returncode}; tail:\n{tail}"
+        )
+
+    aggregate_total = 0
+    grid_total = 0
+    last_year: int | None = None
+
+    # Loguru emits with timestamp + level prefix, e.g.:
+    #   "15:51:58 | INFO   |   2020 -> DB from parquet (35136 rows)"
+    #   "15:51:58 | INFO   |   2020 -> grid DB (131760 rows, 15 points)"
+    # Line-internal search (no ^ anchor) so we don't trip on the prefix.
+    agg_re = re.compile(r"(\d{4})\s+->\s+DB from parquet\s+\((\d+)\s+rows")
+    grid_re = re.compile(r"(\d{4})\s+->\s+grid DB\s+\((\d+)\s+rows")
+    for raw_line in log_text.splitlines():
+        # Strip ANSI color codes that loguru emits to terminals
+        line = re.sub(r"\x1b\[[0-9;]*m", "", raw_line)
+        m = agg_re.search(line)
+        if m:
+            year, count = int(m.group(1)), int(m.group(2))
+            aggregate_total += count
+            last_year = max(last_year or 0, year)
+            continue
+        m = grid_re.search(line)
+        if m:
+            grid_total += int(m.group(2))
+
+    last_year_iso = str(last_year) if last_year else None
+    log_tail = "\n".join(log_text.splitlines()[-10:])
+    return aggregate_total, grid_total, last_year_iso, log_tail
+
+
 @internal_router.post("/sync-weather", response_model=SyncResult)
 async def sync_weather(
     request: Request,
     days_back: int = Query(2, ge=1, le=14, description="Days of T-N actuals to backfill"),
 ) -> SyncResult:
-    """Sync OpenMeteo weather actuals + grid backfill into DB.
+    """Sync weather aggregate + 15-grid parquet cache into DB.
 
-    NOTE: Item 242 — implemented in next commit. This stub returns 501
-    so token + audit path can already be exercised by the scheduler.
+    Designed for scheduled daily invocation (e.g. cron 06:30). Re-runs the
+    existing ``seed_weather.py`` helper (parquet-first, API fallback per
+    its own logic), then captures aggregate and grid row counts for audit.
+
+    Idempotent: ``upsert_weather`` performs ON CONFLICT (datetime, lat,
+    lon, source) DO UPDATE under the hood.
     """
-    raise HTTPException(
-        status_code=501,
-        detail="sync-weather not yet implemented (item 242, next commit)",
+    started = time.monotonic()
+    today = datetime.now(tz=TZ_ISTANBUL).date()
+
+    errors: list[str] = []
+    aggregate_total = grid_total = 0
+    last_year: str | None = None
+    log_tail = ""
+
+    try:
+        aggregate_total, grid_total, last_year, log_tail = await asyncio.to_thread(
+            _run_weather_db_sync,
+        )
+    except Exception as exc:
+        msg = f"{type(exc).__name__}: {str(exc).split(chr(10))[0][:200]}"
+        logger.opt(exception=True).error("sync-weather failed: {}", msg)
+        errors.append(msg)
+
+    duration_ms = int((time.monotonic() - started) * 1000)
+    rows_upserted = aggregate_total + grid_total
+
+    await _audit_log(
+        request,
+        action="sync_weather",
+        details={
+            "days_back": days_back,
+            "today": today.isoformat(),
+            "aggregate_rows": aggregate_total,
+            "grid_rows": grid_total,
+            "last_year": last_year,
+            "duration_ms": duration_ms,
+            "log_tail": log_tail,
+            "errors": errors,
+        },
+    )
+
+    return SyncResult(
+        sync_type="weather",
+        days_back=days_back,
+        rows_fetched=0,  # API fetch deferred — seed_weather decides parquet vs API internally
+        rows_upserted=rows_upserted,
+        last_date=last_year,
+        duration_ms=duration_ms,
+        errors=errors,
     )
