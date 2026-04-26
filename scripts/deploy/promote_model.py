@@ -1,11 +1,15 @@
 """Promote a trained model run to final_models/.
 
+Single-model deploy script. For the R12 5-seed Jensen ensemble use
+``scripts/deploy/promote_multi_seed.py`` instead — that one promotes
+all five TSMixerx checkpoints together with augmented metadata.
+
 Usage:
     # Promote best run for a model type (lowest test MAPE)
-    uv run python scripts/promote_model.py --model catboost
+    uv run python scripts/deploy/promote_model.py --model catboost
 
     # Promote a specific run by ID
-    uv run python scripts/promote_model.py --model catboost --run-id 42
+    uv run python scripts/deploy/promote_model.py --model tsmixerx --run-id 42
 """
 
 from __future__ import annotations
@@ -28,7 +32,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Promote model to final_models/")
     parser.add_argument(
         "--model",
-        choices=["catboost", "prophet", "tft", "ensemble"],
+        choices=["catboost", "tft", "tsmixerx", "ensemble"],
         required=True,
     )
     parser.add_argument("--run-id", type=int, default=None)

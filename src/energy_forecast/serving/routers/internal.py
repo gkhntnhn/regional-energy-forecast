@@ -31,7 +31,7 @@ import re
 import subprocess
 import sys
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -40,7 +40,6 @@ from loguru import logger
 from pydantic import BaseModel, Field
 
 from energy_forecast.utils import TZ_ISTANBUL
-
 
 internal_router = APIRouter(prefix="/internal", tags=["internal"])
 
@@ -126,7 +125,6 @@ def _run_epias_db_sync(
 
     _ensure_scripts_importable()
     from scripts.ops.seed_db import seed_epias_generation, seed_epias_market
-
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
 

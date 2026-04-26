@@ -1,7 +1,7 @@
 # SPEC.md — Energy Forecast
 
 > Proje anayasası. Claude Code ve geliştirici bu dosyayı tek kaynak olarak referans alır.
-> Son güncelleme: 2026-04-21 (R12 FAZ 11 + E2E smoke verified, `r12-deploy` @ `2b51f16`)
+> Son güncelleme: 2026-04-26 (R12 P0 sweep + M11 Faz 4 daily ingestion DONE, main @ `c52f3f4`)
 
 ---
 
@@ -672,7 +672,7 @@ DATABASE_URL=postgresql+asyncpg://user:pass@host:5432/db
 | Hızlı test | YAML'da değer düşür → run.py çalıştır → geri al |
 | Coverage hedefi | %85+ |
 | Mock kuralı | Sadece external API'ler mock'lanır (EPİAŞ, OpenMeteo) |
-| Test sayısı | 1159 non-slow / 1176 toplam |
+| Test sayısı | 1157 non-slow / 1174 toplam |
 
 ### 10.3 Git Workflow
 

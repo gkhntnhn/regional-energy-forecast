@@ -44,17 +44,21 @@ export default function App() {
             <Route
               path="history"
               element={
-                <Suspense fallback={<PageLoader />}>
-                  <HistoryPage />
-                </Suspense>
+                <ErrorBoundary>
+                  <Suspense fallback={<PageLoader />}>
+                    <HistoryPage />
+                  </Suspense>
+                </ErrorBoundary>
               }
             />
             <Route
               path="admin"
               element={
-                <Suspense fallback={<PageLoader />}>
-                  <AdminPage />
-                </Suspense>
+                <ErrorBoundary>
+                  <Suspense fallback={<PageLoader />}>
+                    <AdminPage />
+                  </Suspense>
+                </ErrorBoundary>
               }
             />
           </Route>

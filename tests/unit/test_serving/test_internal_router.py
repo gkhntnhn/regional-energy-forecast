@@ -175,7 +175,7 @@ class TestSyncWeatherParser:
 
         assert resp.status_code == 200
         body = resp.json()
-        # 2 aggregate × ~8.7K + 2 grid × ~131K
+        # 2 aggregate x ~8.7K + 2 grid x ~131K
         assert body["rows_upserted"] == 8784 + 8760 + 131760 + 131400
         assert body["last_date"] == "2025"  # max year token
         assert body["errors"] == []
@@ -185,11 +185,11 @@ class TestSyncWeatherParser:
     ) -> None:
         """ANSI color codes from loguru terminal mode must not break the regex."""
         sample = (
-            "\x1b[32m15:50:24\x1b[0m | \x1b[1mINFO   \x1b[0m |   "
-            "2024 -> DB from parquet (8784 rows)\n"
-            "\x1b[32m15:51:58\x1b[0m | \x1b[1mINFO   \x1b[0m |   "
-            "2024 -> grid DB (131760 rows, 15 points)\n"
-        ).encode("utf-8")
+            b"\x1b[32m15:50:24\x1b[0m | \x1b[1mINFO   \x1b[0m |   "
+            b"2024 -> DB from parquet (8784 rows)\n"
+            b"\x1b[32m15:51:58\x1b[0m | \x1b[1mINFO   \x1b[0m |   "
+            b"2024 -> grid DB (131760 rows, 15 points)\n"
+        )
         fake_proc = MagicMock(returncode=0, stdout=b"", stderr=sample)
 
         with patch("subprocess.run", return_value=fake_proc):

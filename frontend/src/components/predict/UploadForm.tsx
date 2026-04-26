@@ -1,7 +1,7 @@
 import { useState, useRef, type FormEvent, type DragEvent } from "react";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent, CardHeader } from "@/components/ui/Card";
-import { toast } from "@/components/ui/Toast";
+import { toast } from "@/components/ui/toast-store";
 import { createPrediction } from "@/api/predict";
 import { useJobStore } from "@/stores/jobs";
 import { cn } from "@/lib/utils";

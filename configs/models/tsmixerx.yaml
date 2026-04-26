@@ -56,8 +56,9 @@ covariates:
     - consumption_pct_change_168
     - hour_x_consumption_lag_168    # YENI — saat-spesifik haftalik pattern (R8 OOF feature)
 
-# Loss function: "mae" (R11 winner)
-loss: "mae"
+# Loss function is set at run-time via best_params.loss below.
+# Pydantic default "mae" (config/models.py:319) is the fallback when
+# best_params is empty or being explored during HPO.
 
 # R12 best_params (RTX 3090 pod HPO, 2026-04-19, val 1.77% test 1.83%)
 # 100 trial median pruner, 12 boyut search, Set B 22 covariate
