@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Any
 from urllib.parse import urlparse, urlunparse
 
-from fastapi import Depends, FastAPI, Form, HTTPException, Request, UploadFile
+from fastapi import Depends, FastAPI, Form, Header, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -69,6 +69,26 @@ async def verify_api_key(
     if credentials is None or not secrets.compare_digest(credentials.credentials, expected_key):
         raise HTTPException(status_code=401, detail="Invalid or missing API key")
     return credentials
+
+
+async def verify_internal_token(
+    request: Request,
+    x_internal_token: Annotated[str | None, Header(alias="X-Internal-Token")] = None,
+) -> None:
+    """Validate X-Internal-Token header against configured operator token.
+
+    Used to gate /internal/* endpoints (scheduler-only). 503 if token is
+    not configured (production should always set INTERNAL_TOKEN), 401 on
+    missing/invalid header.
+    """
+    expected: str = getattr(request.app.state, "internal_token", "")
+    if not expected:
+        raise HTTPException(
+            status_code=503,
+            detail="Internal endpoints disabled — INTERNAL_TOKEN not configured",
+        )
+    if x_internal_token is None or not secrets.compare_digest(x_internal_token, expected):
+        raise HTTPException(status_code=401, detail="Invalid or missing internal token")
 
 
 # ---------------------------------------------------------------------------
@@ -188,6 +208,14 @@ def _init_services(app: FastAPI, settings: Any) -> None:
     app.state.api_key = settings.env.api_key
     if not settings.env.api_key:
         logger.warning("API_KEY is empty — all authenticated endpoints will reject requests")
+
+    # Internal token (operator-only, used by /internal/* scheduler endpoints)
+    app.state.internal_token = settings.env.internal_token
+    if not settings.env.internal_token:
+        logger.warning("INTERNAL_TOKEN is empty — /internal/* endpoints disabled (503)")
+
+    # Settings reference (for /internal/* and other state-aware endpoints)
+    app.state.settings = settings
 
     # Job manager
     app.state.job_manager = JobManager(max_queue_size=5)
@@ -412,8 +440,10 @@ async def admin_dashboard() -> FileResponse:
 
 # Admin API router (analytics endpoints) — auth required
 from energy_forecast.serving.routers.admin import admin_router  # noqa: E402
+from energy_forecast.serving.routers.internal import internal_router  # noqa: E402
 
 app.include_router(admin_router, dependencies=[Depends(verify_api_key)])
+app.include_router(internal_router, dependencies=[Depends(verify_internal_token)])
 
 # Static files — SPA build assets first, then legacy static
 if _spa_dist.exists():
