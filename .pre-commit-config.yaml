@@ -8,25 +8,36 @@ repos:
       - id: check-added-large-files
         args: ['--maxkb=1000']
 
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.3.4
+  # Run ruff through uv so the pinned project version (pyproject.toml managed)
+  # is the single source of truth — avoids drift between pre-commit's pinned
+  # rev and the dev/CI ruff. Same rationale as the mypy block below.
+  - repo: local
     hooks:
       - id: ruff
-        args: [--fix]
+        name: ruff check
+        entry: uv run ruff check --fix src/ tests/
+        language: system
+        pass_filenames: false
+        always_run: true
       - id: ruff-format
+        name: ruff format
+        entry: uv run ruff format src/ tests/
+        language: system
+        pass_filenames: false
+        always_run: true
 
-  - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.19.1
+  # Run mypy through uv so it inherits the project's full dependency tree.
+  # Pre-commit's isolated env can't see runtime libs (fastapi, loguru,
+  # python-dotenv, starlette, ...), causing 100+ false-positive import-not-found
+  # errors. Reusing the uv venv resolves all of them.
+  - repo: local
     hooks:
       - id: mypy
-        additional_dependencies:
-          - pydantic>=2.5
-          - types-PyYAML>=6.0
-          - pandas-stubs>=2.1
-          - types-openpyxl>=3.1
-        args: [--strict]
+        name: mypy --strict
+        entry: uv run mypy src/
+        language: system
+        types: [python]
         pass_filenames: false
-        entry: mypy src/
 
   - repo: https://github.com/commitizen-tools/commitizen
     rev: v3.18.0
