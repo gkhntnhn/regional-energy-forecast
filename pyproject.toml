@@ -138,6 +138,15 @@ module = [
 ]
 ignore_missing_imports = true
 
+# scripts/ are CLI utilities, not part of the installed package — they
+# rely on pandas DataFrames whose strict typing produces noisy false
+# positives. mypy strict targets src/ only; transitively-imported scripts
+# stay untouched here so internal.py can still re-use seed_db helpers.
+[[tool.mypy.overrides]]
+module = "scripts.*"
+follow_imports = "skip"
+ignore_errors = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-x --tb=short -q"

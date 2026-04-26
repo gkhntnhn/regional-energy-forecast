@@ -70,10 +70,14 @@ class PredictionRepository:
         if hasattr(dt_max, "tzinfo") and dt_max.tzinfo is None:
             dt_max = dt_max.tz_localize(TZ_ISTANBUL)
 
-        # Find unmatched predictions within the consumption data range
+        # Find unmatched predictions within the consumption data range.
+        # Restricted to ensemble predictions — these are the production-grade
+        # outputs that the actual-vs-forecast accuracy reports compare against.
+        # Single-model rows are out of scope for matching (debug/HPO artifacts).
         stmt = select(PredictionModel).where(
             PredictionModel.actual_mwh.is_(None),
             PredictionModel.forecast_dt <= dt_max,
+            PredictionModel.model_source == "ensemble",
         )
         result = await self._session.execute(stmt)
 

@@ -33,6 +33,7 @@ from energy_forecast.serving.job_steps import (
     update_status_db,
 )
 from energy_forecast.serving.schemas import JobStatus
+from energy_forecast.serving.utils import mask_email
 from energy_forecast.utils import TZ_ISTANBUL
 
 if TYPE_CHECKING:
@@ -499,7 +500,7 @@ class JobManager:
                     audit = AuditRepository(session)
                     await audit.log(
                         action="job_complete",
-                        user_email=email,
+                        user_email=mask_email(email),
                         details={"job_id": job_id},
                     )
                     await session.commit()
@@ -528,7 +529,7 @@ class JobManager:
                     audit = AuditRepository(session)
                     await audit.log(
                         action="job_failed",
-                        user_email=email,
+                        user_email=mask_email(email),
                         details={
                             "job_id": job_id,
                             "error": safe_msg,

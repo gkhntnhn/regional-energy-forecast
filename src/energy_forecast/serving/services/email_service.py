@@ -14,6 +14,7 @@ from loguru import logger
 from pydantic import BaseModel, EmailStr, Field
 
 from energy_forecast.serving.exceptions import EmailDeliveryError
+from energy_forecast.serving.utils import mask_email
 
 if TYPE_CHECKING:
     from energy_forecast.monitoring.drift_detector import DriftAlert
@@ -90,19 +91,19 @@ class EmailService:
             EmailDeliveryError: If sending fails.
         """
         if not self._enabled:
-            logger.warning("Email not sent (service disabled): {}", to_email)
+            logger.warning("Email not sent (service disabled): {}", mask_email(to_email))
             return False
 
         try:
             msg = self._create_message(to_email, attachment_path, job_id, created_at)
             self._send_message(msg, to_email)
-            logger.info("Email sent successfully to {}", to_email)
+            logger.info("Email sent successfully to {}", mask_email(to_email))
             return True
 
         except EmailDeliveryError:
             raise
         except Exception as e:
-            logger.error("Failed to send email to {}: {}", to_email, e)
+            logger.error("Failed to send email to {}: {}", mask_email(to_email), e)
             raise EmailDeliveryError(f"Failed to send email: {e}") from e
 
     def _create_message(
@@ -162,7 +163,7 @@ class EmailService:
         except smtplib.SMTPAuthenticationError as e:
             raise EmailDeliveryError("SMTP authentication failed") from e
         except smtplib.SMTPRecipientsRefused as e:
-            raise EmailDeliveryError(f"Recipient refused: {to_email}") from e
+            raise EmailDeliveryError(f"Recipient refused: {mask_email(to_email)}") from e
         except smtplib.SMTPException as e:
             raise EmailDeliveryError(f"SMTP error: {e}") from e
         except TimeoutError as e:
@@ -194,7 +195,7 @@ class EmailService:
             try:
                 msg = self._create_message(to_email, attachment_path, job_id, created_at)
                 self._send_message(msg, to_email)
-                logger.info("Email sent to {} (attempt {})", to_email, attempt)
+                logger.info("Email sent to {} (attempt {})", mask_email(to_email), attempt)
                 return True, attempt, None
             except Exception as e:
                 last_error = str(e)
@@ -224,7 +225,7 @@ class EmailService:
             True if sent successfully.
         """
         if not self._enabled:
-            logger.warning("Error email not sent (service disabled): {}", to_email)
+            logger.warning("Error email not sent (service disabled): {}", mask_email(to_email))
             return False
 
         try:
@@ -246,7 +247,7 @@ Energy Forecast Sistemi"""
 
             msg.attach(MIMEText(body, "plain", "utf-8"))
             self._send_message(msg, to_email)
-            logger.info("Error notification sent to {}", to_email)
+            logger.info("Error notification sent to {}", mask_email(to_email))
             return True
 
         except Exception as e:
