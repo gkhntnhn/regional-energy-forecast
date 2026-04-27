@@ -199,6 +199,42 @@ def _create_db_session() -> Session | None:
         return None
 
 
+def _warn_if_stale_cache(
+    df: pd.DataFrame | None,
+    name: str,
+    target_end_date: str,
+    threshold_hours: int = 48,
+) -> None:
+    """Warn loudly when fetched data ends well before the requested end date.
+
+    Catches the silent failure mode where prepare-data runs against a stale
+    EPIAS cache and produces features with all-NaN gen_*/lag_/window_ columns
+    near the recent boundary (Lesson 180). Without this guard, training MAPE
+    silently degrades because CatBoost ignores NaN-heavy features.
+    """
+    if df is None or df.empty:
+        return
+    if not isinstance(df.index, pd.DatetimeIndex):
+        return
+
+    target = pd.Timestamp(target_end_date) + pd.Timedelta(hours=23, minutes=59)
+    actual_end = df.index.max()
+    if actual_end.tzinfo is not None and target.tzinfo is None:
+        target = target.tz_localize(actual_end.tzinfo)
+    elif actual_end.tzinfo is None and target.tzinfo is not None:
+        target = target.tz_convert(None)
+
+    gap_hours = (target - actual_end).total_seconds() / 3600.0
+    if gap_hours > threshold_hours:
+        logger.warning(
+            "STALE CACHE [{}]: data ends at {} but pipeline targets {} "
+            "(gap {:.0f}h > {}h threshold). Lag/window features will be "
+            "ALL-NaN near the recent boundary. Run /internal/sync-epias or "
+            "regenerate the cache before retraining.",
+            name, actual_end, target_end_date, gap_hours, threshold_hours,
+        )
+
+
 def fetch_epias_data(
     settings: Settings,
     start_date: str,
@@ -607,6 +643,7 @@ def main() -> int:
         settings, start_date, end_date, skip_api=args.skip_epias,
         db_session=db_session,
     )
+    _warn_if_stale_cache(epias_df, "EPIAS market", end_date)
 
     # Validate EPIAS data
     if epias_df is not None:
@@ -622,6 +659,7 @@ def main() -> int:
         settings, start_date, end_date, skip_api=args.skip_epias,
         db_session=db_session,
     )
+    _warn_if_stale_cache(generation_df, "EPIAS generation", end_date)
 
     # Step 4: Fetch weather data
     if args.skip_weather:

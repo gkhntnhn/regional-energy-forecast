@@ -23,6 +23,10 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from energy_forecast import __version__
 from energy_forecast.config import load_config
+from energy_forecast.serving.access_control import (
+    assert_job_access,
+    compute_caller_fingerprint,
+)
 from energy_forecast.serving.dependencies import DBContext, get_db_context
 from energy_forecast.serving.exceptions import APIError, JobNotFoundError, JobQueueFullError
 from energy_forecast.serving.job_manager import JobManager
@@ -678,7 +682,7 @@ async def get_active_status(
 async def get_status(
     request: Request,
     job_id: str,
-    _auth: HTTPAuthorizationCredentials = Depends(verify_api_key),  # noqa: B008
+    auth: HTTPAuthorizationCredentials = Depends(verify_api_key),  # noqa: B008
 ) -> JobStatusResponse:
     """Get job status by ID.
 
@@ -691,11 +695,13 @@ async def get_status(
     """
     job_manager: JobManager = request.app.state.job_manager
     db: DBContext = await get_db_context(request)
+    fingerprint = compute_caller_fingerprint(auth.credentials if auth else None)
 
     try:
         if db.use_db:
             async with db.session_factory() as session:
                 job = await job_manager.get_job_db(session, job_id)
+            assert_job_access(job, fingerprint=fingerprint, action="status")
             return JobStatusResponse(
                 job_id=job.id,
                 status=JobStatus(job.status),
@@ -705,6 +711,7 @@ async def get_status(
                 completed_at=job.completed_at,
             )
         job_mem = job_manager.get_job_in_memory(job_id)
+        assert_job_access(job_mem, fingerprint=fingerprint, action="status")
         return JobStatusResponse(
             job_id=job_mem.id,
             status=job_mem.status,
@@ -724,11 +731,12 @@ async def get_status(
 async def delete_job(
     request: Request,
     job_id: str,
-    _auth: HTTPAuthorizationCredentials = Depends(verify_api_key),  # noqa: B008
+    auth: HTTPAuthorizationCredentials = Depends(verify_api_key),  # noqa: B008
 ) -> dict[str, str]:
     """Delete or cancel a job by ID."""
     job_manager: JobManager = request.app.state.job_manager
     db: DBContext = await get_db_context(request)
+    fingerprint = compute_caller_fingerprint(auth.credentials if auth else None)
 
     try:
         if db.use_db:
@@ -739,6 +747,7 @@ async def delete_job(
                 job = await repo.get_by_id(job_id)
                 if job is None:
                     raise JobNotFoundError(f"Job not found: {job_id}")
+                assert_job_access(job, fingerprint=fingerprint, action="delete")
                 if job.status in ("running",):
                     raise HTTPException(status_code=409, detail="Cannot delete a running job")
                 await repo.update_status(job_id, "archived")
@@ -746,6 +755,7 @@ async def delete_job(
             return {"detail": f"Job {job_id} archived"}
 
         job_mem = job_manager.get_job_in_memory(job_id)
+        assert_job_access(job_mem, fingerprint=fingerprint, action="delete")
         if job_mem.status == JobStatus.RUNNING:
             raise HTTPException(status_code=409, detail="Cannot delete a running job")
         job_mem.status = JobStatus.FAILED
